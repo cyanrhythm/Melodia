@@ -140,6 +140,20 @@ Repository 边界统一产出 Kotlin `Result<T>`，异常类型抽象为领域�
 - **签名机制**：签名材料从版本控制外部注入（读取 `local.properties` 或 CI 环境变量）。若未配置正式签名，将自动回退为 Debug 签名，确保本地可编译出可运行的 APK。完整签名与自动化发版配置请参阅 [RELEASE_SIGNING.md](RELEASE_SIGNING.md)。
 - **CI 流水线**：向 `main` 分支推送或提交 PR 时自动触发单元测试与 Release 构建验证；推送版本 Tag 时触发正式签名打包并发布 GitHub Release。
 
+### 调试固定登录态（DEV_COOKIE）
+
+本地调试时可在 `local.properties`（或同名环境变量）中配置固定 Cookie，debug 包启动后会自动写入登录态，免去每次扫码或手动粘贴：
+
+```properties
+# 支持完整 Cookie 或裸 MUSIC_U 值，二选一
+DEV_COOKIE=MUSIC_U=xxxxx
+```
+
+- 仅 **debug** 构建生效：Release 包中该字段恒为空串，不会夹带本地凭据
+- 修改后需重新构建（构建期经 `BuildConfig` 注入，`local.properties` 已被版本控制忽略）
+- 启动日志会打印 `DEV_COOKIE 已固定，账号=xxx`，提示"资料获取失败"说明 Cookie 已失效
+- 未配置该字段时逻辑完全不生效，正常扫码 / Cookie 登录流程不受影响
+
 ---
 
 ## 非常感谢
