@@ -254,6 +254,35 @@ fun NotLoggedInView(onLoginClick: () -> Unit) {
     }
 }
 
+// 音乐库分区标题：与网页端「创建的歌单 (n)」一致的分组层级。
+// 水平内边距由调用方提供（网格视图的 LazyColumn 已带水平 contentPadding）
+@Composable
+fun LibrarySectionHeader(
+    title: String,
+    count: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = MelodiaSpacing.md, bottom = MelodiaSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = count.toString(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp
+        )
+    }
+}
+
 // 混合列表的单行条目
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

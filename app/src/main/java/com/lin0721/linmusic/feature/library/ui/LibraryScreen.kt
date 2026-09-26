@@ -425,37 +425,45 @@ fun LibraryScreen(
                                             modifier = Modifier.padding(bottom = MelodiaSpacing.sm)
                                         )
                                     }
-                                    val rows = state.filteredItems.chunked(gridColumns)
-                                    items(rows, key = { row -> row.joinToString(separator = "_") { it.id } }) { row ->
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            row.forEach { item ->
-                                                LibraryGridItem(
-                                                    item = item,
-                                                    modifier = Modifier.weight(1f),
-                                                    onClick = {
-                                                        if (item.type == LibraryItemType.PLAYLIST) {
-                                                            onPlaylistClick(item.id.toLong())
-                                                        } else if (item.type == LibraryItemType.ARTIST) {
-                                                            onArtistClick(item.id.toLong())
-                                                        } else {
-                                                            onAlbumClick(item.id.toLong())
-                                                        }
-                                                    },
-                                                    onLongClick = {
-                                                        if (item.id != "-2") {
-                                                            activeOptionsItem = item
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                            repeat(gridColumns - row.size) {
-                                                Spacer(modifier = Modifier.weight(1f))
-                                            }
+                                    state.sections.forEach { section ->
+                                        item(key = "library_section_${section.title}") {
+                                            LibrarySectionHeader(
+                                                title = section.title,
+                                                count = section.items.size
+                                            )
                                         }
-                                        Spacer(modifier = Modifier.height(12.dp))
+                                        val rows = section.items.chunked(gridColumns)
+                                        items(rows, key = { row -> "${section.title}_" + row.joinToString(separator = "_") { "${it.type}_${it.id}" } }) { row ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                row.forEach { item ->
+                                                    LibraryGridItem(
+                                                        item = item,
+                                                        modifier = Modifier.weight(1f),
+                                                        onClick = {
+                                                            if (item.type == LibraryItemType.PLAYLIST) {
+                                                                onPlaylistClick(item.id.toLong())
+                                                            } else if (item.type == LibraryItemType.ARTIST) {
+                                                                onArtistClick(item.id.toLong())
+                                                            } else {
+                                                                onAlbumClick(item.id.toLong())
+                                                            }
+                                                        },
+                                                        onLongClick = {
+                                                            if (item.id != "-2") {
+                                                                activeOptionsItem = item
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                                repeat(gridColumns - row.size) {
+                                                    Spacer(modifier = Modifier.weight(1f))
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                        }
                                     }
                                 }
                             } else {
@@ -472,24 +480,33 @@ fun LibraryScreen(
                                             modifier = Modifier.padding(start = MelodiaSpacing.md, end = MelodiaSpacing.md, bottom = MelodiaSpacing.sm)
                                         )
                                     }
-                                    items(state.filteredItems, key = { "${it.type}_${it.id}" }) { item ->
-                                        LibraryItemRow(
-                                            item = item,
-                                            onClick = {
-                                                if (item.type == LibraryItemType.PLAYLIST) {
-                                                    onPlaylistClick(item.id.toLong())
-                                                } else if (item.type == LibraryItemType.ARTIST) {
-                                                    onArtistClick(item.id.toLong())
-                                                } else {
-                                                    onAlbumClick(item.id.toLong())
+                                    state.sections.forEach { section ->
+                                        item(key = "library_section_${section.title}") {
+                                            LibrarySectionHeader(
+                                                title = section.title,
+                                                count = section.items.size,
+                                                modifier = Modifier.padding(horizontal = MelodiaSpacing.md)
+                                            )
+                                        }
+                                        items(section.items, key = { "${it.type}_${it.id}" }) { item ->
+                                            LibraryItemRow(
+                                                item = item,
+                                                onClick = {
+                                                    if (item.type == LibraryItemType.PLAYLIST) {
+                                                        onPlaylistClick(item.id.toLong())
+                                                    } else if (item.type == LibraryItemType.ARTIST) {
+                                                        onArtistClick(item.id.toLong())
+                                                    } else {
+                                                        onAlbumClick(item.id.toLong())
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    if (item.id != "-2") {
+                                                        activeOptionsItem = item
+                                                    }
                                                 }
-                                            },
-                                            onLongClick = {
-                                                if (item.id != "-2") {
-                                                    activeOptionsItem = item
-                                                }
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }

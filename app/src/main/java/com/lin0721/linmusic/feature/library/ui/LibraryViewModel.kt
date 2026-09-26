@@ -305,6 +305,7 @@ class LibraryViewModel(
                     LibraryUiState.Success(
                         allItems = combinedItems,
                         filteredItems = (state as? LibraryUiState.Success)?.filteredItems ?: emptyList(),
+                        sections = (state as? LibraryUiState.Success)?.sections ?: emptyList(),
                         artistCount = subcount?.artistCount ?: artists.size,
                         playlistCount = subcount?.playlistCount ?: playlists.size,
                         albumCount = subcount?.albumCount ?: albums.size
@@ -351,19 +352,56 @@ class LibraryViewModel(
             LibraryFilter.MV -> list.filter { it.type == LibraryItemType.MV }
         }
 
-        // 歌单二级筛选：我创建的 / 他人创建的（"我喜欢的音乐"与"听歌排行"视为我的）
+        // 归属判定（"我喜欢的音乐"与"听歌排行的歌单"视为我的），歌单二级筛选与分区共用
+        val ownedByMe: (LibraryItem) -> Boolean = { it.isOwnedByMe || it.isLikedSongs || it.id == "-2" }
+
+        // 歌单二级筛选：我创建的 / 他人创建的
         if (filter == LibraryFilter.PLAYLIST && ownerFilter != null) {
             list = list.filter { item ->
-                val ownedByMe = item.isOwnedByMe || item.isLikedSongs || item.id == "-2"
-                if (ownerFilter == LibraryPlaylistOwnerFilter.MINE) ownedByMe else !ownedByMe
+                if (ownerFilter == LibraryPlaylistOwnerFilter.MINE) ownedByMe(item) else !ownedByMe(item)
             }
         }
 
-        val pinnedItems = list.filter { it.isPinned }
-        val unpinnedItems = list.filter { !it.isPinned }
-
         val customPlaylistOrder = getCustomPlaylistOrderFromPrefs()
         val customOrderMap = customPlaylistOrder.mapIndexed { index, id -> id to index }.toMap()
+
+        // 分区展示（与网易云网页端「我的音乐」结构对齐），排序与置顶在各自分区内生效
+        val sections = buildList {
+            val created = list.filter { it.type == LibraryItemType.PLAYLIST && ownedByMe(it) }
+            if (created.isNotEmpty()) {
+                add(LibrarySection("创建的歌单", sortForDisplay(created, sort, customOrderMap)))
+            }
+            val collected = list.filter { it.type == LibraryItemType.PLAYLIST && !ownedByMe(it) }
+            if (collected.isNotEmpty()) {
+                add(LibrarySection("收藏的歌单", sortForDisplay(collected, sort, customOrderMap)))
+            }
+            val artists = list.filter { it.type == LibraryItemType.ARTIST }
+            if (artists.isNotEmpty()) {
+                add(LibrarySection("关注的歌手", sortForDisplay(artists, sort, customOrderMap)))
+            }
+            val albums = list.filter { it.type == LibraryItemType.ALBUM }
+            if (albums.isNotEmpty()) {
+                add(LibrarySection("收藏的专辑", sortForDisplay(albums, sort, customOrderMap)))
+            }
+        }
+
+        _uiState.update { current ->
+            if (current is LibraryUiState.Success) {
+                current.copy(filteredItems = sections.flatMap { it.items }, sections = sections)
+            } else {
+                current
+            }
+        }
+    }
+
+    // 分区内展示排序：置顶项恒在最前，其余按当前排序模式（云同步模式保留服务端顺序）
+    private fun sortForDisplay(
+        items: List<LibraryItem>,
+        sort: LibrarySortOrder,
+        customOrderMap: Map<String, Int>
+    ): List<LibraryItem> {
+        val pinnedItems = items.filter { it.isPinned }
+        val unpinnedItems = items.filter { !it.isPinned }
 
         val sortedUnpinned = when (sort) {
             // 服务端顺序：不参与任何重排，原样保留接口返回的排列（网页端同款）
@@ -386,11 +424,7 @@ class LibraryViewModel(
             }
         }
 
-        val finalList = pinnedItems + sortedUnpinned
-
-        _uiState.update { current ->
-            if (current is LibraryUiState.Success) current.copy(filteredItems = finalList) else current
-        }
+        return pinnedItems + sortedUnpinned
     }
 
     fun togglePin(itemId: String) {
