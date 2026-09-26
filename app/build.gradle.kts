@@ -27,6 +27,9 @@ val hasReleaseSigning = releaseStoreFile != null &&
         releaseKeyPassword != null &&
         rootProject.file(releaseStoreFile).exists()
 
+// 本地调试固定 Cookie：只从 local.properties / 环境变量读取，仓库不落盘；为空表示不启用
+val devCookie = signingValue("DEV_COOKIE", "DEV_COOKIE") ?: ""
+
 android {
     namespace = "com.lin0721.linmusic"
     compileSdk {
@@ -44,6 +47,9 @@ android {
         versionName = (project.findProperty("releaseVersionName") as String?) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 基础值为空，真正注入放在 debug buildType，确保 release 包不夹带本地调试凭据
+        buildConfigField("String", "DEV_COOKIE", "\"\"")
     }
 
     signingConfigs {
@@ -60,6 +66,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 本地调试固定登录 Cookie（仅 debug 生效）
+            buildConfigField("String", "DEV_COOKIE", "\"${devCookie.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(

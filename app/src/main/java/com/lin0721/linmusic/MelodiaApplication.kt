@@ -7,6 +7,7 @@ import coil.Coil
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.lin0721.linmusic.core.auth.SyncProfileAfterLoginUseCase
 import com.lin0721.linmusic.core.download.DownloadWorkerFactory
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.log.CrashHandler
@@ -34,6 +35,7 @@ class MelodiaApplication : Application() {
 
     private val updateManager: UpdateManager by inject()
     private val downloadWorkerFactory: DownloadWorkerFactory by inject()
+    private val syncProfileAfterLoginUseCase: SyncProfileAfterLoginUseCase by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -78,10 +80,28 @@ class MelodiaApplication : Application() {
                 .build()
         )
 
+        // 本地调试：debug 包配置了 DEV_COOKIE 时，启动即固定登录态（免扫码/粘贴）
+        if (BuildConfig.DEBUG && BuildConfig.DEV_COOKIE.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val profile = syncProfileAfterLoginUseCase(normalizeDevCookie(BuildConfig.DEV_COOKIE))
+                AppLogger.i("MelodiaApplication", "DEV_COOKIE 已固定，账号=${profile?.nickname ?: "资料获取失败"}")
+            }
+        }
+
         // 延迟几秒后台检查更新，避开启动关键路径；进程生命周期内只检查这一次
         CoroutineScope(Dispatchers.IO).launch {
             delay(3000)
             updateManager.checkForUpdate(manual = false)
+        }
+    }
+
+    // 与 LoginViewModel.submitCookieLogin 的宽容规则保持一致：允许只填裸 MUSIC_U 值
+    private fun normalizeDevCookie(raw: String): String {
+        val trimmed = raw.trim()
+        return when {
+            trimmed.contains("MUSIC_U=") -> trimmed
+            !trimmed.contains("=") && !trimmed.contains(";") && !trimmed.contains(" ") -> "MUSIC_U=$trimmed"
+            else -> trimmed
         }
     }
 }

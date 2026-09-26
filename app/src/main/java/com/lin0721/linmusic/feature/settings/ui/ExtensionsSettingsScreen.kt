@@ -46,7 +46,7 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
                 SettingsGroupCard(SettingsSubMenu.EXTENSIONS.sectionTitles[2]) {
                     SettingsSwitchRow(
                         title = "显示底栏创建入口",
-                        subtitle = "关闭后可在音乐库页面通过右上角按钮创建歌单",
+                        subtitle = "关闭后可在「我的」页面通过右上角按钮创建歌单",
                         checked = showCreateEntry,
                         onCheckedChange = { viewModel.updateShowCreateEntry(it) }
                     )

@@ -131,7 +131,8 @@ fun MelodiaApp() {
     val isMiniPlayerLiked = currentTrack?.mediaId?.toLongOrNull()?.let { it in likedSongIds } ?: false
 
     val playerSheet = rememberMelodiaPlayerSheetState()
-    val navigation = rememberMelodiaNavigationState()
+    // 冷启动默认落在音乐库 tab（底栏顺序同步为音乐库优先）
+    val navigation = rememberMelodiaNavigationState(initialTab = Screen.Library)
     val sidebar = rememberMelodiaSidebarState(SidebarWidth)
 
     var showCreateSheet by remember { mutableStateOf(false) }

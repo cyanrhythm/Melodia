@@ -10,7 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddBox
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Close
@@ -514,9 +514,9 @@ fun MelodiaNavigationBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val navItems = buildList {
-                add(Triple("主页", Icons.Default.Home, Screen.Home))
+                add(Triple("我的", Icons.Default.LibraryMusic, Screen.Library))
+                add(Triple("推荐", Icons.Default.Explore, Screen.Home))
                 add(Triple("搜索", Icons.Default.Search, Screen.Search))
-                add(Triple("音乐库", Icons.Default.LibraryMusic, Screen.Library))
                 if (showCreateEntry) {
                     add(Triple("创建", if (isCreateMenuOpen) Icons.Rounded.Close else Icons.Default.AddBox, null))
                 }

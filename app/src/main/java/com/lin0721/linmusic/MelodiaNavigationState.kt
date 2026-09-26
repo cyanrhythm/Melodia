@@ -296,5 +296,5 @@ private val MelodiaNavigationStateSaver: Saver<MelodiaNavigationState, String> =
 )
 
 @Composable
-fun rememberMelodiaNavigationState(): MelodiaNavigationState =
-    rememberSaveable(saver = MelodiaNavigationStateSaver) { MelodiaNavigationState() }
+fun rememberMelodiaNavigationState(initialTab: Screen = Screen.Home): MelodiaNavigationState =
+    rememberSaveable(saver = MelodiaNavigationStateSaver) { MelodiaNavigationState(initialActiveTab = initialTab) }
