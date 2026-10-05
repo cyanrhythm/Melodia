@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import com.lin0721.linmusic.core.comment.ui.CommentsPreviewCard
 import com.lin0721.linmusic.core.comment.ui.CommentsState
 import com.lin0721.linmusic.core.preferences.FullPlayerCard
+import com.lin0721.linmusic.core.player.LyricsSource
 import com.lin0721.linmusic.core.preferences.FullPlayerCardSetting
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.PlayerBackdropPalette
@@ -54,6 +55,8 @@ private fun visibleInfoCards(
     val cards = mutableListOf<FullPlayerCard>()
     for (setting in cardLayout) {
         if (!setting.visible) continue
+        // 本地未匹配歌曲不请求在线数据，评论状态会停留在上一首或 Loading，需直接跳过
+        if (songState.isLocalOnly && setting.card != FullPlayerCard.LYRICS) continue
         val (settled, ready) = slotState(setting.card)
         if (!settled) return VisibleInfoCards(cards, allSettled = false)
         if (ready) cards += setting.card
@@ -204,6 +207,7 @@ private fun FullPlayerInfoCard(
             currentIndex = currentLyricIndex,
             isLoading = false,
             base = colors.base,
+            isAmll = songState.lyricsSource == LyricsSource.AMLL,
             onOpenFullScreen = onOpenFullScreenLyrics
         )
         FullPlayerCard.COMMENTS_PREVIEW -> CommentsPreviewCard(

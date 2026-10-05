@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.components.MelodiaButton
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.PillRadius
 import com.lin0721.linmusic.core.ui.theme.TimerWarningRed
@@ -46,16 +46,7 @@ fun SleepTimerSheet(
         sheetState = timerSheetState,
         containerColor = MaterialTheme.colorScheme.background,
         shape = BottomSheetShape,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(DragHandleShape)
-                    .background(Color.White.copy(alpha = 0.3f))
-            )
-        }
+        dragHandle = { MelodiaDragHandle() }
     ) {
         var isCustomMode by remember { mutableStateOf(false) }
         Column(

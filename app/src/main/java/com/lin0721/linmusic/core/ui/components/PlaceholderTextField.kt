@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +42,8 @@ fun PlaceholderTextField(
     containerColor: Color = MaterialTheme.colorScheme.background,
     borderColor: Color? = null,
     textColor: Color = MaterialTheme.colorScheme.onSurface,
-    placeholderColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+    placeholderColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -88,7 +90,8 @@ fun PlaceholderTextField(
             modifier = textFieldModifier,
             singleLine = singleLine,
             minLines = minLines,
-            maxLines = maxLines
+            maxLines = maxLines,
+            keyboardOptions = keyboardOptions
         )
     }
 }

@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.res.Configuration
+import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.ui.platform.LocalConfiguration
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 
@@ -37,10 +40,16 @@ fun FullScreenLyricsHeader(
     onDragStart: () -> Unit,
     onDragRelease: (Float) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscapeOrWide = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE || configuration.screenWidthDp >= 600
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = MelodiaSpacing.sm, end = 6.dp)
+            .padding(
+                start = if (isLandscapeOrWide) MelodiaSpacing.lg else MelodiaSpacing.sm,
+                end = if (isLandscapeOrWide) MelodiaSpacing.lg else 6.dp
+            )
             .padding(vertical = MelodiaSpacing.md)
             .draggable(
                 orientation = Orientation.Vertical,
@@ -58,8 +67,8 @@ fun FullScreenLyricsHeader(
     ) {
         MelodiaIconButton(onClick = onClose) {
             Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = "折叠歌词",
+                imageVector = if (isLandscapeOrWide) Icons.Rounded.FullscreenExit else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (isLandscapeOrWide) "退出全屏" else "折叠歌词",
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(32.dp)
             )

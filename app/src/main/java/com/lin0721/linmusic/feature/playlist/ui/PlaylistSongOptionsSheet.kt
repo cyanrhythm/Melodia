@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.lin0721.linmusic.core.model.Track
 import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
@@ -176,20 +176,35 @@ fun PlaylistSongOptionsSheet(
                 }
 
                 if (showArtistOption) {
-                    val artistsText = track.ar.joinToString(" • ") { it.name }
-                    OptionRow(
-                        icon = Icons.Default.Person,
-                        text = "歌手: $artistsText",
-                        onClick = {
-                            onDismiss()
-                            val artistId = track.ar.firstOrNull()?.id ?: 0L
-                            if (artistId > 0) {
-                                onArtistClick(artistId)
-                            } else {
-                                ToastManager.showToast("暂无歌手信息")
-                            }
+                    val linkedArtists = track.ar.filter { it.id > 0 }.distinctBy { it.id }
+                    if (linkedArtists.size > 1) {
+                        // 多歌手逐个列出，避免只能进入第一位歌手主页
+                        linkedArtists.forEach { artist ->
+                            OptionRow(
+                                icon = Icons.Default.Person,
+                                text = "歌手: ${artist.name}",
+                                onClick = {
+                                    onDismiss()
+                                    onArtistClick(artist.id)
+                                }
+                            )
                         }
-                    )
+                    } else {
+                        val artistsText = track.ar.joinToString(" • ") { it.name }
+                        OptionRow(
+                            icon = Icons.Default.Person,
+                            text = "歌手: $artistsText",
+                            onClick = {
+                                onDismiss()
+                                val artistId = linkedArtists.firstOrNull()?.id ?: 0L
+                                if (artistId > 0) {
+                                    onArtistClick(artistId)
+                                } else {
+                                    ToastManager.showToast("暂无歌手信息")
+                                }
+                            }
+                        )
+                    }
                 }
 
                 if (canRemoveFromPlaylist) {

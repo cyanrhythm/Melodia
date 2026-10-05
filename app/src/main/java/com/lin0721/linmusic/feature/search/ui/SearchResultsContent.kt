@@ -47,6 +47,8 @@ import com.lin0721.linmusic.core.ui.components.SearchResultRowSkeleton
 import com.lin0721.linmusic.core.ui.components.SongRow
 import com.lin0721.linmusic.core.ui.components.SongRowData
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
+import com.lin0721.linmusic.core.source.ExternalTrack
+import com.lin0721.linmusic.core.source.MusicPlatform
 import com.lin0721.linmusic.feature.search.domain.SearchResultItem
 import com.lin0721.linmusic.feature.search.domain.SearchType
 import kotlinx.coroutines.flow.StateFlow
@@ -54,70 +56,198 @@ import kotlinx.coroutines.flow.StateFlow
 private const val TAB_ENTER_DURATION = 300
 private const val TAB_EXIT_DURATION = 150
 
+private fun formatTrackDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
+}
+
 @Composable
 internal fun SearchResultsContent(
+    searchPlatforms: List<MusicPlatform>,
+    selectedPlatform: MusicPlatform,
     selectedType: SearchType,
     resultsByType: Map<SearchType, StateFlow<SearchResultsUiState>>,
+    externalResults: Map<MusicPlatform, StateFlow<ExternalSearchUiState>>,
     listStates: Map<SearchType, LazyListState>,
     currentTrackId: String?,
     isPlaying: Boolean,
     likedSongIds: Set<Long>,
     isLoggedIn: Boolean,
+    onSelectPlatform: (MusicPlatform) -> Unit,
     onSelectType: (SearchType) -> Unit,
     onSongClick: (Track) -> Unit,
     onAlbumClick: (Long) -> Unit,
     onArtistClick: (Long) -> Unit,
     onPlaylistClick: (Long) -> Unit,
+    onExternalSongClick: (ExternalTrack) -> Unit,
     onLoadMore: () -> Unit,
+    onLoadMoreExternal: (MusicPlatform) -> Unit,
     onRetry: () -> Unit,
+    onRetryExternal: (MusicPlatform) -> Unit,
     onLikeClick: (Long) -> Unit,
     onOpenMoreOptions: (Track) -> Unit
 ) {
     val types = SearchType.entries
     Column(modifier = Modifier.fillMaxSize()) {
-        FilterChipsRow(
-            items = remember { types.map { it.label } },
-            selectedIndex = types.indexOf(selectedType),
-            onSelected = { index -> types.getOrNull(index)?.let(onSelectType) },
-            modifier = Modifier.padding(bottom = MelodiaSpacing.xs)
-        )
+        if (searchPlatforms.size > 1) {
+            FilterChipsRow(
+                items = remember(searchPlatforms) { searchPlatforms.map { it.displayName } },
+                selectedIndex = searchPlatforms.indexOf(selectedPlatform).coerceAtLeast(0),
+                onSelected = { index -> searchPlatforms.getOrNull(index)?.let(onSelectPlatform) },
+                modifier = Modifier.padding(bottom = MelodiaSpacing.xs)
+            )
+        }
         AnimatedContent(
-            targetState = selectedType,
+            targetState = selectedPlatform,
             transitionSpec = {
                 fadeIn(tween(TAB_ENTER_DURATION, easing = FastOutSlowInEasing))
                     .togetherWith(fadeOut(tween(TAB_EXIT_DURATION)))
             },
-            label = "search_type_tab_switch"
-        ) { type ->
-            val resultsState by resultsByType.getValue(type).collectAsStateWithLifecycle()
-            SearchResultsList(
-                state = resultsState,
-                type = type,
-                listState = listStates.getValue(type),
-                currentTrackId = currentTrackId,
-                isPlaying = isPlaying,
-                likedSongIds = likedSongIds,
-                isLoggedIn = isLoggedIn,
-                onSongClick = onSongClick,
-                onAlbumClick = onAlbumClick,
-                onArtistClick = onArtistClick,
-                onPlaylistClick = onPlaylistClick,
-                onLoadMore = onLoadMore,
-                onRetry = onRetry,
-                onLikeClick = onLikeClick,
-                onOpenMoreOptions = onOpenMoreOptions
-            )
+            label = "search_platform_switch"
+        ) { platform ->
+            if (platform == MusicPlatform.NETEASE) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    FilterChipsRow(
+                        items = remember { types.map { it.label } },
+                        selectedIndex = types.indexOf(selectedType),
+                        onSelected = { index -> types.getOrNull(index)?.let(onSelectType) },
+                        modifier = Modifier.padding(bottom = MelodiaSpacing.xs)
+                    )
+                    AnimatedContent(
+                        targetState = selectedType,
+                        transitionSpec = {
+                            fadeIn(tween(TAB_ENTER_DURATION, easing = FastOutSlowInEasing))
+                                .togetherWith(fadeOut(tween(TAB_EXIT_DURATION)))
+                        },
+                        label = "search_type_tab_switch"
+                    ) { type ->
+                        val resultsState by resultsByType.getValue(type).collectAsStateWithLifecycle()
+                        SearchResultsList(
+                            state = resultsState,
+                            type = type,
+                            listState = listStates.getValue(type),
+                            currentTrackId = currentTrackId,
+                            isPlaying = isPlaying,
+                            likedSongIds = likedSongIds,
+                            isLoggedIn = isLoggedIn,
+                            onSongClick = onSongClick,
+                            onAlbumClick = onAlbumClick,
+                            onArtistClick = onArtistClick,
+                            onPlaylistClick = onPlaylistClick,
+                            onLoadMore = onLoadMore,
+                            onRetry = onRetry,
+                            onLikeClick = onLikeClick,
+                            onOpenMoreOptions = onOpenMoreOptions
+                        )
+                    }
+                }
+            } else {
+                val resultsStateFlow = externalResults[platform]
+                val resultsState = resultsStateFlow?.collectAsStateWithLifecycle()?.value ?: ExternalSearchUiState.Idle
+                ExternalSearchResultsList(
+                    state = resultsState,
+                    platform = platform,
+                    currentTrackId = currentTrackId,
+                    isPlaying = isPlaying,
+                    onSongClick = onExternalSongClick,
+                    onLoadMore = { onLoadMoreExternal(platform) },
+                    onRetry = { onRetryExternal(platform) }
+                )
+            }
         }
     }
 }
 
-private val SearchResultItem.stableKey: String
-    get() = when (this) {
-        is SearchResultItem.SongItem -> "song_${track.id}"
-        is SearchResultItem.AlbumItem -> "album_${album.id}"
-        is SearchResultItem.ArtistItem -> "artist_${artist.id}"
-        is SearchResultItem.PlaylistItem -> "playlist_${playlist.id}"
+// 外部平台单曲结果列表
+@Composable
+private fun ExternalSearchResultsList(
+    state: ExternalSearchUiState,
+    platform: MusicPlatform,
+    currentTrackId: String?,
+    isPlaying: Boolean,
+    onSongClick: (ExternalTrack) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit
+) {
+    when (state) {
+        ExternalSearchUiState.Idle, ExternalSearchUiState.Loading -> {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(6) { SearchResultRowSkeleton() }
+            }
+        }
+        ExternalSearchUiState.Empty -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = Icons.Rounded.SearchOff,
+                    title = "在${platform.displayName}未找到相关歌曲"
+                )
+            }
+        }
+        is ExternalSearchUiState.Error -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ErrorState(message = state.message, onRetry = onRetry)
+            }
+        }
+        is ExternalSearchUiState.Success -> {
+            val listState = remember(platform) { LazyListState() }
+            val shouldLoadMore by remember(state.hasMore, state.isLoadingMore) {
+                derivedStateOf {
+                    val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    lastVisible >= state.tracks.size - 5 && state.hasMore && !state.isLoadingMore
+                }
+            }
+            LaunchedEffect(shouldLoadMore) {
+                if (shouldLoadMore) onLoadMore()
+            }
+
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current + 16.dp)
+            ) {
+                item(key = "header") {
+                    Text(
+                        "在 ${platform.displayName} 找到 ${state.tracks.size} 首歌曲",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = MelodiaSpacing.md, vertical = MelodiaSpacing.sm)
+                    )
+                }
+
+                items(state.tracks, key = { "${it.platform.name}_${it.id}" }) { track ->
+                    val isActive = currentTrackId == track.id.hashCode().toString()
+                    SongRow(
+                        data = SongRowData(
+                            id = track.id.hashCode().toLong(),
+                            title = track.name,
+                            artist = if (track.albumName.isNotBlank()) "${track.artists} · ${track.albumName}" else track.artists,
+                            coverUrl = track.coverUrl,
+                            durationText = if (track.durationMs > 0) formatTrackDuration(track.durationMs) else null
+                        ),
+                        isActive = isActive,
+                        isPlaying = isPlaying,
+                        onClick = { onSongClick(track) }
+                    )
+                }
+
+                if (state.isLoadingMore) {
+                    item(key = "loading") {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(MelodiaSpacing.md),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
+}
 
 // 分类型搜索结果列表
 @Composable

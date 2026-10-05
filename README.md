@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/images/cover.png" alt="Melodia" />
 
-基于 Kotlin + Jetpack Compose 构建的轻量、现代的第三方网易云音乐 Android 客户端
+参考Spotify UI构建的现代化、轻量级第三方网易云音乐客户端。
 
 
 [![GitHub Release](https://img.shields.io/github/v/release/rinchao0721/Melodia?style=flat-square&color=blue)](https://github.com/rinchao0721/Melodia/releases)
@@ -41,16 +41,32 @@
 ## 下载与反馈
 
 - **安装包下载**：前往 [GitHub Releases](https://github.com/rinchao0721/Melodia/releases) 获取最新预编译 APK
-- **蓝奏云**：https://wware.lanzoub.com/b01gibfhsd 密码:7d8d
+- **蓝奏云**：https://wware.lanzn.com/b01gic8ioj 密码:cem2
 - **缺陷与建议**：[GitHub Issues](https://github.com/rinchao0721/Melodia/issues)
-- **交流 QQ 群**：`331832966`
+- **交流 QQ 群也可以下载**：`331832966`
 
 ---
 ## 项目架构
 
-项目按**业务域 (Feature-Driven)** 组织代码：`core` 承载全局共享基础设施与通用能力，`feature` 下每个独立业务域自持 `data` / `domain` / `ui` 结构。依赖方向单向收敛——`feature` 依赖 `core`，`core` 不反向依赖 `feature`，各业务域之间解耦无循环依赖。
+项目由三个 Gradle 模块组成，网易云接口、加密、数据仓储与大部分 ViewModel 只在 `shared` 中维护一份，Android 与桌面端各自负责界面和平台能力：
+
+| 模块 | 类型 | 职责 |
+|---|---|---|
+| `shared` | Kotlin Multiplatform（Android + 桌面 JVM） | 数据模型、网络与原生加密、各业务域 `data` / `domain`、跨平台 ViewModel、播放器抽象 `PlaybackController` |
+| `app` | Android 应用 | Jetpack Compose 界面、Media3 播放、下载、本地音乐、识曲、悬浮与系统歌词等 Android 专属能力 |
+| `desktopApp` | Compose Desktop 应用（Windows） | 桌面窗口与界面、libmpv 播放、托盘、系统媒体控制（SMTC）与全局快捷键、桌面歌词 |
+
+代码按**业务域 (Feature-Driven)** 组织：`core` 承载全局共享基础设施与通用能力，`feature` 下每个业务域自持 `data` / `domain` / `ui` 结构。依赖方向单向收敛——`feature` 依赖 `core`，`core` 不反向依赖 `feature`，各业务域之间解耦无循环依赖；`app` 与 `desktopApp` 都依赖 `shared`，两者互不依赖。
 
 ```text
+shared/src/
+├── commonMain/kotlin/com/lin0721/linmusic/
+│   ├── core/                    # api、auth、network、model、preferences、player 抽象等共享基础能力
+│   ├── feature/                 # 各业务域的 data / domain，以及已迁入的跨平台 ViewModel
+│   └── di/                      # 网络与仓储的 Koin 模块，两端共用
+├── androidMain/                 # Context 相关实现（DataStore 落盘、网络状态、音乐库偏好等）
+└── desktopMain/                 # 桌面 JVM 平台实现（日志、设备信息等）
+
 app/src/main/java/com/lin0721/linmusic/
 ├── MelodiaApplication.kt        # 应用程序入口：Koin 依赖注入初始化与 Coil 预热
 ├── MainActivity.kt              # 单 Activity 架构：系统窗口适应与悬浮窗权限引导
@@ -60,44 +76,18 @@ app/src/main/java/com/lin0721/linmusic/
 ├── MelodiaNavigationState.kt    # 自定义导航回退栈管理与参数上下文恢复
 ├── MelodiaPlayerSheetState.kt   # 全屏播放器展开/收起手势状态机
 ├── MelodiaSidebarState.kt       # 侧边栏抽屉滑动状态机
-│
-├── core/                        # 跨域共享基础能力
-│   ├── api/                     # 账号鉴权与公共接口定义
-│   ├── auth/                    # 登录状态、凭据持久化与用户信息同步
-│   ├── comment/                 # 评论通用数据流与 UI 组件
-│   ├── contentfilter/           # 内容屏蔽与黑名单过滤
-│   ├── log/                     # 日志输出与异常捕获
-│   ├── model/                   # 全局领域数据模型与实体映射
-│   ├── network/                 # 原生加密引擎、OkHttp 拦截器与统一网络适配
-│   ├── player/                  # 播放器核心引擎（ExoPlayer、队列调度、进度广播）
-│   ├── playlistmutation/        # 歌单创建/编辑、歌曲增删与排序操作
-│   ├── preferences/             # DataStore 与轻量级配置持久化
-│   ├── songlike/                # 歌曲红心收藏状态管理
-│   ├── ui/                      # Material 3 主题、通用交互组件与动画规范
-│   ├── update/                  # 应用内更新检测、下载管理器与安装器组件
-│   ├── userartist/              # 用户关注歌手列表管理
-│   └── userplaylist/            # 用户歌单状态与列表维护
-│
-├── di/                          # Koin 依赖注入模块（Network, Local, Repository, Player, Update, ViewModel）
-│
-└── feature/                     # 业务功能域（各自包含 data / domain / ui）
-    ├── account/                 # 账号登录与授权管理
-    ├── artist/                  # 歌手主页、热门单曲与全部专辑
-    ├── cloud/                   # 用户云盘资产管理
-    ├── create/                  # 歌单新建与快捷操作
-    ├── home/                    # 首页聚合流（推荐单曲/歌单、雷达）
-    ├── library/                 # 个人音乐库（分类筛选与检索）
-    ├── listendata/              # 年度/周听歌数据与足迹统计
-    ├── message/                 # 私信与系统通知中心
-    ├── music/                   # 音乐发现 Tab（风格流派与个性化推荐）
-    ├── newworks/                # 新歌首发与数字专辑
-    ├── player/                  # 全屏播放、动态歌词与歌曲详情交互
-    ├── playlist/                # 歌单/专辑详情与音轨列表
-    ├── podcast/                 # 电台播客节目
-    ├── profile/                 # 用户个人主页与听歌排行
-    ├── recent/                  # 最近播放历史记录
-    ├── search/                  # 多模式实时搜索与热搜榜
-    └── settings/                # 主题、音质、网络与缓存配置
+├── core/                        # Android 专属基础能力（Media3 播放引擎、下载、Material 3 主题与组件、应用内更新等）
+├── di/                          # Android 侧 Koin 模块（Local, Player, Download, Update, ViewModel 等）
+└── feature/                     # 各业务域的 Compose 界面与 Android 专属 ViewModel（本地音乐、云盘、识曲等）
+
+desktopApp/src/main/kotlin/com/lin0721/linmusic/desktop/
+├── Main.kt                      # 应用入口：Koin 初始化、主窗口、托盘、全局快捷键与桌面歌词窗口
+├── di/                          # 桌面平台实现与 ViewModel 注册
+├── platform/                    # 数据目录、偏好存储、Win32 热键、SMTC 桥接与窗口样式等平台适配
+├── player/                      # libmpv 的 JNA 绑定与 PlaybackController 实现
+└── ui/                          # 三栏布局、标题栏、首页、歌单、歌手、搜索、浏览、设置、播放条与歌词
+
+desktopApp/native-src/smtc/      # SMTC 桥接 DLL 源码（C++/WinRT，CMake 构建）
 ```
 
 ---
@@ -118,27 +108,40 @@ Repository 边界统一产出 Kotlin `Result<T>`，异常类型抽象为领域�
 - **Android Gradle Plugin (AGP)**：9.1.1+
 - **Android SDK**：Compile / Target SDK 36，Min SDK 26 (Android 8.0+)
 - **IDE**：Android Studio Ladybug (2024.2.1) 或更高版本
+- **桌面端（仅在需要运行或打包时）**：
+  - 64 位 Windows 10 及以上
+  - `libmpv-2.dll`：使用 [media-kit](https://github.com/media-kit/media-kit) 提供的 Windows 纯音频 libmpv 构建，放到 `desktopApp/native/`（已在 `.gitignore` 中排除，不入库）
+  - SMTC 桥接 DLL 由 Gradle 在运行与打包前自动调用 CMake 编译，需安装 CMake 与 Visual Studio（含“使用 C++ 的桌面开发”工作负载及 Windows 10/11 SDK）；缺少时跳过编译，运行时退回全局媒体键
+  - 打包 MSI 需安装 [WiX Toolset 3.14](https://github.com/wixtoolset/wix3/releases) 并将其 `bin` 目录加入 `PATH`；打包所用 JDK 21 由 Gradle 工具链自动下载
 
 ### 常用命令
 
-- **调试构建**：
+- **Android 调试构建**：
   ```bash
-  ./gradlew assembleDebug
+  ./gradlew :app:assembleDebug
   ```
-- **运行单元测试**：
+- **运行单元测试**（`shared` 的测试跑在桌面 JVM 目标上）：
   ```bash
-  ./gradlew testDebugUnitTest
+  ./gradlew :app:testDebugUnitTest :shared:desktopTest
   ```
-- **构建 Release 安装包**：
+- **构建 Android Release 安装包**：
   ```bash
-  ./gradlew assembleRelease
+  ./gradlew :app:assembleRelease
+  ```
+- **运行桌面端**：
+  ```bash
+  ./gradlew :desktopApp:run
+  ```
+- **打包桌面端**（发布版启用 ProGuard 裁剪，产物位于 `desktopApp/build/compose/binaries/main-release/`）：
+  ```bash
+  ./gradlew :desktopApp:packageReleaseZip :desktopApp:packageReleaseMsi
   ```
 
 ### 混淆与签名说明
 
 - **代码裁剪与混淆**：`release` 构建已开启 R8 压缩与混淆保护。项目对 Retrofit 接口与 `@Serializable` 数据传输类配置了显式 Keep 规则，确保混淆后的运行安全。
 - **签名机制**：签名材料从版本控制外部注入（读取 `local.properties` 或 CI 环境变量）。若未配置正式签名，将自动回退为 Debug 签名，确保本地可编译出可运行的 APK。完整签名与自动化发版配置请参阅 [RELEASE_SIGNING.md](RELEASE_SIGNING.md)。
-- **CI 流水线**：向 `main` 分支推送或提交 PR 时自动触发单元测试与 Release 构建验证；推送版本 Tag 时触发正式签名打包并发布 GitHub Release。
+- **CI 流水线**：向 `main` 分支推送或提交 PR 时自动运行 `app` 与 `shared` 的单元测试、桌面端编译检查与 Android Release 构建验证；推送版本 Tag 时触发 Android 正式签名打包并发布 GitHub Release。
 
 ### 调试固定登录态（DEV_COOKIE）
 
@@ -162,10 +165,16 @@ DEV_COOKIE=MUSIC_U=xxxxx
 - [api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced) - 增强接口与加密逻辑参考
 - [node-vibrant](https://github.com/Vibrant-Colors/node-vibrant) - 取色算法参考
 - [SPlayer](https://github.com/SPlayer-Dev/SPlayer) - 现代流媒体架构设计启发
+- [AMLL 歌词库](https://github.com/amll-dev/amll-ttml-db) - TTML 逐字歌词、对唱与背景和声歌词来源
 - [Spotify](https://spotify.com) - 优秀的移动端流媒体交互范式与 UI/UX 体验灵感
 - [SuperLyric](https://github.com/HChenX/SuperLyric) - 系统级实时歌词协议与 AIDL 规范
 - [LyricInfo](https://github.com/limczhh/LyricInfo) - 蓝牙/系统歌词协议规范
 - [Lyricon](https://github.com/proify/Lyricon) - 词幕协议广播规范
+- [mpv](https://github.com/mpv-player/mpv) - 桌面端音频播放内核 libmpv
+- [media-kit](https://github.com/media-kit/media-kit) - 精简的纯音频 libmpv 构建
+- [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform) - 跨平台共享层与桌面端界面框架
+- [JNA](https://github.com/java-native-access/jna) - 桌面端调用 libmpv 与 Win32 接口
+- [TagLib](https://github.com/Kyant0/taglib) - 本地音乐标签读写
 
 ---
 

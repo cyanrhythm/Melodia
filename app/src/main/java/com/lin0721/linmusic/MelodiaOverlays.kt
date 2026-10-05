@@ -32,6 +32,7 @@ import com.lin0721.linmusic.core.ui.components.MelodiaNavigationBar
 import com.lin0721.linmusic.core.ui.components.MiniPlayerCard
 import com.lin0721.linmusic.feature.create.ui.CreatePopupMenu
 import com.lin0721.linmusic.feature.player.ui.FullPlayerScreen
+import com.lin0721.linmusic.feature.settings.ui.UpdateBanner
 import dev.chrisbanes.haze.HazeState
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
@@ -62,8 +63,6 @@ fun MelodiaBottomOverlay(
     currentScreen: Screen,
     showCreateSheet: Boolean,
     isLoginScreenVisible: Boolean,
-    isMvFullscreen: Boolean,
-    isMvCommentsOpen: Boolean = false,
     // 平板播放面板是否已让位（内容区已收窄、面板常驻右侧）
     isPanelDocked: Boolean = false,
     currentTrack: MediaItem?,
@@ -129,14 +128,17 @@ fun MelodiaBottomOverlay(
                 }
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // 下载进度横幅
+                // 更新横幅与下载进度横幅
                 AnimatedVisibility(
-                    visible = !isLoginScreenVisible && !isMvFullscreen,
+                    visible = !isLoginScreenVisible,
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    DownloadProgressBanner(modifier = Modifier.fillMaxWidth())
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        UpdateBanner(modifier = Modifier.fillMaxWidth())
+                        DownloadProgressBanner(modifier = Modifier.fillMaxWidth())
+                    }
                 }
 
                 if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
@@ -152,7 +154,7 @@ fun MelodiaBottomOverlay(
                         verticalAlignment = Alignment.Bottom
                     ) {
                         AnimatedVisibility(
-                            visible = !isLoginScreenVisible && !isMvFullscreen && !isMvCommentsOpen,
+                            visible = !isLoginScreenVisible,
                             enter = expandVertically() + fadeIn(),
                             exit = shrinkVertically() + fadeOut(),
                             modifier = Modifier.weight(1f).fillMaxHeight()
@@ -183,7 +185,7 @@ fun MelodiaBottomOverlay(
                         // 与导航栏的间距放在迷你条自身而非 spacedBy，否则入场/退场首尾会各有一次 8dp 突变
                         if (!isPanelDocked) {
                             AnimatedVisibility(
-                                visible = currentTrack != null && !isLoginScreenVisible && !isMvFullscreen && !isMvCommentsOpen,
+                                visible = currentTrack != null && !isLoginScreenVisible,
                                 enter = fadeIn() + expandHorizontally(),
                                 exit = fadeOut() + shrinkHorizontally(),
                                 modifier = Modifier.fillMaxHeight()
@@ -218,7 +220,7 @@ fun MelodiaBottomOverlay(
                 } else {
                     // 手机：迷你播放卡在上、导航栏在下，垂直堆叠（现状不变）
                     AnimatedVisibility(
-                        visible = currentTrack != null && !isLoginScreenVisible && !isMvFullscreen && !isMvCommentsOpen,
+                        visible = currentTrack != null && !isLoginScreenVisible,
                         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                         modifier = Modifier.fillMaxWidth()
@@ -247,7 +249,7 @@ fun MelodiaBottomOverlay(
                     }
 
                     AnimatedVisibility(
-                        visible = !isLoginScreenVisible && !isMvFullscreen && !isMvCommentsOpen,
+                        visible = !isLoginScreenVisible,
                         enter = expandVertically() + fadeIn(),
                         exit = shrinkVertically() + fadeOut()
                     ) {
@@ -284,6 +286,8 @@ fun MelodiaFullPlayerOverlay(
     onArtistClick: (Long) -> Unit,
     onAlbumClick: (Long) -> Unit,
     onNavigateToProfile: (Long) -> Unit = {},
+    onLyricsFullScreenChange: (Boolean) -> Unit = {},
+    onLyricsControlsVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // 仅在播放器打开或动画进行中时渲染，避免关闭后 nestedScroll 拦截触摸事件
@@ -312,7 +316,9 @@ fun MelodiaFullPlayerOverlay(
                 onArtistClick = onArtistClick,
                 onAlbumClick = onAlbumClick,
                 onNavigateToProfile = onNavigateToProfile,
-                fitCoverAboveNavigationBar = true
+                fitCoverAboveNavigationBar = true,
+                onLyricsFullScreenChange = onLyricsFullScreenChange,
+                onLyricsControlsVisibilityChange = onLyricsControlsVisibilityChange
             )
         }
     }

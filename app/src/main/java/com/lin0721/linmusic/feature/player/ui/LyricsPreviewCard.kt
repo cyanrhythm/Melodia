@@ -57,6 +57,7 @@ fun LyricsCard(
     currentIndex: Int,
     isLoading: Boolean,
     base: Color,
+    isAmll: Boolean = false,
     onOpenFullScreen: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "fluid_mesh")
@@ -142,6 +143,13 @@ fun LyricsCard(
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
+            if (isAmll) {
+                Text(
+                    "AMLL",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
 
             Spacer(modifier = Modifier.height(MelodiaSpacing.md))
 
@@ -273,10 +281,11 @@ fun LyricsPreview(
                     onTextLayout = { if (isCurrent) onCurrentLineLayout(it.lineCount) },
                     modifier   = Modifier.fillMaxWidth()
                 )
-                if (line.translation != null) {
+                val translation = line.translation
+                if (translation != null) {
                     Spacer(modifier = Modifier.height(MelodiaSpacing.xs))
                     Text(
-                        text      = line.translation,
+                        text      = translation,
                         fontSize  = transFontSize,
                         lineHeight = (transFontSize.value * 1.35f).sp,
                         color     = (if (isCurrent) Color.White else inactiveColor).copy(alpha = animatedTransAlpha),

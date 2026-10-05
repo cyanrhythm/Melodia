@@ -42,7 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.components.MelodiaButton
 import com.lin0721.linmusic.LocalBottomOverlayInset
@@ -170,7 +170,6 @@ fun LibraryScreen(
             LibraryItemType.PLAYLIST -> "歌单" to "playlist"
             LibraryItemType.ALBUM -> "专辑" to "album"
             LibraryItemType.ARTIST -> "歌手" to "artist"
-            LibraryItemType.MV -> "MV" to "mv"
         }
         val shareText = "${item.title} https://music.163.com/$path?id=${item.id}"
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -628,7 +627,9 @@ fun LibraryScreen(
                     viewModel.downloadLibraryItem(target, level)
                     downloadQualityTarget = null
                 },
-                onDismiss = { downloadQualityTarget = null }
+                onDismiss = { downloadQualityTarget = null },
+                headline = target.title,
+                supportingText = target.trackCount.takeIf { it > 0 }?.let { "共 $it 首" }
             )
         }
 

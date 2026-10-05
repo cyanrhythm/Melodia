@@ -22,7 +22,7 @@ fun ArtistTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit
 ) {
-    val tabs = listOf("音乐", "专辑", "MV", "关于艺人")
+    val tabs = listOf("音乐", "专辑", "关于艺人")
     Row(
         modifier = Modifier
             .fillMaxWidth()

@@ -26,10 +26,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.lin0721.linmusic.core.ui.theme.darken
 import com.lin0721.linmusic.core.ui.theme.saturateIfChromatic
+import com.lin0721.linmusic.core.ui.theme.smoothVerticalGradient
 
 enum class BackdropMode { Collapsed, Immersive }
 
-// 用原生 Modifier.blur 软化渐变/光斑
+// 用原生 Modifier.blur 软化光斑（仅沉浸式光斑游走需要模糊漫反射）
 private val BACKDROP_BLUR_RADIUS = 60.dp
 
 // 单一色相的模糊光斑：深色底 + lighten/darken 变体，Immersive 背景与歌词预览卡共用
@@ -67,8 +68,8 @@ internal fun DrawScope.drawSingleHueMesh(
     )
 }
 
-// 全屏播放器背景：Collapsed（Hero）单色 alpha 渐隐，Immersive（歌词全屏）单色相双光斑游走，两者都做模糊处理
-// 背景绘制和 content 拆成两个子 Box：只模糊背景层，content（Immersive 态下是实际歌词内容）保持清晰
+// 全屏播放器背景：Collapsed（Hero）单色平滑渐隐，Immersive（歌词全屏）单色相双光斑游走
+// 背景绘制和 content 拆成两个子 Box：仅 Immersive 模糊背景层，content 保持清晰
 @Composable
 fun PlayerBackdrop(
     base: Color,
@@ -104,17 +105,14 @@ fun PlayerBackdrop(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .blur(BACKDROP_BLUR_RADIUS)
                         .drawBehind {
                             drawRect(
-                                brush = Brush.verticalGradient(
-                                    0.0f to fillColor,
-                                    0.2f to fillColor.copy(alpha = 0.75f),
-                                    0.45f to fillColor.copy(alpha = 0.45f),
-                                    0.62f to fillColor.copy(alpha = 0.08f),
-                                    0.76f to Color.Transparent,
+                                brush = Brush.smoothVerticalGradient(
+                                    from = fillColor,
+                                    to = Color.Transparent,
                                     startY = 0f,
-                                    endY = gradientEndY
+                                    endY = gradientEndY,
+                                    fadeEndFraction = 0.8f
                                 )
                             )
                         }

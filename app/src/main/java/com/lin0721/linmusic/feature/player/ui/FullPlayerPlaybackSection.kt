@@ -1,6 +1,13 @@
 package com.lin0721.linmusic.feature.player.ui
 
 import android.media.AudioDeviceInfo
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListScope
@@ -8,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lin0721.linmusic.core.player.PlayMode
+import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.PlayerBackdropPalette
 
 // 播放器主区之间的留白项个数，与下方 fillGapItem 调用次数保持一致
@@ -15,6 +23,7 @@ const val FullPlayerFillGapCount = 4
 
 // 撑满一屏时参与高度计算的主区项，需与下方 item key 保持一致
 val FullPlayerPlaybackItemKeys = listOf("cover", "song_info", "mini_lyric", "progress", "controls", "actions")
+val FullPlayerPlaybackItemKeysWithoutMiniLyric = listOf("cover", "song_info", "progress", "controls", "actions")
 
 // 播放器主区：封面、歌名歌手、单行歌词、进度条、播放控制、快捷操作
 // fillGap 非空时在各区块间插入等高留白，并在末尾补 fillTail 高度，使主区恰好铺满首屏、后续项留在屏外
@@ -59,13 +68,16 @@ fun LazyListScope.fullPlayerPlaybackSection(
     onQueueClick: () -> Unit,
     onShareClick: () -> Unit,
     connectedDevice: AudioDeviceInfo? = null,
+    showMiniLyric: Boolean = true,
+    baseCoverPadding: Dp = MelodiaSpacing.lg,
+    itemGap: Dp = 0.dp,
     fillGap: Dp? = null,
     fillTail: Dp = 0.dp
 ) {
     fun fillGapItem(index: Int) {
-        if (fillGap == null) return
+        val gapHeight = fillGap ?: (if (itemGap > 0.dp) itemGap else null) ?: return
         item(key = "$FullPlayerFillGapKeyPrefix$index") {
-            Spacer(modifier = Modifier.height(fillGap))
+            Spacer(modifier = Modifier.height(gapHeight))
         }
     }
 
@@ -84,6 +96,7 @@ fun LazyListScope.fullPlayerPlaybackSection(
                 previousKey = previousKey,
                 nextKey = nextKey,
                 coverExtraInset = coverExtraInset,
+                baseCoverPadding = baseCoverPadding,
                 onToggleSidebarFullscreen = onToggleSidebarFullscreen,
                 isSidebarFullscreen = isSidebarFullscreen,
                 onCancelSwipe = onCancelSwipe
@@ -104,11 +117,25 @@ fun LazyListScope.fullPlayerPlaybackSection(
     }
 
     item(key = "mini_lyric") {
-        MiniLyricLine(
-            lyrics = songState.lyrics,
-            currentLyricIndex = currentLyricIndex,
-            isPlaying = isPlaying
-        )
+        AnimatedVisibility(
+            visible = showMiniLyric,
+            enter = expandVertically(
+                animationSpec = tween(300, easing = FastOutSlowInEasing)
+            ) + fadeIn(
+                animationSpec = tween(200)
+            ),
+            exit = shrinkVertically(
+                animationSpec = tween(300, easing = FastOutSlowInEasing)
+            ) + fadeOut(
+                animationSpec = tween(200)
+            )
+        ) {
+            MiniLyricLine(
+                lyrics = songState.lyrics,
+                currentLyricIndex = currentLyricIndex,
+                isPlaying = isPlaying
+            )
+        }
     }
 
     fillGapItem(2)

@@ -4,9 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.lin0721.linmusic.core.auth.UserProfile
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.theme.BackgroundDark
@@ -216,18 +216,13 @@ fun FilterPills(
             }
             if (joinsSecondary) {
                 item(key = "secondary_latest_pill") {
+                    // 平移与裁剪宽度同步，药丸保持完整尺寸从主药丸背后推出
                     AnimatedVisibility(
                         visible = secondaryVisible,
-                        enter = expandHorizontally(
-                            animationSpec = tween(SecondaryPillAnimDurationMs),
-                            expandFrom = Alignment.Start
-                        ) + fadeIn(animationSpec = tween(SecondaryPillAnimDurationMs)),
-                        exit = shrinkHorizontally(
-                            animationSpec = tween(SecondaryPillAnimDurationMs),
-                            shrinkTowards = Alignment.Start
-                        ) + fadeOut(animationSpec = tween(SecondaryPillAnimDurationMs)),
-                        // Modifier.padding 不接受负值会直接崩溃，改用 layout{} 自己实现：
-                        // 少上报一个圆角半径的宽度、内容整体左移，后面的胶囊据此自动跟上
+                        enter = slideInHorizontally(tween(SecondaryPillAnimDurationMs)) { -it } +
+                            expandHorizontally(tween(SecondaryPillAnimDurationMs), expandFrom = Alignment.Start),
+                        exit = slideOutHorizontally(tween(SecondaryPillAnimDurationMs)) { -it } +
+                            shrinkHorizontally(tween(SecondaryPillAnimDurationMs), shrinkTowards = Alignment.Start),
                         modifier = Modifier.overlapStart(PillRadius)
                     ) {
                         // 未点击是标准未激活灰底，点击后颜色比主药丸的强调色更深，两者区分开
@@ -238,6 +233,8 @@ fun FilterPills(
                             pressStyle = MelodiaPress.None,
                             animateColors = false,
                             activeColor = MaterialTheme.colorScheme.primary.darken(SecondaryActiveDarkenFactor),
+                            // 左侧被主药丸压住一个圆角半径，补回可见留白
+                            labelStartInset = PillRadius,
                             onClick = onSecondarySelected
                         )
                     }
@@ -258,6 +255,7 @@ private fun FilterPillChip(
     animateColors: Boolean = true,
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = FilterPillInactive,
+    labelStartInset: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
     val targetBackground = if (selected) activeColor else inactiveColor
@@ -273,7 +271,7 @@ private fun FilterPillChip(
             .pressable(pressStyle, onClick = onClick)
             .clip(shape)
             .background(backgroundColor)
-            .padding(horizontal = 18.dp),
+            .padding(start = 18.dp + labelStartInset, end = 18.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(text = text, color = contentColor, fontSize = 14.sp)

@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.feature.playlist.ui
 
+import com.lin0721.linmusic.core.ui.components.PlayPauseIcon
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -9,8 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -132,11 +131,11 @@ fun BoxScope.PlaylistDockedPlayButton(
             .zIndex(10f)
             .shadow(8.dp, CircleShape)
     ) {
-        Icon(
-            imageVector = if (isCurrentlyPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
-            contentDescription = if (isCurrentlyPlayingThis) "暂停" else "播放",
+        PlayPauseIcon(
+            isPlaying = isCurrentlyPlayingThis,
             tint = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.size(32.dp)
+            size = 32.dp,
+            contentDescription = if (isCurrentlyPlayingThis) "暂停" else "播放"
         )
     }
 }

@@ -29,6 +29,7 @@ import com.lin0721.linmusic.core.update.UpdateUiState
 fun UpdateDialog(
     state: UpdateUiState,
     onDismiss: () -> Unit,
+    onHide: () -> Unit,
     onIgnore: () -> Unit,
     onStartDownload: () -> Unit,
     onInstall: () -> Unit
@@ -44,7 +45,7 @@ fun UpdateDialog(
     val isDownloading = state is UpdateUiState.Downloading
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onHide,
         title = {
             val channelSuffix = if (info.isPrerelease) "（测试版）" else ""
             Text("发现新版本 ${info.versionName}$channelSuffix", color = Color.White, fontWeight = FontWeight.Bold)
@@ -88,7 +89,7 @@ fun UpdateDialog(
                 onClick = {
                     when (state) {
                         is UpdateUiState.ReadyToInstall -> onInstall()
-                        is UpdateUiState.Downloading -> onDismiss()
+                        is UpdateUiState.Downloading -> onHide()
                         else -> onStartDownload()
                     }
                 }
@@ -110,7 +111,7 @@ fun UpdateDialog(
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                 }
-                MelodiaTextButton(onClick = onDismiss) {
+                MelodiaTextButton(onClick = if (isDownloading) onHide else onDismiss) {
                     Text(if (isDownloading) "收起" else "稍后", color = Color.White)
                 }
             }

@@ -48,6 +48,10 @@ class UpdateManager(
     private val _isDialogVisible = MutableStateFlow(false)
     val isDialogVisible: StateFlow<Boolean> = _isDialogVisible.asStateFlow()
 
+    // 自动检查只展示横幅，点击横幅再弹详情
+    private val _isBannerVisible = MutableStateFlow(false)
+    val isBannerVisible: StateFlow<Boolean> = _isBannerVisible.asStateFlow()
+
     private var downloadJob: Job? = null
 
     fun checkForUpdate(manual: Boolean) {
@@ -79,7 +83,8 @@ class UpdateManager(
                     val ignoredTag = settingsPreferences.ignoredUpdateTag.first()
                     if (!manual && info.versionName == ignoredTag) return@onSuccess
                     _uiState.value = UpdateUiState.Available(info)
-                    _isDialogVisible.value = true
+                    _isBannerVisible.value = true
+                    if (manual) _isDialogVisible.value = true
                 }
                 .onFailure { e ->
                     AppLogger.e(TAG, "检查更新失败", e)
@@ -96,6 +101,7 @@ class UpdateManager(
         }
         val info = currentInfoOrNull() ?: return
         _isDialogVisible.value = false
+        _isBannerVisible.value = true
         ToastManager.showToast("正在后台下载新版本...")
 
         downloadJob?.cancel()
@@ -112,7 +118,7 @@ class UpdateManager(
                             info.versionName,
                             apkInstaller.buildInstallIntent(state.file)
                         )
-                        _isDialogVisible.value = true
+                        _isBannerVisible.value = true
                         tryInstall(state.file)
                     }
                     is DownloadState.Failed -> {
@@ -125,7 +131,7 @@ class UpdateManager(
         }
     }
 
-    // 下载完成后自动尝试安装，未授权"安装未知应用"时跳转系统设置，用户返回后点弹窗里的安装按钮重试
+    // 下载完成后自动尝试安装，未授权"安装未知应用"时跳转系统设置，用户返回后点横幅或弹窗里的安装按钮重试
     fun retryInstall() {
         val state = _uiState.value
         if (state is UpdateUiState.ReadyToInstall) tryInstall(state.file)
@@ -144,14 +150,35 @@ class UpdateManager(
         val info = currentInfoOrNull() ?: return
         scope.launch { settingsPreferences.saveIgnoredUpdateTag(info.versionName) }
         _isDialogVisible.value = false
+        _isBannerVisible.value = false
         _uiState.value = UpdateUiState.Idle
         notificationHelper.cancelNotification()
     }
 
+    // "稍后"：下载中仅收起弹窗，否则本次不再提示
     fun dismiss() {
         _isDialogVisible.value = false
         if (_uiState.value !is UpdateUiState.Downloading) {
+            _isBannerVisible.value = false
             _uiState.value = UpdateUiState.Idle
+        }
+    }
+
+    fun showDialog() {
+        if (_uiState.value !is UpdateUiState.Idle) _isDialogVisible.value = true
+    }
+
+    // 仅收起弹窗，保留横幅
+    fun hideDialog() {
+        _isDialogVisible.value = false
+    }
+
+    // 横幅关闭按钮：未下载时等同"稍后"，否则仅隐藏横幅
+    fun dismissBanner() {
+        if (_uiState.value is UpdateUiState.Available) {
+            dismiss()
+        } else {
+            _isBannerVisible.value = false
         }
     }
 

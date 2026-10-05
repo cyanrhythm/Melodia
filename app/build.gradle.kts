@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 // 签名材料一律来自仓库外：本地读 local.properties，CI 读同名环境变量。
@@ -101,12 +102,23 @@ android {
     }
 }
 
+// Room Gradle 插件在 AGP 9 下会重复注册 copyRoomSchemas，改用 KSP 参数导出 schema
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // 自定义输出 APK 文件名：Melodia-v{versionName}-{buildType}.apk
 base {
     archivesName.set("Melodia-v${android.defaultConfig.versionName}")
 }
 
+// Room Gradle 插件在 AGP 9 下会重复注册 copyRoomSchemas，改用 KSP 参数导出 schema
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -134,6 +146,7 @@ dependencies {
 
     // Image loading - Coil
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Media3 & Media
     implementation(libs.androidx.media3.exoplayer)
@@ -143,14 +156,18 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.taglib)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     implementation(libs.haze)
     implementation(libs.android.image.cropper)
     implementation(libs.zxing.core)
     implementation(libs.bouncycastle)
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation("org.json:json:20230227")
+    testImplementation(libs.org.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

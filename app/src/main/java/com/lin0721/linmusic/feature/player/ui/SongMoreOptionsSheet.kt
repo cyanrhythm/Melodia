@@ -23,15 +23,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
+import com.lin0721.linmusic.core.ui.components.MelodiaSwitch
 import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.ui.theme.BackgroundDark
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
 import com.lin0721.linmusic.core.ui.theme.RadiusCompact
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
 import com.lin0721.linmusic.core.ui.theme.NeteaseRed
 import com.lin0721.linmusic.core.ui.theme.TextGray
 import com.lin0721.linmusic.core.ui.theme.SurfaceDark
@@ -53,6 +57,10 @@ fun SongMoreOptionsSheet(
     isLiked: Boolean,
     sleepTimerRemaining: Long,
     currentQuality: String,
+    // 本地歌曲未匹配到云端：没有网易 songId，依赖云端数据的操作全部隐藏
+    isLocalOnly: Boolean,
+    showMiniLyric: Boolean = true,
+    onToggleMiniLyric: (Boolean) -> Unit,
     onToggleLike: () -> Unit,
     onAlbumClick: () -> Unit,
     onArtistClick: () -> Unit,
@@ -76,20 +84,26 @@ fun SongMoreOptionsSheet(
         sheetState = sheetState,
         containerColor = BackgroundDark,
         shape = BottomSheetShape,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(DragHandleShape)
-                    .background(Color.White.copy(alpha = 0.3f))
-            )
-        }
+        dragHandle = { MelodiaDragHandle() }
     ) {
+        val nestedScrollConnection = remember(sheetState) {
+            object : NestedScrollConnection {
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    // 全展开时拦截向上未消费惯性，防止速度回弹传递给底栏引发物理动画死循环
+                    return if (available.y < 0 && sheetState.targetValue == SheetValue.Expanded) {
+                        available
+                    } else {
+                        Velocity.Zero
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(nestedScrollConnection)
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(bottom = MelodiaSpacing.md)
         ) {
@@ -136,14 +150,16 @@ fun SongMoreOptionsSheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = MelodiaSpacing.sm)
             )
 
+            if (isLocalOnly) {
+                Text(
+                    text = "本地歌曲未匹配到云端信息，仅支持部分操作",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+            }
 
-
-            // 选项列表区
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
+            if (!isLocalOnly) {
                 // 1. 专辑信息项
                 OptionRow(
                     icon = Icons.Rounded.Album,
@@ -183,8 +199,11 @@ fun SongMoreOptionsSheet(
                         }
                     }
                 )
+            }
 
-                // 4. 心动模式：开=以当前歌曲为种子开启，关=恢复开启前的队列
+            // 4. 心动模式：开=以当前歌曲为种子开启，关=恢复开启前的队列
+            // 本地歌曲无法作为种子开启，但已处于心动模式时仍保留关闭入口
+            if (!isLocalOnly || isIntelligence) {
                 OptionRow(
                     icon = Icons.Rounded.AutoAwesome,
                     text = if (isIntelligence) "关闭心动模式" else "打开心动模式",
@@ -196,7 +215,9 @@ fun SongMoreOptionsSheet(
                         }
                     }
                 )
+            }
 
+            if (!isLocalOnly) {
                 // 5. 开始相似歌曲漫游
                 OptionRow(
                     icon = Icons.Rounded.Explore,
@@ -305,16 +326,7 @@ fun SongMoreOptionsSheet(
                         sheetState = qualitySheetState,
                         containerColor = BackgroundDark,
                         shape = BottomSheetShape,
-                        dragHandle = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                                    .width(36.dp)
-                                    .height(4.dp)
-                                    .clip(DragHandleShape)
-                                    .background(Color.White.copy(alpha = 0.3f))
-                            )
-                        }
+                        dragHandle = { MelodiaDragHandle() }
                     ) {
                         Column(
                             modifier = Modifier
@@ -366,7 +378,7 @@ fun SongMoreOptionsSheet(
                         }
                     }
                 }
-
+            }
 
                 // 9. 定时关闭
                 val timerText = if (sleepTimerRemaining > 0L) {
@@ -386,7 +398,35 @@ fun SongMoreOptionsSheet(
                         }
                     }
                 )
-            }
+
+                // 10. 播放页小歌词开关
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleMiniLyric(!showMiniLyric) }
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Subtitles,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "播放页小歌词",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MelodiaSwitch(
+                        checked = showMiniLyric,
+                        onCheckedChange = onToggleMiniLyric
+                    )
+                }
         }
     }
 }

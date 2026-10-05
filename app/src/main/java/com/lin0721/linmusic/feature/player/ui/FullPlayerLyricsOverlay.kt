@@ -25,11 +25,13 @@ fun FullPlayerLyricsOverlay(
     songState: PlayerSongDetailState,
     colors: PlayerBackdropPalette,
     currentLyricIndex: Int,
+    activeLyricIndices: Set<Int> = emptySet(),
     title: String,
     artist: String,
     hazeState: HazeState,
     isPlaying: Boolean,
     currentPositionProvider: () -> Long,
+    lyricPositionProvider: () -> Long = currentPositionProvider,
     duration: Long,
     playMode: PlayMode,
     onSeek: (Long) -> Unit,
@@ -39,7 +41,8 @@ fun FullPlayerLyricsOverlay(
     onPlayPrevious: () -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
-    onMoreClick: () -> Unit
+    onMoreClick: () -> Unit,
+    onControlsVisibilityChange: (Boolean) -> Unit = {}
 ) {
     var isDragClosed by remember { mutableStateOf(false) }
 
@@ -74,6 +77,7 @@ fun FullPlayerLyricsOverlay(
         FullScreenLyricsView(
             lyrics = songState.lyrics,
             currentIndex = currentLyricIndex,
+            activeIndices = activeLyricIndices,
             isLoading = songState.isLyricsLoading,
             title = title,
             artist = artist,
@@ -88,6 +92,7 @@ fun FullPlayerLyricsOverlay(
             },
             isPlaying = isPlaying,
             currentPositionProvider = currentPositionProvider,
+            lyricPositionProvider = lyricPositionProvider,
             duration = duration,
             onTogglePlay = onTogglePlay,
             onPlayNext = onPlayNext,
@@ -95,7 +100,8 @@ fun FullPlayerLyricsOverlay(
             playMode = playMode,
             onToggleShuffle = onToggleShuffle,
             onToggleRepeat = onToggleRepeat,
-            onMoreClick = onMoreClick
+            onMoreClick = onMoreClick,
+            onControlsVisibilityChange = onControlsVisibilityChange
         )
     }
 }

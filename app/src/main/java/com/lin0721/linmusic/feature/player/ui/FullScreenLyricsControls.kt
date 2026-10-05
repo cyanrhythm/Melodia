@@ -1,11 +1,14 @@
 package com.lin0721.linmusic.feature.player.ui
 
+import com.lin0721.linmusic.core.ui.components.PlayPauseIcon
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
@@ -18,10 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -32,6 +32,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -48,13 +51,20 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.SheetValue
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.player.PlayMode
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
+import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaPress
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
+import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -168,27 +178,51 @@ fun LyricCapsuleSlider(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(38.dp)
             .onSizeChanged { componentWidthPx = it.width.toFloat() }
             .clip(CircleShape)
             .background(Color.White.copy(alpha = 0.12f))
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = { offset ->
-                        updateValueFromPosition.value(offset.x)
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downX = down.position.x
+                    val downY = down.position.y
+                    val touchSlop = viewConfiguration.touchSlop
+                    var isHorizontalDrag = false
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pointerChange = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        if (!pointerChange.pressed) {
+                            if (!isHorizontalDrag && !pointerChange.isConsumed) {
+                                updateValueFromPosition.value(pointerChange.position.x)
+                            }
+                            break
+                        }
+
+                        if (!isHorizontalDrag && pointerChange.isConsumed) {
+                            break
+                        }
+
+                        val dx = pointerChange.position.x - downX
+                        val dy = pointerChange.position.y - downY
+
+                        if (!isHorizontalDrag) {
+                            if (abs(dy) > touchSlop && abs(dy) > abs(dx)) {
+                                break
+                            }
+                            if (abs(dx) > touchSlop && abs(dx) >= abs(dy)) {
+                                isHorizontalDrag = true
+                                pointerChange.consume()
+                                updateValueFromPosition.value(pointerChange.position.x)
+                            }
+                        } else {
+                            pointerChange.consume()
+                            updateValueFromPosition.value(pointerChange.position.x)
+                        }
                     }
-                )
-            }
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        updateValueFromPosition.value(offset.x)
-                    },
-                    onHorizontalDrag = { change, _ ->
-                        change.consume()
-                        updateValueFromPosition.value(change.position.x)
-                    }
-                )
+                }
             }
     ) {
         // 激活填充进度
@@ -210,13 +244,13 @@ fun LyricCapsuleSlider(
         ) {
             Text(
                 text = startLabel,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White.copy(alpha = 0.85f)
             )
             Text(
                 text = endLabel,
-                fontSize = 20.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White.copy(alpha = 0.85f)
             )
@@ -237,28 +271,71 @@ private fun LyricSliderSetting(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
+            Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
             Text(
                 text = valueText,
                 color = MaterialTheme.colorScheme.primary,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold
             )
         }
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         LyricCapsuleSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = valueRange,
             startLabel = startLabel,
             endLabel = endLabel
+        )
+    }
+}
+
+@Composable
+private fun LyricCompactSwitchRow(
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 3.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.graphicsLayer(scaleX = 0.85f, scaleY = 0.85f),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            )
         )
     }
 }
@@ -283,6 +360,12 @@ fun FullScreenLyricsSettingsSheet(
     hasRoma: Boolean,
     advancedKaraokeEffect: Boolean = true,
     onAdvancedKaraokeEffectChange: (Boolean) -> Unit = {},
+    karaokeGlowEffect: Boolean = false,
+    onKaraokeGlowEffectChange: (Boolean) -> Unit = {},
+    amllLyricsEnabled: Boolean = true,
+    onAmllLyricsEnabledChange: (Boolean) -> Unit = {},
+    autoHideControls: Boolean = false,
+    onAutoHideControlsChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -292,39 +375,71 @@ fun FullScreenLyricsSettingsSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         shape = BottomSheetShape,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(DragHandleShape)
-                    .background(Color.White.copy(alpha = 0.3f))
-            )
-        }
+        dragHandle = { MelodiaDragHandle() }
     ) {
+        val nestedScrollConnection = remember(sheetState) {
+            object : NestedScrollConnection {
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    return if (available.y < 0 && sheetState.targetValue == SheetValue.Expanded) {
+                        available
+                    } else {
+                        Velocity.Zero
+                    }
+                }
+            }
+        }
+
+        val segmentedColors = SegmentedButtonDefaults.colors(
+            activeContainerColor = MaterialTheme.colorScheme.primary,
+            activeContentColor = MaterialTheme.colorScheme.onPrimary,
+            activeBorderColor = Color.Transparent,
+            inactiveContainerColor = Color.White.copy(alpha = 0.08f),
+            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            inactiveBorderColor = Color.Transparent,
+            disabledActiveContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.38f),
+            disabledActiveContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
+            disabledActiveBorderColor = Color.Transparent,
+            disabledInactiveContainerColor = Color.White.copy(alpha = 0.04f),
+            disabledInactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            disabledInactiveBorderColor = Color.Transparent
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = MelodiaSpacing.lg)
-                .padding(bottom = MelodiaSpacing.lg)
+                .padding(bottom = MelodiaSpacing.md)
         ) {
             Text(
                 text = "全屏歌词设置",
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(bottom = MelodiaSpacing.md)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
+
+            val isExpanded = LocalMelodiaWindowSizeClass.current == MelodiaWindowSizeClass.Expanded
+            val fontSizeRange = if (isExpanded) 20f..40f else 16f..32f
+            val displayFontSize = fontSize.coerceIn(
+                fontSizeRange.start.roundToInt(),
+                fontSizeRange.endInclusive.roundToInt()
+            )
+
+            LaunchedEffect(fontSizeRange) {
+                if (fontSize !in fontSizeRange.start.roundToInt()..fontSizeRange.endInclusive.roundToInt()) {
+                    onFontSizeChange(displayFontSize)
+                }
+            }
 
             LyricSliderSetting(
                 label = "歌词字号大小",
-                valueText = "${fontSize} sp",
-                value = fontSize,
+                valueText = "${displayFontSize} sp",
+                value = displayFontSize,
                 onValueChange = onFontSizeChange,
-                valueRange = 16f..32f
+                valueRange = fontSizeRange
             )
 
             LyricSliderSetting(
@@ -347,9 +462,9 @@ fun FullScreenLyricsSettingsSheet(
                 endLabel = "宽"
             )
 
-            Spacer(modifier = Modifier.height(MelodiaSpacing.sm))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // 对齐方式（左对齐 / 居中对齐 / 右对齐）
+            // 歌词对齐方式分段选择器
             Text(
                 text = "歌词对齐方式",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -361,31 +476,28 @@ fun FullScreenLyricsSettingsSheet(
                 "center" to "居中对齐",
                 "right" to "右对齐"
             )
-            alignments.forEach { (key, label) ->
-                val isSelected = alignment == key
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onAlignmentChange(key) }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        fontSize = 15.sp
-                    )
-                    if (isSelected) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                alignments.forEachIndexed { index, (key, label) ->
+                    val isSelected = alignment == key
+                    SegmentedButton(
+                        selected = isSelected,
+                        onClick = { onAlignmentChange(key) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = alignments.size),
+                        colors = segmentedColors,
+                        icon = {}
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(MelodiaSpacing.sm))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // 歌词副文本设置（翻译 / 罗马音 / 仅原词 二选一展示）
+            // 歌词副文本分段选择器
             Text(
                 text = "歌词副文本",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -393,70 +505,61 @@ fun FullScreenLyricsSettingsSheet(
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
             )
             val secondaryOptions = listOf(
-                "translation" to ("中文翻译" to hasTranslation),
+                "translation" to ("翻译" to hasTranslation),
                 "roma" to ("罗马音" to hasRoma),
-                "none" to ("关闭（仅原词）" to true)
+                "none" to ("仅原词" to true)
             )
-            secondaryOptions.forEach { (key, pair) ->
-                val (label, isAvailable) = pair
-                val isSelected = secondaryMode == key
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = isAvailable) { onSecondaryModeChange(key) }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (isAvailable) label else "$label (暂无)",
-                        color = when {
-                            isSelected -> MaterialTheme.colorScheme.primary
-                            isAvailable -> MaterialTheme.colorScheme.onSurface
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        },
-                        fontSize = 15.sp
-                    )
-                    if (isSelected) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                secondaryOptions.forEachIndexed { index, (key, pair) ->
+                    val (label, isAvailable) = pair
+                    val isSelected = secondaryMode == key
+                    SegmentedButton(
+                        selected = isSelected,
+                        onClick = { if (isAvailable) onSecondaryModeChange(key) },
+                        enabled = isAvailable,
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = secondaryOptions.size),
+                        colors = segmentedColors,
+                        icon = {}
+                    ) {
+                        Text(
+                            text = if (isAvailable) label else "$label(无)",
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(MelodiaSpacing.sm))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // 逐字歌词流光动效
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onAdvancedKaraokeEffectChange(!advancedKaraokeEffect) }
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "逐字歌词流光动效",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = "开启柔和渐变推进边缘",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp
-                    )
-                }
-                Switch(
-                    checked = advancedKaraokeEffect,
-                    onCheckedChange = onAdvancedKaraokeEffectChange,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                    )
-                )
-            }
+            // 开关项整合
+            LyricCompactSwitchRow(
+                title = "启用 AMLL 歌词源",
+                subtitle = "支持对唱分边与背景和声",
+                checked = amllLyricsEnabled,
+                onCheckedChange = onAmllLyricsEnabledChange
+            )
+
+            LyricCompactSwitchRow(
+                title = "逐字歌词流光动效",
+                subtitle = "开启柔和渐变推进边缘",
+                checked = advancedKaraokeEffect,
+                onCheckedChange = onAdvancedKaraokeEffectChange
+            )
+
+            LyricCompactSwitchRow(
+                title = "字词呼吸光晕动效",
+                subtitle = "演唱字词叠加呼吸高亮微光",
+                checked = karaokeGlowEffect,
+                onCheckedChange = onKaraokeGlowEffectChange
+            )
+
+            LyricCompactSwitchRow(
+                title = "自动隐藏控制组件",
+                subtitle = "无操作 5 秒后自动隐藏顶栏与播放控制，轻触屏幕重新呼出",
+                checked = autoHideControls,
+                onCheckedChange = onAutoHideControlsChange
+            )
         }
     }
 }
@@ -498,9 +601,15 @@ fun FullScreenControls(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = MelodiaSpacing.lg)
-            .padding(bottom = 20.dp)
+            .padding(bottom = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 1. 顶部插入操作工具栏（翻译/罗马音多态切换、分享、歌词设置）
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 720.dp)
+        ) {
+            // 1. 顶部插入操作工具栏（翻译/罗马音多态切换、分享、歌词设置）
         FullScreenLyricsToolbar(
             secondaryMode = secondaryMode,
             hasTranslation = hasTranslation,
@@ -673,12 +782,7 @@ fun FullScreenControls(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        tint = Color.Black,
-                        modifier = Modifier.size(42.dp),
-                        contentDescription = null
-                    )
+                    PlayPauseIcon(isPlaying, Color.Black, size = 42.dp)
                 }
 
                 MelodiaIconButton(onClick = onPlayNext, style = MelodiaPress.Transport) {
@@ -707,5 +811,6 @@ fun FullScreenControls(
             }
         }
     }
+}
 }
 

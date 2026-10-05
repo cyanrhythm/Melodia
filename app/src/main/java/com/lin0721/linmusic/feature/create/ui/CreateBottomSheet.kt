@@ -28,9 +28,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.core.ui.components.MelodiaTextButton
 import com.lin0721.linmusic.core.ui.components.MelodiaButton
 import com.lin0721.linmusic.core.ui.components.MelodiaSwitch
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BackgroundDark
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
 import com.lin0721.linmusic.core.ui.theme.NeteaseRed
 import com.lin0721.linmusic.core.ui.theme.PillRadius
 import com.lin0721.linmusic.core.ui.theme.SurfaceDark
@@ -173,15 +173,7 @@ private fun CreatePlaylistDialog(
         onDismissRequest = { if (!isCreating) onDismiss() },
         containerColor = SurfaceDark,
         shape = BottomSheetShape,
-        dragHandle = {
-            Box(modifier = Modifier.padding(top = 12.dp, bottom = MelodiaSpacing.xs)) {
-                Surface(
-                    modifier = Modifier.width(40.dp).height(4.dp),
-                    shape = DragHandleShape,
-                    color = Color.White.copy(alpha = 0.3f)
-                ) {}
-            }
-        }
+        dragHandle = { MelodiaDragHandle() }
     ) {
         Column(
             modifier = Modifier

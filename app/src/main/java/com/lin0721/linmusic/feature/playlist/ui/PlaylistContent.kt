@@ -59,6 +59,7 @@ fun PlaylistContent(
     onAlbumClick: (Long) -> Unit,
     onToggleLike: (Long, Boolean) -> Unit,
     onPlaySong: (Track) -> Unit,
+    onPlayRecommendedSong: (Track) -> Unit,
     onAddToPlayNext: (Track) -> Unit,
     onPlayAll: () -> Unit,
     onShuffleToggle: () -> Unit,
@@ -360,7 +361,7 @@ fun PlaylistContent(
                     currentTrackId           = currentTrackId,
                     isPlaying                = isPlaying,
                     onRefreshRecommendations = onRefreshRecommendations,
-                    onPlaySong               = onPlaySong,
+                    onPlaySong               = onPlayRecommendedSong,
                     onAddRecommendSong       = onAddRecommendSong
                 )
             }

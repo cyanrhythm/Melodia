@@ -10,6 +10,8 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
+import com.lin0721.linmusic.feature.home.ui.TAB_ALL
+import com.lin0721.linmusic.feature.home.ui.TAB_MUSIC
 import com.lin0721.linmusic.feature.profile.ui.FollowListMode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,9 +35,10 @@ sealed class Screen {
     @Serializable
     data class Radio(val id: Long) : Screen()
     @Serializable
-    data class MvPlayer(val id: Long, val name: String) : Screen()
-    @Serializable
     data class PlaylistCategory(val category: String) : Screen()
+    // 「音乐」tab 的曲风详情
+    @Serializable
+    data class Style(val id: Long, val name: String) : Screen()
     // 侧边栏二级页
     @Serializable
     data object RecentPlay : Screen()
@@ -44,7 +47,31 @@ sealed class Screen {
     @Serializable
     data object Cloud : Screen()
     @Serializable
+    data object Downloads : Screen()
+    @Serializable
     data object LocalMusic : Screen()
+    @Serializable
+    data object LocalMusicSettings : Screen()
+    @Serializable
+    data object LocalSongs : Screen()
+    @Serializable
+    data object LocalArtists : Screen()
+    @Serializable
+    data object LocalAlbums : Screen()
+    @Serializable
+    data object LocalFolders : Screen()
+    @Serializable
+    data class LocalArtist(val name: String) : Screen()
+    @Serializable
+    data class LocalAlbum(val key: String) : Screen()
+    @Serializable
+    data class LocalFolder(val path: String) : Screen()
+    @Serializable
+    data object LocalPlaylists : Screen()
+    @Serializable
+    data class LocalPlaylist(val id: Long) : Screen()
+    @Serializable
+    data class LocalTagEditor(val uri: String) : Screen()
     @Serializable
     data object Message : Screen()
     @Serializable
@@ -85,6 +112,10 @@ class MelodiaNavigationState(
 
     // 当前 tab 内栈深大于 1 时才有上一级可回退
     val canNavigateBack: Boolean get() = activeStack.size > 1
+
+    // 是否还有可回退的页面层级（包括二级页面、非主页 tab、主页非「全部」分类或展开的最新药丸）
+    val canGoBackToHomeAll: Boolean
+        get() = canNavigateBack || activeTab != Screen.Home || homeTab != TAB_ALL || showMusicNewWorks
 
     // 主页三个 tab 的选中项。存在导航状态里而非 HomeScreen 内部——
     // 页面切走时 HomeScreen 会离开 composition，记在里面的话从电台详情页退回来会跳回「全部」
@@ -149,12 +180,27 @@ class MelodiaNavigationState(
             if (willExitPlayerNav) {
                 resetPlayerNavigation()
             }
+            if (activeTab == Screen.Home && activeStack.size == 1) {
+                homeTab = TAB_ALL
+                showMusicNewWorks = false
+            }
             return willExitPlayerNav
         }
         // 已在当前 tab 的根页面
         if (activeTab != Screen.Home) {
             resetStackToRoot(Screen.Home)
             activeTab = Screen.Home
+            homeTab = TAB_ALL
+            showMusicNewWorks = false
+            return false
+        }
+        if (showMusicNewWorks) {
+            showMusicNewWorks = false
+            return false
+        }
+        if (homeTab != TAB_ALL) {
+            homeTab = TAB_ALL
+            return false
         }
         return false
     }
@@ -176,7 +222,8 @@ class MelodiaNavigationState(
     }
 
     fun selectHomeTab(index: Int) {
-        homeTab = index
+        // 已在「音乐」默认内容时再点「音乐」回到「全部」，收起「最新」
+        homeTab = if (index == TAB_MUSIC && homeTab == TAB_MUSIC && !showMusicNewWorks) TAB_ALL else index
         // 点任意主药丸都回到该 tab 的默认内容，「最新」只能通过下面的入口单独选中
         showMusicNewWorks = false
     }
@@ -187,10 +234,6 @@ class MelodiaNavigationState(
 
     fun openRadio(id: Long) {
         navigateTo(Screen.Radio(id))
-    }
-
-    fun openMvPlayer(id: Long, name: String) {
-        navigateTo(Screen.MvPlayer(id, name))
     }
 
     fun openPlaylistCategory(category: String) {
@@ -207,6 +250,10 @@ class MelodiaNavigationState(
 
     fun openCloud() {
         navigateTo(Screen.Cloud)
+    }
+
+    fun openDownloads() {
+        navigateTo(Screen.Downloads)
     }
 
     fun openLocalMusic() {

@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -61,6 +64,8 @@ import com.lin0721.linmusic.core.ui.theme.PillRadius
 fun ColumnScope.FullScreenLyricsList(
     lyrics: List<LyricLine>,
     currentIndex: Int,
+    // 未传集合时沿用单行高亮；显式传空集合表示当前没有需要高亮的行。
+    activeIndices: Set<Int>? = null,
     isLoading: Boolean,
     isUserScrolling: Boolean,
     highlightColor: Color,
@@ -75,6 +80,7 @@ fun ColumnScope.FullScreenLyricsList(
     lineSpacing: Int = 24,
     secondarySpacing: Int = 6,
     advancedKaraokeEffect: Boolean = true,
+    karaokeGlowEffect: Boolean = false,
     isPlaying: Boolean = true,
     // 以下为宽屏播放器用：关掉居中线与播放胶囊、关掉列表自带拖动（由外层按命中规则接管）、上报每行文字范围
     showSeekGuide: Boolean = true,
@@ -85,7 +91,7 @@ fun ColumnScope.FullScreenLyricsList(
 ) {
     val density = LocalDensity.current
 
-    LaunchedEffect(currentIndex, isUserScrolling, viewportHeightPx, secondaryMode, lineSpacing, secondarySpacing) {
+    LaunchedEffect(currentIndex, isUserScrolling, viewportHeightPx, fontSize, secondaryMode, lineSpacing, secondarySpacing) {
         if (!isUserScrolling && currentIndex in lyrics.indices && viewportHeightPx > 0f) {
             // 估算值以默认间距（行距 24dp、副文本距 6dp）为基准，按用户设置的差值修正
             val itemStridePx = with(density) { (66 + lineSpacing - 24).coerceAtLeast(1).dp.toPx() }
@@ -100,14 +106,14 @@ fun ColumnScope.FullScreenLyricsList(
                 return@LaunchedEffect
             }
 
-            val currentLine = lyrics[currentIndex]
-            val hasSecondary = when (secondaryMode) {
-                "translation" -> currentLine.translation != null
-                "roma" -> currentLine.roma != null
+            val current = lyrics[currentIndex]
+            val hasSecondary = current.backgroundLine != null || when (secondaryMode) {
+                "translation" -> current.translation != null
+                "roma" -> current.roma != null
                 else -> false
             }
             val itemHeightPx = with(density) {
-                if (hasSecondary) (96 + secondarySpacing - 6).dp.toPx() else 54.dp.toPx()
+                (if (hasSecondary) 96 + secondarySpacing - 6 else 54).coerceAtLeast(1).dp.toPx()
             }
             val desiredOffsetPx = ((viewportHeightPx - itemHeightPx) / 2f).toInt()
             val centreOffsetPx = -desiredOffsetPx
@@ -142,21 +148,29 @@ fun ColumnScope.FullScreenLyricsList(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .weight(1f)
+            .weight(1f),
+        contentAlignment = Alignment.Center
     ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp).align(Alignment.Center)
-            )
-        } else if (lyrics.isEmpty()) {
-            Text(
-                text = "暂无歌词",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 18.sp,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        } else {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth()
+                .widthIn(max = 760.dp)
+        ) {
+            // 切换歌词源时保留当前列表，后台完成后再替换，避免移除列表后重新排版。
+            if (isLoading && lyrics.isEmpty()) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp).align(Alignment.Center)
+                )
+            } else if (lyrics.isEmpty()) {
+                Text(
+                    text = "暂无歌词",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 18.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
             CenterTargetLine(
                 visible = isUserScrolling && showSeekGuide,
                 modifier = Modifier
@@ -184,7 +198,7 @@ fun ColumnScope.FullScreenLyricsList(
                 }
             ) {
                 itemsIndexed(items = lyrics, key = ::lyricLineKey) { index, line ->
-                    val isCurrent = index == currentIndex
+                    val isCurrent = activeIndices?.contains(index) ?: (index == currentIndex)
                     val isCenterTarget = index == centerLineIndex && isUserScrolling && showSeekGuide
                     val distance = kotlin.math.abs(index - currentIndex).coerceAtMost(5)
 
@@ -201,6 +215,7 @@ fun ColumnScope.FullScreenLyricsList(
                         secondaryMode = secondaryMode,
                         secondarySpacing = secondarySpacing,
                         advancedKaraokeEffect = advancedKaraokeEffect,
+                        karaokeGlowEffect = karaokeGlowEffect,
                         isPlaying = isPlaying,
                         onTextBoundsInRoot = onLineTextBounds?.let { report -> { bounds -> report(index, bounds) } },
                         onClick = { onLyricClick(line) }
@@ -218,6 +233,7 @@ fun ColumnScope.FullScreenLyricsList(
             )
         }
     }
+}
 }
 
 // 用户滚动时出现的居中虚线基准，标示"松手即跳转"的目标位置
@@ -257,10 +273,10 @@ private fun PlayCapsule(
                     animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f)
                 ),
         exit = fadeOut(tween(160)) +
-               scaleOut(
-                   targetScale = 0.85f,
-                   animationSpec = tween(160)
-               ),
+                scaleOut(
+                    targetScale = 0.85f,
+                    animationSpec = tween(160)
+                ),
         modifier = modifier
     ) {
         if (targetLine != null) {

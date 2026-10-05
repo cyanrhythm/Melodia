@@ -27,9 +27,11 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -38,6 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
@@ -79,6 +85,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import com.lin0721.linmusic.core.player.PlayerManager
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.rememberMelodiaWindowSizeClass
@@ -116,7 +123,10 @@ fun MelodiaApp() {
     val viewModel: HomeViewModel = koinViewModel()
     val settingsPreferences: SettingsPreferences = koinInject()
     val showCreateEntry by settingsPreferences.showCreateEntry.collectAsStateWithLifecycle(initialValue = true)
-    val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
+    val panelDefaultFullscreen by settingsPreferences.panelDefaultFullscreen.collectAsStateWithLifecycle(initialValue = false)
+    // 迷你条、面板等 Android 组件直接消费 Media3 MediaItem，取具体实现
+    val playerManager: PlayerManager = koinInject()
+    val currentTrack by playerManager.currentTrack.collectAsStateWithLifecycle()
     val previousQueueItem by viewModel.playerManager.previousQueueItem.collectAsStateWithLifecycle()
     val nextQueueItem by viewModel.playerManager.nextQueueItem.collectAsStateWithLifecycle()
     val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
@@ -146,10 +156,6 @@ fun MelodiaApp() {
     }
     // 网页登录界面可见性状态
     var isLoginScreenVisible by remember { mutableStateOf(false) }
-    // MV 播放页是否处于全屏态：全屏时隐藏底部导航栏/悬浮播放条，避免盖住视频
-    var isMvFullscreen by remember { mutableStateOf(false) }
-    // MV 播放页评论区是否展开：展开时临时隐藏悬浮 MiniPlayer，为评论区和输入栏让出空间
-    var isMvCommentsOpen by remember { mutableStateOf(false) }
     // 悬浮播放卡片 + 导航栏的实际高度，下发给各页面用作列表底部留白
     var bottomOverlayHeight by remember { mutableStateOf(0.dp) }
     // 平板适配断点，顶层下发供 MelodiaBottomOverlay 及后续各阶段消费
@@ -187,7 +193,12 @@ fun MelodiaApp() {
         if (isPanelShown) hasPanelBeenShown = true
     }
     LaunchedEffect(isPanelFullscreen) {
-        panelFullscreen.animateTo(if (isPanelFullscreen) 1f else 0f, PanelFullscreenSpec)
+        // 面板尚未显示时直接就位：默认全屏展开若与升起动画同时拉宽，首帧组合时进度已走一半，宽度会跳变
+        if (isPanelFullscreen && panelRise.value == 0f) {
+            panelFullscreen.snapTo(1f)
+        } else {
+            panelFullscreen.animateTo(if (isPanelFullscreen) 1f else 0f, PanelFullscreenSpec)
+        }
     }
     val panelWidth = rememberMelodiaPlayerPanelWidth()
     // 主页面内容层的实际宽度，用于算出播放面板铺满全屏时的卡片宽度
@@ -197,15 +208,47 @@ fun MelodiaApp() {
     val navigationBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // mini 栏爱心按钮触发的"收藏到歌单"弹层，非 null 时显示
     var miniCollectSongId by remember { mutableStateOf<Long?>(null) }
+    var isLyricsFullScreen by remember { mutableStateOf(false) }
+    var isLyricsControlsVisible by remember { mutableStateOf(true) }
+
+    val context = LocalContext.current
+    val window = (context as? ComponentActivity)?.window
+    val insetsController = remember(window) {
+        window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+    }
+
+    val shouldHideSystemBars = if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
+        isLyricsFullScreen
+    } else {
+        isLyricsFullScreen && !isLyricsControlsVisible
+    }
+
+    DisposableEffect(shouldHideSystemBars, insetsController) {
+        if (shouldHideSystemBars) {
+            insetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insetsController?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            insetsController?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            insetsController?.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     val hazeState = remember { HazeState() }
     val density = LocalDensity.current
 
     val toastMessage = rememberGlobalToastMessage()
 
+    // 已展开时不重置全屏态，避免点击迷你条把用户手动切换的侧栏/全屏状态覆盖
+    fun openPanel() {
+        if (!isPanelExpanded) isPanelFullscreen = panelDefaultFullscreen
+        isPanelExpanded = true
+    }
+
     fun handleBack() {
         val shouldReopenPlayer = navigation.navigateBack()
-        if (shouldReopenPlayer) {
+        if (shouldReopenPlayer && windowSizeClass != MelodiaWindowSizeClass.Expanded) {
             playerSheet.animateTo(true, 0f)
         }
     }
@@ -219,12 +262,10 @@ fun MelodiaApp() {
     }
 
     // 系统返回键与侧滑返回拦截：按优先级关闭浮层或返回上一级。
-    // activeTab != Home 时即使当前 tab 栈深为 1，也需要交给 handleBack() 退回主页 tab，而不是转给系统。
-    // 平板常驻播放面板不占用返回键——面板作为常驻工具栏跨页面持续展开，
-    // 只能通过自身的收起箭头/下拉手势关闭，返回键始终只处理内容导航
+    // 当存在浮层、处于非主页 tab、当前栈深大于 1、或主页未处于「全部」默认分类时均由 handleBack() 逐级处理。
+    // 平板播放面板常驻不随返回键收起，直接交由内容导航处理
     val isAnyOverlayOpen = playerSheet.isOpen || navigation.isNavigatingFromPlayer || sidebar.isOpen ||
-            showCreateSheet || navigation.showMusicNewWorks || navigation.canNavigateBack ||
-            navigation.activeTab != Screen.Home
+            showCreateSheet || navigation.canGoBackToHomeAll
 
     BackHandler(enabled = isAnyOverlayOpen) {
         when {
@@ -235,8 +276,7 @@ fun MelodiaApp() {
             navigation.isNavigatingFromPlayer -> handleBack()
             sidebar.isOpen -> sidebar.close()
             showCreateSheet -> showCreateSheet = false
-            navigation.showMusicNewWorks -> navigation.updateShowMusicNewWorks(false)
-            navigation.canNavigateBack || navigation.activeTab != Screen.Home -> handleBack()
+            navigation.canGoBackToHomeAll -> handleBack()
         }
     }
 
@@ -302,6 +342,7 @@ fun MelodiaApp() {
                     onNavigateToRecentPlay = { navigation.openRecentPlay() },
                     onNavigateToListenData = { navigation.openListenData() },
                     onNavigateToCloud = { navigation.openCloud() },
+                    onNavigateToDownloads = { navigation.openDownloads() },
                     onNavigateToMessage = { navigation.openMessage() },
                     onNavigateToAccount = { navigation.openAccount() },
                     onNavigateToSettings = { navigation.navigateTo(Screen.Settings) }
@@ -368,9 +409,6 @@ fun MelodiaApp() {
                                     onNavigateToPlaylist = { id, isAlbum -> navigation.openPlaylist(id, isAlbum) },
                                     onNavigateToArtist = { id -> navigation.openArtist(id) },
                                     onNavigateToRadio = { id -> navigation.openRadio(id) },
-                                    onNavigateToMv = { id, name -> navigation.openMvPlayer(id, name) },
-                                    onMvFullscreenChanged = { isMvFullscreen = it },
-                                    onMvCommentsVisibilityChanged = { isMvCommentsOpen = it },
                                     onNavigateToPlaylistCategory = { category -> navigation.openPlaylistCategory(category) },
                                     onNavigateToProfile = { uid -> navigation.openProfile(uid) },
                                     onNavigateToFollowList = { uid, mode -> navigation.openFollowList(uid, mode) },
@@ -378,6 +416,7 @@ fun MelodiaApp() {
                                     onShowMusicNewWorksChanged = { navigation.updateShowMusicNewWorks(it) },
                                     onNavigateToSearch = { navigation.openSearch(autoFocus = true) },
                                     onNavigateToLocalMusic = { navigation.openLocalMusic() },
+                                    onNavigateToScreen = { navigation.navigateTo(it) },
                                     onOpenRecognition = { showRecognition = true },
                                     onBack = { handleBack() }
                                 )
@@ -400,8 +439,6 @@ fun MelodiaApp() {
                             currentScreen = navigation.currentScreen,
                             showCreateSheet = showCreateSheet,
                             isLoginScreenVisible = isLoginScreenVisible,
-                            isMvFullscreen = isMvFullscreen,
-                            isMvCommentsOpen = isMvCommentsOpen,
                             isPanelDocked = isPanelDocked,
                             currentTrack = currentTrack,
                             isPlaying = miniPlayerShowPause,
@@ -412,7 +449,7 @@ fun MelodiaApp() {
                             onNext = { viewModel.playerManager.playNext() },
                             onMiniPlayerClick = {
                                 if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
-                                    isPanelExpanded = true
+                                    openPanel()
                                 } else {
                                     playerSheet.animateTo(true, 0f)
                                 }
@@ -476,11 +513,19 @@ fun MelodiaApp() {
                         .align(Alignment.TopEnd)
                         // 首次展开后保留组合，收起时不测量也不摆放（不绘制、不接收触摸），再次展开无需重建整个播放器
                         .then(if (isPanelShown) Modifier else Modifier.layout { _, _ -> layout(0, 0) {} })
-                        .padding(top = statusBarTop, end = MelodiaSpacing.sm, bottom = navigationBarBottom)
+                        .padding(
+                            top = if (isLyricsFullScreen) 0.dp else statusBarTop,
+                            end = if (isLyricsFullScreen) 0.dp else MelodiaSpacing.sm,
+                            bottom = if (isLyricsFullScreen) 0.dp else navigationBarBottom
+                        )
                         .layout { measurable, constraints ->
                             val sidebarWidthPx = panelWidth.roundToPx()
-                            val fullscreenWidthPx = constraints.maxWidth - MelodiaSpacing.sm.roundToPx()
-                            val progress = panelFullscreen.value.coerceIn(0f, 1f)
+                            val fullscreenWidthPx = if (isLyricsFullScreen) {
+                                constraints.maxWidth
+                            } else {
+                                constraints.maxWidth - MelodiaSpacing.sm.roundToPx()
+                            }
+                            val progress = if (isLyricsFullScreen) 1f else panelFullscreen.value.coerceIn(0f, 1f)
                             val width = (sidebarWidthPx + (fullscreenWidthPx - sidebarWidthPx) * progress)
                                 .roundToInt()
                                 .coerceAtLeast(sidebarWidthPx)
@@ -489,18 +534,23 @@ fun MelodiaApp() {
                         }
                         .fillMaxHeight()
                         .graphicsLayer {
-                            val progress = panelRise.value.coerceIn(0f, 1f)
-                            val miniBottom = size.height - MelodiaSpacing.sm.toPx()
-                            val miniTop = miniBottom - ExpandedBottomBarHeight.toPx()
-                            val radius = PanelRiseStartRadius.toPx() +
-                                (InfoCardRadius.toPx() - PanelRiseStartRadius.toPx()) * progress
-                            clip = true
-                            shape = PanelRevealShape(
-                                top = miniTop * (1f - progress),
-                                bottom = miniBottom + (size.height - miniBottom) * progress,
-                                radius = radius
-                            )
-                            alpha = (progress / PanelRiseFadeFraction).coerceAtMost(1f)
+                            if (isLyricsFullScreen) {
+                                clip = false
+                                alpha = 1f
+                            } else {
+                                val progress = panelRise.value.coerceIn(0f, 1f)
+                                val miniBottom = size.height - MelodiaSpacing.sm.toPx()
+                                val miniTop = miniBottom - ExpandedBottomBarHeight.toPx()
+                                val radius = PanelRiseStartRadius.toPx() +
+                                    (InfoCardRadius.toPx() - PanelRiseStartRadius.toPx()) * progress
+                                clip = true
+                                shape = PanelRevealShape(
+                                    top = miniTop * (1f - progress),
+                                    bottom = miniBottom + (size.height - miniBottom) * progress,
+                                    radius = radius
+                                )
+                                alpha = (progress / PanelRiseFadeFraction).coerceAtMost(1f)
+                            }
                         }
                 ) {
                     PlayerDockPanel(
@@ -529,7 +579,8 @@ fun MelodiaApp() {
                         onToggleFullscreen = { isPanelFullscreen = !isPanelFullscreen },
                         fullscreenProgress = { panelFullscreen.value },
                         // 与上面铺开宽度的计算一致：左右各留 sm
-                        fullscreenWidth = contentLayerWidth - MelodiaSpacing.sm * 2
+                        fullscreenWidth = contentLayerWidth - MelodiaSpacing.sm * 2,
+                        onLyricsFullScreenChange = { isLyricsFullScreen = it }
                     )
                 }
             }
@@ -571,6 +622,11 @@ fun MelodiaApp() {
                 }
                 playerSheet.animateTo(false, 0f)
             },
+            onLyricsFullScreenChange = {
+                isLyricsFullScreen = it
+                if (!it) isLyricsControlsVisible = true
+            },
+            onLyricsControlsVisibilityChange = { isLyricsControlsVisible = it },
             modifier = Modifier.zIndex(1f)
         )
 
@@ -595,7 +651,7 @@ fun MelodiaApp() {
                             if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
                                 // 平板播放面板位于内容层，会被识别页挡住，只能先收起识别页
                                 showRecognition = false
-                                isPanelExpanded = true
+                                openPanel()
                             } else {
                                 // 全屏播放页层级高于识别页，收起后回到识别页
                                 playerSheet.animateTo(true, 0f)
@@ -628,7 +684,7 @@ fun MelodiaApp() {
         // 5. 全局自定义 Toast 提示
         MelodiaToastHost(toastMessage = toastMessage)
 
-        // 6. 全局更新弹窗，任意页面均可弹出
+        // 6. 全局更新弹窗，由更新横幅或设置页手动检查打开
         val updateManager: UpdateManager = koinInject()
         val updateState by updateManager.uiState.collectAsStateWithLifecycle()
         val isDialogVisible by updateManager.isDialogVisible.collectAsStateWithLifecycle()
@@ -636,6 +692,7 @@ fun MelodiaApp() {
             UpdateDialog(
                 state = updateState,
                 onDismiss = { updateManager.dismiss() },
+                onHide = { updateManager.hideDialog() },
                 onIgnore = { updateManager.ignoreCurrentVersion() },
                 onStartDownload = { updateManager.startDownload() },
                 onInstall = { updateManager.retryInstall() }

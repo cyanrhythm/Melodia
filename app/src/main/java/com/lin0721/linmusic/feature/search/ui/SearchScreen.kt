@@ -37,7 +37,6 @@ import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.ui.components.WebViewLoginScreen
 import com.lin0721.linmusic.core.ui.theme.ScreenSlideDurationMs
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistSongOptionsSheet
-import com.lin0721.linmusic.feature.search.domain.SearchSuggestion
 import com.lin0721.linmusic.feature.search.domain.SearchType
 import org.koin.androidx.compose.koinViewModel
 
@@ -58,9 +57,11 @@ fun SearchScreen(
     val featuredTrack by viewModel.featuredTrack.collectAsStateWithLifecycle()
     val inputState by viewModel.inputState.collectAsStateWithLifecycle()
     val mode by viewModel.mode.collectAsStateWithLifecycle()
+    val searchPlatforms by viewModel.searchPlatforms.collectAsStateWithLifecycle()
+    val selectedPlatform by viewModel.selectedPlatform.collectAsStateWithLifecycle()
     val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
-    val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
+    val currentTrack by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
     val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
@@ -123,10 +124,8 @@ fun SearchScreen(
             focusRequester = focusRequester,
             onQueryChange = viewModel::updateQuery,
             onSubmit = {
-                // 联想已加载时回车采用第一条联想关键词；输入框为空时退到占位显示的推荐词
-                val keyword = inputState.currentSuggestions.firstOrNull { it is SearchSuggestion.Keyword }?.text
-                    ?: inputState.query.takeIf { it.isNotBlank() }
-                    ?: remoteDefaultKeyword
+                // 回车/键盘搜索键只提交输入框里的原文，不能替用户挑联想词；输入框为空时退到占位显示的推荐词
+                val keyword = inputState.query.takeIf { it.isNotBlank() } ?: remoteDefaultKeyword
                 if (!keyword.isNullOrBlank()) viewModel.searchWithKeyword(keyword)
             },
             onActivate = viewModel::activateSearch,
@@ -167,20 +166,27 @@ fun SearchScreen(
                         onClearHistory = viewModel::clearHistory
                     )
                     SearchMode.Results -> SearchResultsContent(
+                        searchPlatforms = searchPlatforms,
+                        selectedPlatform = selectedPlatform,
                         selectedType = selectedType,
                         resultsByType = viewModel.resultsByType,
+                        externalResults = viewModel.externalResults,
                         listStates = resultListStates,
                         currentTrackId = currentTrack?.mediaId,
                         isPlaying = isPlaying,
                         likedSongIds = likedSongIds,
                         isLoggedIn = userProfile != null,
+                        onSelectPlatform = viewModel::selectPlatform,
                         onSelectType = viewModel::selectType,
                         onSongClick = viewModel::playSong,
                         onAlbumClick = { id -> onPlaylistClick(id, true) },
                         onArtistClick = onArtistClick,
                         onPlaylistClick = { id -> onPlaylistClick(id, false) },
+                        onExternalSongClick = viewModel::playExternalTrack,
                         onLoadMore = viewModel::loadMore,
+                        onLoadMoreExternal = viewModel::loadMoreExternal,
                         onRetry = viewModel::retrySearch,
+                        onRetryExternal = { platform -> viewModel.searchExternal(inputState.query, platform, false) },
                         onLikeClick = { songId ->
                             collectSongId = songId
                             viewModel.prepareCollectDialog(songId)

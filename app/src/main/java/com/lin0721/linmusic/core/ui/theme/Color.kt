@@ -1,6 +1,42 @@
 package com.lin0721.linmusic.core.ui.theme
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import kotlin.math.PI
+import kotlin.math.cos
+
+// 平滑抗色阶断层的垂直渐变
+// 采用余弦缓动曲线采样，首尾斜率平滑过渡；透明渐变保留原色相避免发灰
+fun Brush.Companion.smoothVerticalGradient(
+    from: Color,
+    to: Color,
+    startY: Float = 0f,
+    endY: Float = Float.POSITIVE_INFINITY,
+    fadeEndFraction: Float = 1f,
+    steps: Int = 24
+): Brush {
+    val effectiveTo = if (to == Color.Transparent) from.copy(alpha = 0f) else to
+    val effectiveFrom = if (from == Color.Transparent) effectiveTo.copy(alpha = 0f) else from
+    val clampedFadeEnd = fadeEndFraction.coerceIn(0f, 1f)
+
+    val stops = Array(if (clampedFadeEnd < 1f) steps + 1 else steps) { i ->
+        if (i < steps) {
+            val t = i.toFloat() / (steps - 1)
+            val factor = ((1.0 - cos(t * PI)) / 2.0).toFloat()
+            val color = lerp(effectiveFrom, effectiveTo, factor)
+            (t * clampedFadeEnd) to color
+        } else {
+            1f to effectiveTo
+        }
+    }
+
+    return verticalGradient(
+        colorStops = stops,
+        startY = startY,
+        endY = endY
+    )
+}
 
 // HSV 明度按比例偏移，供取色/背景渲染各处按需现算深浅变体，不落地成持久字段。
 // 用比例缩放而不是加减法再 coerceIn 夹断：暗色/灰阶封面明度本就 ≤ 0.35，
@@ -82,6 +118,9 @@ val LibraryBlueGreenGradient = listOf(
 
 // 已下载标识翠绿色
 val DownloadedGreen = Color(0xFF10B981)
+
+// 下载失败标识红色，比品牌红更亮，深色背景上作文字仍可读
+val DownloadFailedRed = Color(0xFFFF6B6B)
 
 // SVIP 标识金色
 val SvipGold = Color(0xFFD4A017)

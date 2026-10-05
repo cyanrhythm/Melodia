@@ -8,6 +8,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -60,6 +61,8 @@ fun WebViewLoginScreen(
     onLoginSuccess: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler { onClose() }
+
     var isLoading by remember { mutableStateOf(true) }
 
     // 净化 UA（剔除 wv/WebView 关键字）

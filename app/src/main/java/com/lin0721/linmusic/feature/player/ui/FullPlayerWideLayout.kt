@@ -80,7 +80,7 @@ private val RightColumnEndPadding = 24.dp
 private val NoLyricsHeight = 56.dp
 
 // 手动滚动歌词松手后停留多久再回到当前行，与全屏歌词页一致
-private const val LYRICS_RESUME_DELAY_MS = 5000L
+private const val LYRICS_RESUME_DELAY_MS = 3000L
 
 private const val WIDE_LYRICS_KEY = "wide_lyrics"
 private const val WIDE_BOTTOM_SPACER_KEY = "wide_bottom_spacer"
@@ -95,10 +95,12 @@ fun FullPlayerWideLayout(
     lyrics: List<LyricLine>,
     isLyricsLoading: Boolean,
     currentLyricIndex: Int,
+    activeLyricIndices: Set<Int> = emptySet(),
     highlightColor: Color,
     currentPositionProvider: () -> Long,
     isPlaying: Boolean,
     onLyricClick: (LyricLine) -> Unit,
+    onSeek: (Long) -> Unit = {},
     onLyricsVisibleChange: (Boolean) -> Unit,
     infoCards: LazyListScope.() -> Unit,
     modifier: Modifier = Modifier
@@ -146,10 +148,12 @@ fun FullPlayerWideLayout(
                 lyrics = lyrics,
                 isLyricsLoading = isLyricsLoading,
                 currentLyricIndex = currentLyricIndex,
+                activeLyricIndices = activeLyricIndices,
                 highlightColor = highlightColor,
                 currentPositionProvider = currentPositionProvider,
                 isPlaying = isPlaying,
                 onLyricClick = onLyricClick,
+                onSeek = onSeek,
                 onLyricsVisibleChange = onLyricsVisibleChange,
                 infoCards = infoCards,
                 modifier = Modifier
@@ -166,19 +170,23 @@ private fun WideRightColumn(
     lyrics: List<LyricLine>,
     isLyricsLoading: Boolean,
     currentLyricIndex: Int,
+    activeLyricIndices: Set<Int> = emptySet(),
     highlightColor: Color,
     currentPositionProvider: () -> Long,
     isPlaying: Boolean,
     onLyricClick: (LyricLine) -> Unit,
+    onSeek: (Long) -> Unit = {},
     onLyricsVisibleChange: (Boolean) -> Unit,
     infoCards: LazyListScope.() -> Unit,
     modifier: Modifier = Modifier
 ) {
     val settingsPreferences: SettingsPreferences = koinInject()
     val lyricTextSize by settingsPreferences.fullScreenLyricTextSize.collectAsStateWithLifecycle(initialValue = 22)
+    val effectiveLyricTextSize = lyricTextSize.coerceIn(20, 40)
     val lyricAlignment by settingsPreferences.fullScreenLyricAlignment.collectAsStateWithLifecycle(initialValue = "left")
     val lyricSecondaryMode by settingsPreferences.fullScreenLyricSecondaryMode.collectAsStateWithLifecycle(initialValue = "translation")
     val karaokeAdvancedEffect by settingsPreferences.fullScreenKaraokeAdvancedEffect.collectAsStateWithLifecycle(initialValue = true)
+    val karaokeGlowEffect by settingsPreferences.fullScreenKaraokeGlowEffect.collectAsStateWithLifecycle(initialValue = false)
     val lyricLineSpacing by settingsPreferences.fullScreenLyricLineSpacing.collectAsStateWithLifecycle(initialValue = 24)
     val lyricSecondarySpacing by settingsPreferences.fullScreenLyricSecondarySpacing.collectAsStateWithLifecycle(initialValue = 6)
 
@@ -272,6 +280,7 @@ private fun WideRightColumn(
                         FullScreenLyricsList(
                             lyrics = lyrics,
                             currentIndex = currentLyricIndex,
+                            activeIndices = activeLyricIndices,
                             isLoading = isLyricsLoading,
                             isUserScrolling = isUserScrollingLyrics,
                             highlightColor = highlightColor,
@@ -280,17 +289,22 @@ private fun WideRightColumn(
                             viewportHeightPx = lyricsViewportPx,
                             onViewportHeightChange = { lyricsViewportPx = it },
                             gestureModifier = Modifier,
-                            fontSize = lyricTextSize,
+                            fontSize = effectiveLyricTextSize,
                             alignment = lyricAlignment,
                             secondaryMode = lyricSecondaryMode,
                             lineSpacing = lyricLineSpacing,
                             secondarySpacing = lyricSecondarySpacing,
                             advancedKaraokeEffect = karaokeAdvancedEffect,
+                            karaokeGlowEffect = karaokeGlowEffect,
                             isPlaying = isPlaying,
-                            showSeekGuide = false,
+                            showSeekGuide = true,
                             userScrollEnabled = false,
                             onLineTextBounds = { index, bounds -> lineTextBounds[index] = bounds },
-                            onSeek = {},
+                            onSeek = { timeMs ->
+                                resumeJob?.cancel()
+                                isUserScrollingLyrics = false
+                                onSeek(timeMs)
+                            },
                             onLyricClick = { line ->
                                 resumeJob?.cancel()
                                 isUserScrollingLyrics = false

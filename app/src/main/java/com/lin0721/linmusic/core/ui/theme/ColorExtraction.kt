@@ -4,9 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.core.graphics.drawable.toBitmap
-import coil.imageLoader
-import coil.request.ImageRequest
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.toBitmap
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.ui.theme.vibrant.VibrantSwatch
 import com.lin0721.linmusic.core.ui.theme.vibrant.defaultVibrantFilter
@@ -55,8 +56,8 @@ suspend fun extractBackdropPaletteFromUrl(context: Context, url: String): Player
             .size(DECODE_MAX_DIMENSION, DECODE_MAX_DIMENSION)
             .allowHardware(false)
             .build()
-        val drawable = context.imageLoader.execute(request).drawable ?: return FallbackBackdropPalette
-        extractBackdropPalette(drawable)
+        val bitmap = context.imageLoader.execute(request).image?.toBitmap() ?: return FallbackBackdropPalette
+        extractBackdropPalette(bitmap)
     } catch (e: Exception) {
         AppLogger.d(TAG, "取色请求失败，使用默认深灰色板", e)
         FallbackBackdropPalette
@@ -70,9 +71,8 @@ suspend fun extractBaseColorFromUrl(context: Context, url: String): Color {
 // 内部核心逻辑：解码好的位图 → 按 quality 等比例降采样 → 中位切分量化 → 挑 base。
 // 只应由上面的 *FromUrl 系列调用，不要在业务代码里直接复用某个显示用 AsyncImage 的解码结果——
 // 那正是取色不一致的根源
-private fun extractBackdropPalette(drawable: android.graphics.drawable.Drawable): PlayerBackdropPalette {
+private fun extractBackdropPalette(bitmap: Bitmap): PlayerBackdropPalette {
     return try {
-        val bitmap = drawable.toBitmap()
         val scaled = scaleDownByQuality(bitmap, VIBRANT_QUALITY)
         val pixels = IntArray(scaled.width * scaled.height)
         scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
@@ -139,7 +139,7 @@ private const val HUE_GROUP_RADIUS = 20f / 360f
 // 组内代表色偏向深色的程度，深色更适合做深色背景
 private const val DARK_PREFERENCE_POWER = 2
 
-// 最终 base 只保留色相，色度/明度统一钳到固定区间（区间取自 Spotify 实测背景色），
+// 最终 base 只保留色相，色度/明度统一钳到固定区间，
 // 避免高饱和封面过艳、低饱和封面发灰
 internal const val MIN_BASE_CHROMA = 0.15f
 private const val MAX_BASE_CHROMA = 0.30f
@@ -149,7 +149,7 @@ private const val MAX_BASE_LIGHTNESS = 0.5f
 // 中性组胜出时只带一点封面整体色调
 internal const val NEUTRAL_BASE_CHROMA = 0.06f
 
-// 规则对齐 Spotify 实测效果：面积最大的色系胜出（中性组按 NEUTRAL_WIN_RATIO 折算后与各彩色色相组比面积），
+// 面积最大的色系胜出（中性组按 NEUTRAL_WIN_RATIO 折算后与各彩色色相组比面积），
 // 胜出组里挑一个偏深的真实颜色取色相
 internal fun pickBaseColor(swatches: List<VibrantSwatch>): Color {
     val candidates = swatches.filter {

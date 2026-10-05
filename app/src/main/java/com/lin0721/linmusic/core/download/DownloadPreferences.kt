@@ -2,11 +2,13 @@ package com.lin0721.linmusic.core.download
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.lin0721.linmusic.core.log.AppLogger
+import com.lin0721.linmusic.core.model.qualityRank
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -30,8 +32,17 @@ data class DownloadRecord(
     val downloadedAt: Long,
     val fileSize: Long,
     val songName: String = "",
-    val artistName: String = ""
+    val artistName: String = "",
+    // 发起下载时请求的音质；服务端按歌曲上限降级下发时，据此判断无需再次下载
+    val requestedLevel: String = ""
 )
+
+// 已下载文件是否满足目标音质：实际下发或当初请求的档位不低于目标即视为满足
+fun DownloadRecord.satisfies(level: String): Boolean {
+    val target = qualityRank(level)
+    if (target < 0) return quality == level || requestedLevel == level
+    return maxOf(qualityRank(quality), qualityRank(requestedLevel)) >= target
+}
 
 // 判断是否为默认下载目录 Uri
 fun isDefaultDownloadDirectoryUri(uriString: String): Boolean =
@@ -51,33 +62,64 @@ class DownloadPreferences(private val context: Context) {
 
     suspend fun isDownloaded(songId: Long): Boolean = downloadedQualityFor(songId).first() != null
 
-    // 响应式查询已下载音质，文件不存在时自动清理失效记录
-    fun downloadedQualityFor(songId: Long): Flow<String?> = records
+    // 响应式查询下载记录，文件不存在时自动清理失效记录
+    fun downloadedRecordFor(songId: Long): Flow<DownloadRecord?> = records
         .map { list -> list.firstOrNull { it.songId == songId } }
         .distinctUntilChanged()
-        .map { record -> record?.let { verifyOrPurge(it) }?.quality }
+        .map { record -> record?.let { verifyOrPurge(it) } }
+
+    // 响应式查询已下载音质
+    fun downloadedQualityFor(songId: Long): Flow<String?> = downloadedRecordFor(songId).map { it?.quality }
 
     // 一次性查询校验通过的下载记录
     suspend fun findVerifiedRecord(songId: Long): DownloadRecord? =
         records.first().firstOrNull { it.songId == songId }?.let { verifyOrPurge(it) }
 
+    // 批量查询校验通过的下载记录，失效记录一次性清理
+    suspend fun findVerifiedRecords(songIds: Collection<Long>): List<DownloadRecord> {
+        val idSet = songIds.toHashSet()
+        val candidates = records.first().filter { it.songId in idSet }
+        if (candidates.isEmpty()) return emptyList()
+        val (alive, stale) = candidates.partition { fileExists(it.mediaStoreUri) }
+        if (stale.isNotEmpty()) removeRecords(stale.map { it.songId }.toSet())
+        return alive
+    }
+
+    // 下载记录中是否有其他歌曲占用该文件，避免覆盖同名的另一首歌
+    suspend fun isUriClaimedByOtherSong(uriString: String, songId: Long): Boolean =
+        records.first().any { it.mediaStoreUri == uriString && it.songId != songId }
+
     // 校验文件存在性并清理失效记录
-    private suspend fun verifyOrPurge(record: DownloadRecord): DownloadRecord? {
-        if (!isDefaultDownloadDirectoryUri(record.mediaStoreUri)) {
-            removeRecord(record.songId)
-            return null
-        }
-        return if (fileExists(record.mediaStoreUri)) record else {
+    private suspend fun verifyOrPurge(record: DownloadRecord): DownloadRecord? =
+        if (fileExists(record.mediaStoreUri)) record else {
             removeRecord(record.songId)
             null
         }
-    }
 
     // 检查目标 Uri 文件是否存在
     private suspend fun fileExists(uriString: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             context.contentResolver.openInputStream(Uri.parse(uriString))?.use { true } ?: false
         }.getOrDefault(false)
+    }
+
+    // 删除下载文件；非本应用创建的 MediaStore 文件无删除权限时返回 false
+    suspend fun deleteFile(uriString: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val uri = Uri.parse(uriString)
+            if (isDefaultDownloadDirectoryUri(uriString)) {
+                context.contentResolver.delete(uri, null, null) > 0
+            } else {
+                DocumentsContract.deleteDocument(context.contentResolver, uri)
+            }
+        }.onFailure { AppLogger.w(TAG, "删除下载文件失败 uri=$uriString", it) }.getOrDefault(false)
+    }
+
+    // 删除已下载歌曲：文件删除成功或文件已不存在时一并移除记录
+    suspend fun deleteDownload(record: DownloadRecord): Boolean {
+        val deleted = deleteFile(record.mediaStoreUri) || !fileExists(record.mediaStoreUri)
+        if (deleted) removeRecord(record.songId)
+        return deleted
     }
 
     // 添加或更新下载记录
@@ -88,9 +130,11 @@ class DownloadPreferences(private val context: Context) {
         }
     }
 
-    suspend fun removeRecord(songId: Long) {
+    suspend fun removeRecord(songId: Long) = removeRecords(setOf(songId))
+
+    private suspend fun removeRecords(songIds: Set<Long>) {
         context.downloadDataStore.edit { prefs ->
-            val updated = decodeRecords(prefs[KEY_RECORDS]).filterNot { it.songId == songId }
+            val updated = decodeRecords(prefs[KEY_RECORDS]).filterNot { it.songId in songIds }
             prefs[KEY_RECORDS] = json.encodeToString(updated)
         }
     }

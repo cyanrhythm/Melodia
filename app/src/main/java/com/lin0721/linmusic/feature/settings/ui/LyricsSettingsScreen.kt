@@ -19,10 +19,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.LocalBottomOverlayInset
 import com.lin0721.linmusic.core.player.external.FluidCloudLyricNotifier
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
+import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
+import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
 import com.lin0721.linmusic.feature.player.ui.LyricCapsuleSlider
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +67,19 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
         ) {
             item {
                 SettingsGroupCard(SettingsSubMenu.LYRICS.sectionTitles[0]) {
+                    val isExpanded = LocalMelodiaWindowSizeClass.current == MelodiaWindowSizeClass.Expanded
+                    val fontSizeRange = if (isExpanded) 20f..40f else 16f..32f
+                    val displayFontSize = fullScreenLyricTextSize.coerceIn(
+                        fontSizeRange.start.roundToInt(),
+                        fontSizeRange.endInclusive.roundToInt()
+                    )
+
+                    LaunchedEffect(fontSizeRange) {
+                        if (fullScreenLyricTextSize !in fontSizeRange.start.roundToInt()..fontSizeRange.endInclusive.roundToInt()) {
+                            viewModel.updateFullScreenLyricTextSize(displayFontSize)
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -76,7 +92,7 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
                         ) {
                             Text("歌词字号大小", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                             Text(
-                                text = "${fullScreenLyricTextSize} sp",
+                                text = "${displayFontSize} sp",
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
@@ -84,9 +100,9 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         LyricCapsuleSlider(
-                            value = fullScreenLyricTextSize,
+                            value = displayFontSize,
                             onValueChange = { viewModel.updateFullScreenLyricTextSize(it) },
-                            valueRange = 16f..32f
+                            valueRange = fontSizeRange
                         )
                     }
                     HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
@@ -196,16 +212,7 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.background,
                 shape = BottomSheetShape,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(DragHandleShape)
-                            .background(Color.White.copy(alpha = 0.3f))
-                    )
-                }
+                dragHandle = { MelodiaDragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -256,16 +263,7 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.background,
                 shape = BottomSheetShape,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(DragHandleShape)
-                            .background(Color.White.copy(alpha = 0.3f))
-                    )
-                }
+                dragHandle = { MelodiaDragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -317,16 +315,7 @@ fun LyricsSettingsView(viewModel: SettingsViewModel) {
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.background,
                 shape = BottomSheetShape,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(DragHandleShape)
-                            .background(Color.White.copy(alpha = 0.3f))
-                    )
-                }
+                dragHandle = { MelodiaDragHandle() }
             ) {
                 Column(
                     modifier = Modifier

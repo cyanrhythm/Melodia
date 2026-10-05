@@ -26,16 +26,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
+import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import com.lin0721.linmusic.core.model.Track
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.theme.MelodiaPress
 import com.lin0721.linmusic.core.ui.theme.RadiusCompact
 import com.lin0721.linmusic.core.ui.theme.TextGray
+import com.lin0721.linmusic.feature.music.domain.StyleAlbumItem
 import com.lin0721.linmusic.feature.music.domain.StyleArtistItem
 import com.lin0721.linmusic.feature.music.domain.StylePlaylistItem
+import java.time.Instant
+import java.time.ZoneId
 
 // 曲风页各段共用的标题
 @Composable
@@ -101,50 +104,91 @@ fun MusicPlaylistRow(playlists: List<StylePlaylistItem>, onClick: (StylePlaylist
     }
 }
 
-// 必听单曲：带序号，点击整段入队从该首起播
+// 曲目行：带序号，点击整段入队从该首起播；当前播放项高亮
 @Composable
-fun MusicSongList(songs: List<Track>, onPlayAt: (Int) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        songs.forEachIndexed { index, track ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onPlayAt(index) }
-                    .padding(horizontal = MusicEdgePadding, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${index + 1}",
-                    color = TextGray,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(18.dp)
-                )
+fun MusicSongRow(index: Int, track: Track, isCurrent: Boolean, onClick: () -> Unit) {
+    val highlight = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = MusicEdgePadding, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${index + 1}",
+            color = if (isCurrent) highlight else TextGray,
+            fontSize = 12.sp,
+            modifier = Modifier.width(26.dp)
+        )
+        SubcomposeAsyncImage(
+            model = track.al.picUrl.withStyleCoverParam("120y120"),
+            contentDescription = track.name,
+            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(RadiusCompact)),
+            contentScale = ContentScale.Crop,
+            loading = { CoverPlaceholder() },
+            error = { CoverPlaceholder() }
+        )
+        Column(modifier = Modifier.weight(1f).padding(start = 11.dp)) {
+            Text(
+                text = track.name,
+                color = if (isCurrent) highlight else MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = listOf(track.ar.joinToString("/") { it.name }, track.al.name)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · "),
+                color = TextGray,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp)
+            )
+        }
+    }
+}
+
+// 热门专辑：副标题为发行年份与歌手
+@Composable
+fun MusicAlbumRow(albums: List<StyleAlbumItem>, onClick: (StyleAlbumItem) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = MusicEdgePadding),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        itemsIndexed(albums, key = { index, item -> "${item.id}_$index" }) { _, item ->
+            Column(modifier = Modifier.width(126.dp).pressable(MelodiaPress.Card) { onClick(item) }) {
                 SubcomposeAsyncImage(
-                    model = track.al.picUrl.withStyleCoverParam("120y120"),
-                    contentDescription = track.name,
-                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(RadiusCompact)),
+                    model = item.coverUrl.withStyleCoverParam("300y300"),
+                    contentDescription = item.name,
+                    modifier = Modifier.size(126.dp).clip(RoundedCornerShape(RadiusCompact)),
                     contentScale = ContentScale.Crop,
                     loading = { CoverPlaceholder() },
                     error = { CoverPlaceholder() }
                 )
-                Column(modifier = Modifier.weight(1f).padding(start = 11.dp)) {
-                    Text(
-                        text = track.name,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = track.ar.joinToString("/") { it.name },
-                        color = TextGray,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 1.dp)
-                    )
-                }
+                Text(
+                    text = item.name,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                val year = item.publishTime.takeIf { it > 0 }
+                    ?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).year.toString() }
+                Text(
+                    text = listOfNotNull(year, item.artistName.ifBlank { null }).joinToString(" · "),
+                    color = TextGray,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
         }
     }

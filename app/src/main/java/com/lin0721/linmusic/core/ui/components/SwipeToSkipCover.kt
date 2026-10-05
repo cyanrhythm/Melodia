@@ -415,9 +415,10 @@ fun SwipeToSkipCover(
                 val previewNextUrl = displayedNextCoverUrl
                 val previewPrevKey = displayedPreviousKey
                 val previewNxtKey = displayedNextKey
-                val currentKeyStr = displayedCurrentKey.toString()
+                // 仅在手势滑动、过渡中或有位移时挂载两侧邻居卡片，静止播放时不渲染屏幕外卡片
+                val shouldShowNeighbors = isDragActive || isTransitioning || offsetX != 0f
 
-                if (previewPreviousUrl != null) {
+                if (shouldShowNeighbors && previewPreviousUrl != null) {
                     val prevKeyCalculated = when {
                         previewPrevKey != null -> {
                             val k = previewPrevKey.toString()
@@ -429,7 +430,7 @@ fun SwipeToSkipCover(
                     add(SwipeCoverLayerSpec(prevKeyCalculated, previewPreviousUrl) { offsetX - containerWidthPx })
                 }
                 add(SwipeCoverLayerSpec(currentKeyStr, displayedCoverUrl) { offsetX })
-                if (previewNextUrl != null) {
+                if (shouldShowNeighbors && previewNextUrl != null) {
                     val nextKeyCalculated = when {
                         previewNxtKey != null -> {
                             val k = previewNxtKey.toString()

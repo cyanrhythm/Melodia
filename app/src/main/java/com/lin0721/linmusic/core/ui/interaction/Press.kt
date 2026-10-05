@@ -9,13 +9,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
@@ -141,35 +139,6 @@ fun Modifier.pressScale(
     style: PressStyle,
     interactionSource: InteractionSource
 ): Modifier = pressDecoration(style, RectangleShape, interactionSource)
-
-// 仅做压暗，给只暴露 interactionSource、不接受 indication 的 M3 组件用（DropdownMenuItem 等）。
-@Composable
-fun Modifier.pressHighlight(
-    style: PressStyle,
-    interactionSource: InteractionSource,
-    shape: Shape = RectangleShape
-): Modifier {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val alpha = remember { Animatable(0f) }
-    val longPressDelayMs = LocalViewConfiguration.current.longPressTimeoutMillis
-    LaunchedEffect(pressed, style.highlightAlpha) {
-        if (pressed) {
-            delay(longPressDelayMs)
-            alpha.animateTo(style.highlightAlpha, PressDownSpec)
-        } else {
-            alpha.animateTo(0f, PressUpSpec)
-        }
-    }
-    return if (style.highlightAlpha <= 0f) {
-        this
-    } else {
-        clip(shape).drawWithContent {
-            val current = alpha.value
-            if (current > 0f) drawRect(color = Color.Black, alpha = current)
-            drawContent()
-        }
-    }
-}
 
 @Composable
 private fun Modifier.pressDecoration(

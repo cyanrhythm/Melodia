@@ -24,7 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.lin0721.linmusic.core.auth.UserProfile
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.interaction.pressScale
@@ -46,6 +46,7 @@ fun ProfileSidebar(
     onNavigateToRecentPlay: () -> Unit,
     onNavigateToListenData: () -> Unit,
     onNavigateToCloud: () -> Unit,
+    onNavigateToDownloads: () -> Unit,
     onNavigateToMessage: () -> Unit,
     onNavigateToAccount: () -> Unit,
     onNavigateToSettings: () -> Unit
@@ -126,6 +127,11 @@ fun ProfileSidebar(
                 icon = Icons.Outlined.CloudQueue,
                 title = "我的云盘",
                 onClick = { onDismiss(); onNavigateToCloud() }
+            )
+            SidebarMenuItem(
+                icon = Icons.Outlined.FileDownload,
+                title = "下载管理",
+                onClick = { onDismiss(); onNavigateToDownloads() }
             )
             SidebarMenuItem(
                 icon = Icons.Outlined.Notifications,

@@ -28,9 +28,9 @@ import com.lin0721.linmusic.BuildConfig
 import com.lin0721.linmusic.LocalBottomOverlayInset
 import com.lin0721.linmusic.R
 import com.lin0721.linmusic.core.log.AppLogger
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
-import com.lin0721.linmusic.core.ui.theme.DragHandleShape
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.update.UpdateManager
 import org.koin.compose.koinInject
@@ -167,16 +167,7 @@ fun AboutSettingsView(viewModel: SettingsViewModel) {
                         sheetState = sheetState,
                         containerColor = MaterialTheme.colorScheme.background,
                         shape = BottomSheetShape,
-                        dragHandle = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 12.dp, bottom = MelodiaSpacing.xs)
-                                    .width(36.dp)
-                                    .height(4.dp)
-                                    .clip(DragHandleShape)
-                                    .background(Color.White.copy(alpha = 0.3f))
-                            )
-                        }
+                        dragHandle = { MelodiaDragHandle() }
                     ) {
                         Column(
                             modifier = Modifier
@@ -228,6 +219,7 @@ fun AboutSettingsView(viewModel: SettingsViewModel) {
                             "• NeteaseCloudMusicApi\n" +
                             "• NeteaseCloudMusicApiEnhanced\n" +
                             "• SPlayer\n" +
+                            "• AMLL\n" +
                             "• SuperLyric\n" +
                             "• LyricInfo\n" +
                             "• Lyricon\n" +

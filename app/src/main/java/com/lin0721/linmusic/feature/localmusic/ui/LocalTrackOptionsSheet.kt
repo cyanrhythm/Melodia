@@ -13,8 +13,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.PlaylistRemove
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
@@ -35,8 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
-import com.lin0721.linmusic.core.localmusic.LocalTrack
+import coil3.compose.SubcomposeAsyncImage
+import com.lin0721.linmusic.feature.localmusic.domain.LocalTrack
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BackgroundDark
@@ -57,8 +60,11 @@ fun LocalTrackOptionsSheet(
     onPlayClick: () -> Unit,
     onPlayNextClick: () -> Unit,
     onShareClick: () -> Unit,
+    onEditTagsClick: () -> Unit,
     onDetailClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onAddToPlaylistClick: () -> Unit,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -130,8 +136,19 @@ fun LocalTrackOptionsSheet(
             SheetOptionRow(icon = Icons.AutoMirrored.Rounded.PlaylistPlay, label = "下一首播放") {
                 runThenHide(onPlayNextClick)
             }
+            SheetOptionRow(icon = Icons.AutoMirrored.Rounded.PlaylistAdd, label = "加入本地歌单") {
+                runThenHide(onAddToPlaylistClick)
+            }
+            if (onRemoveFromPlaylistClick != null) {
+                SheetOptionRow(icon = Icons.Rounded.PlaylistRemove, label = "从歌单移除") {
+                    runThenHide(onRemoveFromPlaylistClick)
+                }
+            }
             SheetOptionRow(icon = Icons.Rounded.Share, label = "分享文件") {
                 runThenHide(onShareClick)
+            }
+            SheetOptionRow(icon = Icons.Rounded.Edit, label = "编辑标签") {
+                runThenHide(onEditTagsClick)
             }
             SheetOptionRow(icon = Icons.Rounded.Info, label = "查看详情") {
                 runThenHide(onDetailClick)

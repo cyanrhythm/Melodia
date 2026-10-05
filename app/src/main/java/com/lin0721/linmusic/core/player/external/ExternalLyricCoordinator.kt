@@ -10,7 +10,7 @@ import com.hchen.superlyricapi.SuperLyricLine
 import com.hchen.superlyricapi.SuperLyricWord
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.PlayerManager
-import com.lin0721.linmusic.core.player.data.PlaybackRepository
+import com.lin0721.linmusic.core.player.LyricsResolver
 import com.lin0721.linmusic.core.player.domain.LyricLine
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +19,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val TAG = "ExternalLyricCoordinator"
@@ -27,7 +26,7 @@ private const val TAG = "ExternalLyricCoordinator"
 class ExternalLyricCoordinator(
     private val context: Context,
     private val playerManager: PlayerManager,
-    private val playbackRepository: PlaybackRepository,
+    private val lyricsResolver: LyricsResolver,
     private val settingsPreferences: SettingsPreferences
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -47,6 +46,7 @@ class ExternalLyricCoordinator(
 
     private var displayedTitle: String = ""
     private var currentLyricInfoJson: String = ""
+    private var sessionGeneration: Int = 0
 
     private var isSuperLyricEnabled = false
     private var isLyricInfoEnabled = false
@@ -150,6 +150,18 @@ class ExternalLyricCoordinator(
                 handlePositionChanged(positionMs)
             }
         }
+
+        scope.launch {
+            playerManager.duration.collectLatest { durationMs ->
+                if (durationMs > 0L && durationMs != originalDurationMs) {
+                    originalDurationMs = durationMs
+                    if (currentLyricInfoJson.isNotBlank()) {
+                        rebuildLyricInfo()
+                        onMetadataChanged?.invoke()
+                    }
+                }
+            }
+        }
     }
 
     private fun handleTrackChanged(mediaItem: MediaItem?) {
@@ -159,9 +171,12 @@ class ExternalLyricCoordinator(
         originalArtist = meta?.artist?.toString() ?: ""
         originalAlbum = meta?.albumTitle?.toString() ?: ""
         displayedTitle = originalTitle
+        originalDurationMs = playerManager.duration.value
 
         if (songId != currentSongId) {
             currentSongId = songId
+            sessionGeneration++
+            val generation = sessionGeneration
             currentLines = emptyList()
             currentLyricIndex = -1
             currentLyricInfoJson = ""
@@ -169,7 +184,8 @@ class ExternalLyricCoordinator(
 
             if (songId != -1L) {
                 lyricFetchJob = scope.launch {
-                    playbackRepository.getLyrics(songId).collect { result ->
+                    lyricsResolver.lyricsFor(songId).collect { result ->
+                        if (generation != sessionGeneration) return@collect
                         result.onSuccess { lines ->
                             currentLines = lines
                             rebuildLyricInfo()
@@ -246,7 +262,7 @@ class ExternalLyricCoordinator(
     }
 
     private fun updateBluetoothTitleForIndex(index: Int) {
-        if (!isBluetoothLyricEnabled) {
+        if (!isBluetoothLyricEnabled || isLyricInfoEnabled) {
             displayedTitle = originalTitle
             return
         }
@@ -291,11 +307,13 @@ class ExternalLyricCoordinator(
             .setAlbum(originalAlbum)
             .setLyric(lyricLine)
 
-        if (isShowTranslation && !line.translation.isNullOrBlank()) {
-            data.setTranslation(SuperLyricLine(line.translation, line.timeMs, lineEndTime))
+        val translation = line.translation
+        if (isShowTranslation && !translation.isNullOrBlank()) {
+            data.setTranslation(SuperLyricLine(translation, line.timeMs, lineEndTime))
         }
-        if (!line.roma.isNullOrBlank()) {
-            data.setSecondary(SuperLyricLine(line.roma, line.timeMs, lineEndTime))
+        val roma = line.roma
+        if (!roma.isNullOrBlank()) {
+            data.setSecondary(SuperLyricLine(roma, line.timeMs, lineEndTime))
         }
 
         SuperLyricHelper.sendLyric(data)
@@ -320,18 +338,22 @@ class ExternalLyricCoordinator(
             currentLyricInfoJson = ""
             return
         }
+        val durationSec = originalDurationMs / 1000
+        val trackKey = "$currentSongId|$originalTitle|$originalArtist|$durationSec"
         currentLyricInfoJson = LyricInfoBuilder.buildLyricInfoJson(
             songName = originalTitle,
             artist = originalArtist,
             songId = currentSongId.toString(),
             album = originalAlbum,
             lines = currentLines,
-            showTranslation = isShowTranslation
+            showTranslation = isShowTranslation,
+            sessionGeneration = sessionGeneration,
+            trackKey = trackKey
         )
     }
 
     fun applyToMediaMetadata(builder: MediaMetadata.Builder, original: MediaMetadata): MediaMetadata {
-        if (isBluetoothLyricEnabled && displayedTitle.isNotBlank()) {
+        if (isBluetoothLyricEnabled && !isLyricInfoEnabled && displayedTitle.isNotBlank()) {
             builder.setTitle(displayedTitle)
         } else {
             builder.setTitle(originalTitle.ifBlank { original.title })

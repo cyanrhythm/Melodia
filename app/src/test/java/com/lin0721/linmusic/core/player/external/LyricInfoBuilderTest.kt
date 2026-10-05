@@ -120,4 +120,21 @@ class LyricInfoBuilderTest {
         assertTrue(root.getBoolean("noLyric"))
         assertEquals("", root.getString("lyric"))
     }
+
+    @Test
+    fun `携带代次与TrackKey时正确序列化`() {
+        val jsonString = LyricInfoBuilder.buildLyricInfoJson(
+            songName = "Song",
+            artist = "Artist",
+            songId = "42",
+            album = "Album",
+            lines = listOf(LyricLine(timeMs = 0L, text = "Line")),
+            showTranslation = true,
+            sessionGeneration = 5,
+            trackKey = "42|Song|Artist|180"
+        )
+        val root = JSONObject(jsonString)
+        assertEquals(5, root.getInt("sessionGeneration"))
+        assertEquals("42|Song|Artist|180", root.getString("trackKey"))
+    }
 }

@@ -10,6 +10,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.google.common.util.concurrent.Futures
@@ -46,6 +47,12 @@ class CrossfadePlayer(
 
     private val active: ExoPlayer
         get() = if (player === secondary) secondary else primary
+
+    // 逐字歌词读取当前接管播放的 ExoPlayer，切换两台播放器时自动跟随。
+    // 与其余 Player API 一样，只能从 applicationLooper 所在线程调用。
+    internal fun currentPositionSample(): PlaybackPositionSample? = active.run {
+        currentMediaItem?.let { PlaybackPositionSample(it.mediaId, currentPosition) }
+    }
 
     private val fadeStep = object : Runnable {
         override fun run() {
@@ -102,7 +109,10 @@ class CrossfadePlayer(
         val builder = base.buildUpon().setAvailableCommands(commands).setVolume(1f)
         val transformer = metadataTransformer
         if (transformer != null && !base.timeline.isEmpty) {
-            builder.setPlaylist(base.timeline, base.currentTracks, transformer(base.currentMetadata))
+            val activeIndex = active.currentMediaItemIndex
+            val transformedTimeline = TransformedTimeline(base.timeline, activeIndex, transformer)
+            val transformedMetadata = transformer(base.currentMetadata)
+            builder.setPlaylist(transformedTimeline, base.currentTracks, transformedMetadata)
         }
         return builder.build()
     }
@@ -296,3 +306,59 @@ class CrossfadePlayer(
         }
     }
 }
+
+@OptIn(UnstableApi::class)
+private class TransformedTimeline(
+    private val timeline: Timeline,
+    private val activeMediaItemIndex: Int,
+    private val transformer: (MediaMetadata) -> MediaMetadata
+) : Timeline() {
+
+    override fun getWindowCount(): Int = timeline.windowCount
+
+    override fun getNextWindowIndex(windowIndex: Int, repeatMode: Int, shuffleModeEnabled: Boolean): Int {
+        return timeline.getNextWindowIndex(windowIndex, repeatMode, shuffleModeEnabled)
+    }
+
+    override fun getPreviousWindowIndex(windowIndex: Int, repeatMode: Int, shuffleModeEnabled: Boolean): Int {
+        return timeline.getPreviousWindowIndex(windowIndex, repeatMode, shuffleModeEnabled)
+    }
+
+    override fun getLastWindowIndex(shuffleModeEnabled: Boolean): Int {
+        return timeline.getLastWindowIndex(shuffleModeEnabled)
+    }
+
+    override fun getFirstWindowIndex(shuffleModeEnabled: Boolean): Int {
+        return timeline.getFirstWindowIndex(shuffleModeEnabled)
+    }
+
+    override fun getWindow(
+        windowIndex: Int,
+        window: Window,
+        defaultPositionProjectionUs: Long
+    ): Window {
+        val w = timeline.getWindow(windowIndex, window, defaultPositionProjectionUs)
+        if (windowIndex == activeMediaItemIndex || activeMediaItemIndex == -1) {
+            val originalItem = w.mediaItem
+            w.mediaItem = originalItem.buildUpon()
+                .setMediaMetadata(transformer(originalItem.mediaMetadata))
+                .build()
+        }
+        return w
+    }
+
+    override fun getPeriodCount(): Int = timeline.periodCount
+
+    override fun getPeriod(periodIndex: Int, period: Period, setIds: Boolean): Period {
+        return timeline.getPeriod(periodIndex, period, setIds)
+    }
+
+    override fun getIndexOfPeriod(uid: Any): Int {
+        return timeline.getIndexOfPeriod(uid)
+    }
+
+    override fun getUidOfPeriod(periodIndex: Int): Any {
+        return timeline.getUidOfPeriod(periodIndex)
+    }
+}
+

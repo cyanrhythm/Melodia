@@ -4,6 +4,7 @@ import androidx.compose.runtime.snapshots.Snapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.json.Json
 import org.junit.Test
 
 class MelodiaNavigationStateTest {
@@ -151,5 +152,92 @@ class MelodiaNavigationStateTest {
 
         nav.resetPlayerNavigation()
         assertFalse(nav.isNavigatingFromPlayer)
+    }
+
+    @Test
+    fun `导航快照包含本地音乐页面时可以序列化并还原`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.navigateTo(Screen.Library)
+        nav.openLocalMusic()
+        nav.navigateTo(Screen.LocalMusicSettings)
+        nav.navigateTo(Screen.LocalArtist("茶太"))
+        nav.navigateTo(Screen.LocalAlbum("id:42"))
+        nav.navigateTo(Screen.LocalFolder("/sdcard/Music"))
+        nav.navigateTo(Screen.LocalPlaylists)
+        nav.navigateTo(Screen.LocalPlaylist(7L))
+
+        val json = Json.encodeToString(NavigationSnapshot.serializer(), nav.toSnapshot())
+        val restored = Json.decodeFromString(NavigationSnapshot.serializer(), json)
+        assertEquals(
+            listOf(
+                Screen.Library,
+                Screen.LocalMusic,
+                Screen.LocalMusicSettings,
+                Screen.LocalArtist("茶太"),
+                Screen.LocalAlbum("id:42"),
+                Screen.LocalFolder("/sdcard/Music"),
+                Screen.LocalPlaylists,
+                Screen.LocalPlaylist(7L)
+            ),
+            restored.libraryStack
+        )
+    }
+
+    @Test
+    fun `首页处于非全部分类时回退会切回全部`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC, nav.homeTab)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        nav.navigateBack()
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `首页展开最新时回退优先收起最新再切回全部`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
+        nav.updateShowMusicNewWorks(true)
+        assertTrue(nav.showMusicNewWorks)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第一次返回收起最新
+        nav.navigateBack()
+        assertFalse(nav.showMusicNewWorks)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC, nav.homeTab)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第二次返回切回全部
+        nav.navigateBack()
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `从其他Tab根页面回退到首页时重置分类为全部`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
+        nav.navigateTo(Screen.Library)
+        assertEquals(Screen.Library, nav.currentScreen)
+
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `从首页二级页面回退到栈底时重置分类为全部`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
+        nav.openPlaylist(1L, false)
+        assertEquals(Screen.Playlist(1L, false), nav.currentScreen)
+
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
     }
 }

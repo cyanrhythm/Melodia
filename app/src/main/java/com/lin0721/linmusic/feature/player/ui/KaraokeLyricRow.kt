@@ -1,10 +1,17 @@
 package com.lin0721.linmusic.feature.player.ui
 
-import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -15,20 +22,18 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.domain.LyricLine
-import kotlinx.coroutines.isActive
 
 private const val TAG = "KaraokeLyricRow"
 
@@ -52,86 +57,104 @@ private class LineLayout(
 
 private class LyricLayoutInfo(
     val wordLayouts: List<WordLayout>,
-    val lineLayouts: List<LineLayout>,
-    val wordsByLine: List<List<WordLayout>>
+    val lineLayouts: List<LineLayout>
 )
 
-// 基于高精度系统时钟的时钟插值器，将播放器底层轮询进度转换为 60/120fps 平滑进度
-private class LyricTimeInterpolator {
-    private var basePositionMs: Long = 0L
-    private var anchorRealtimeNano: Long = 0L
-    private var lastObservedRawPosition: Long = -1L
+internal data class KaraokeCharacterBox(val lineIndex: Int, val left: Float, val right: Float)
 
-    fun getSmoothPosition(rawPosition: Long, isPlaying: Boolean): Long {
-        val nowNano = SystemClock.elapsedRealtimeNanos()
-        if (rawPosition != lastObservedRawPosition) {
-            lastObservedRawPosition = rawPosition
-            basePositionMs = rawPosition
-            anchorRealtimeNano = nowNano
-        }
-        return if (isPlaying) {
-            val elapsedMs = (nowNano - anchorRealtimeNano) / 1_000_000L
-            val clampedElapsed = elapsedMs.coerceIn(0L, 500L)
-            basePositionMs + clampedElapsed
+internal data class KaraokeWordSegment(
+    val lineIndex: Int,
+    val left: Float,
+    val right: Float,
+    val startMs: Long,
+    val endMs: Long
+)
+
+// 一个计时词可能横跨自动换行。按视觉行分段，时间按各段可见字形宽度分配；
+// 空格由调用处过滤，避免换行空格的坐标被当成上一行的终点。
+internal fun splitTimedWordAcrossLines(
+    startMs: Long,
+    durationMs: Long,
+    characters: List<KaraokeCharacterBox>
+): List<KaraokeWordSegment> {
+    if (characters.isEmpty()) return emptyList()
+    val groups = mutableListOf<MutableList<KaraokeCharacterBox>>()
+    characters.forEach { character ->
+        if (groups.lastOrNull()?.lastOrNull()?.lineIndex == character.lineIndex) {
+            groups.last().add(character)
         } else {
-            basePositionMs
+            groups.add(mutableListOf(character))
         }
+    }
+    val widths = groups.map { group -> group.sumOf { (it.right - it.left).coerceAtLeast(1f).toDouble() } }
+    val totalWidth = widths.sum()
+    var elapsedWidth = 0.0
+    return groups.mapIndexed { index, group ->
+        val start = startMs + (durationMs * elapsedWidth / totalWidth).toLong()
+        elapsedWidth += widths[index]
+        val end = if (index == groups.lastIndex) startMs + durationMs
+                  else startMs + (durationMs * elapsedWidth / totalWidth).toLong()
+        KaraokeWordSegment(
+            lineIndex = group.first().lineIndex,
+            left = group.minOf { it.left },
+            right = group.maxOf { it.right },
+            startMs = start,
+            endMs = end
+        )
     }
 }
 
-// 计算单行当前进度的擦除右边界，包含词内比例与词间过渡
-private fun calculateLineProgressRight(
-    lineIndex: Int,
-    lineLayout: LineLayout,
-    info: LyricLayoutInfo,
-    relativeProgress: Long
-): Float {
-    val wordsOnLine = info.wordsByLine.getOrElse(lineIndex) { emptyList() }
-    val lastWordOnLine = wordsOnLine.lastOrNull() ?: return lineLayout.left
-    if (relativeProgress >= lastWordOnLine.endMs) {
-        return lineLayout.right
-    }
-    val firstWord = wordsOnLine.first()
-    if (relativeProgress < firstWord.startMs) {
-        return lineLayout.left
-    }
+// 扫色分界处的羽化带总宽度：过大像光晕、过小退化成硬竖线，16.dp 约一个字宽，观感最轻微
+private val KaraokeEdgeFeather: Dp = 16.dp
 
-    var maxRight = lineLayout.left
-    for (i in wordsOnLine.indices) {
-        val word = wordsOnLine[i]
-        if (relativeProgress in word.startMs..word.endMs) {
-            val wordDuration = (word.endMs - word.startMs).coerceAtLeast(1)
-            val ratio = (relativeProgress - word.startMs).toFloat() / wordDuration
-            val currentWordRight = word.left + (word.right - word.left) * ratio
-            maxRight = maxRight.coerceAtLeast(currentWordRight)
-            break
-        } else if (relativeProgress > word.endMs) {
-            maxRight = maxRight.coerceAtLeast(word.right)
-            if (i + 1 < wordsOnLine.size) {
-                val nextWord = wordsOnLine[i + 1]
-                if (relativeProgress < nextWord.startMs) {
-                    val gapDuration = (nextWord.startMs - word.endMs).coerceAtLeast(1)
-                    if (gapDuration <= 300) {
-                        val gapRatio = (relativeProgress - word.endMs).toFloat() / gapDuration
-                        val bridgeX = word.right + (nextWord.left - word.right) * gapRatio
-                        maxRight = maxRight.coerceAtLeast(bridgeX)
-                    } else {
-                        val bridgeTime = 60L
-                        val gapElapsed = relativeProgress - word.endMs
-                        if (gapElapsed < bridgeTime) {
-                            val gapRatio = gapElapsed.toFloat() / bridgeTime
-                            val bridgeX = word.right + (nextWord.left - word.right) * gapRatio
-                            maxRight = maxRight.coerceAtLeast(bridgeX)
-                        } else {
-                            maxRight = maxRight.coerceAtLeast(nextWord.left)
-                        }
+// 每一视觉行的已播范围：clipRight 是实色裁剪右缘（当前演唱行已外扩半个羽化带），
+// featherCenterX 非空表示该行是正在演唱的行，渐变中心应对齐到此处
+private data class PlayedSpan(
+    val clipRight: Float,
+    val featherCenterX: Float?
+)
+
+// 按播放进度推导每一视觉行的已播右缘与羽化中心。纯计算、无状态读取，可在绘制阶段每帧调用
+private fun computePlayedSpans(
+    info: LyricLayoutInfo,
+    relativeProgress: Long,
+    featherHalfPx: Float
+): List<PlayedSpan> {
+    return info.lineLayouts.mapIndexed { lineIndex, lineLayout ->
+        val lastWordOnLine = info.wordLayouts.lastOrNull { it.lineIndex == lineIndex }
+        if (lastWordOnLine != null && relativeProgress >= lastWordOnLine.endMs) {
+            // 整行已唱完，直接拉满高亮，不需要羽化
+            PlayedSpan(clipRight = lineLayout.right, featherCenterX = null)
+        } else {
+            var maxRight = lineLayout.left
+            var hasActiveWord = false
+            info.wordLayouts.forEach { word ->
+                if (word.lineIndex == lineIndex) {
+                    if (relativeProgress >= word.endMs) {
+                        maxRight = maxRight.coerceAtLeast(word.right)
+                    } else if (relativeProgress in word.startMs..word.endMs) {
+                        // 在当前唱到的字词内进行线性像素高亮插值
+                        val ratio = if (word.endMs > word.startMs) {
+                            (relativeProgress - word.startMs).toFloat() / (word.endMs - word.startMs)
+                        } else 1f
+                        val edge = word.left + (word.right - word.left) * ratio
+                        maxRight = maxRight.coerceAtLeast(edge)
+                        hasActiveWord = true
                     }
-                    break
                 }
+            }
+            if (hasActiveWord) {
+                // 已唱完的字形可能比当前字词的插值边缘更靠右（例如重叠的标点时间戳）。
+                // 羽化始终跟随真正的高亮右缘，避免渐变之后残留一条实色竖线。
+                PlayedSpan(
+                    clipRight = (maxRight + featherHalfPx).coerceAtMost(lineLayout.right),
+                    featherCenterX = maxRight
+                )
+            } else {
+                PlayedSpan(clipRight = maxRight, featherCenterX = null)
             }
         }
     }
-    return maxRight.coerceIn(lineLayout.left, lineLayout.right)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -144,22 +167,36 @@ fun KaraokeLyricRow(
     inactiveColor: Color,
     activeColor: Color,
     fontSize: TextUnit = 22.sp,
+    // 行高必须大于字形实际纵向跨度（升部+降部），让相邻视觉行的行盒互不重叠：
+    // 裁剪矩形与羽化带都是按行盒高度作用的，一旦行盒重叠，已播行白字会染到未播行升部、
+    // 羽化带会擦掉已播行降部，且矩形裁剪无法在重叠像素上同时满足两行，只能从源头避开
     lineHeight: TextUnit = (fontSize.value * 1.35f).sp,
     textAlign: TextAlign = TextAlign.Start,
+    // 关闭流光只移除柔边羽化，仍按逐字时间裁剪并逐帧推进。
     advancedEffect: Boolean = true,
-    isPlaying: Boolean = true
+    // 字词呼吸光晕微光脉冲
+    glowEffect: Boolean = false,
+    // 每帧在绘制阶段读播放器时钟；暂停和缓冲时由播放器本身冻结进度。
+    isPlaying: Boolean = true,
+    fontWeight: FontWeight = FontWeight.ExtraBold,
+    isActive: Boolean = true,
+    featherWidth: Dp = KaraokeEdgeFeather
 ) {
     var textLayoutResult by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
     val currentPositionProviderState = rememberUpdatedState(currentPositionProvider)
-    val timeInterpolator = remember(line) { LyricTimeInterpolator() }
+    // 裁剪路径复用：裁剪矩形每帧都要重建，Path 背后是原生对象且带 finalizer，
+    // 每帧新建会持续制造 GC 压力，在满帧率下尤其容易造成掉帧毛刺
+    val reusableClipPath = remember { Path() }
+    // 逐帧心跳：写一个每帧都不同的帧时间戳，供绘制阶段读取以换取每帧重绘。
+    // 没有它的话，重绘只能被 50ms 一次的播放器进度轮询触发，逐字扫色会掉到 20Hz。
     var frameTick by remember(line) { mutableLongStateOf(0L) }
 
-    LaunchedEffect(isPlaying, line) {
-        if (isPlaying) {
-            while (isActive) {
-                withFrameNanos { frameNano ->
-                    frameTick = frameNano
-                }
+    LaunchedEffect(isPlaying, line, isActive, advancedEffect, glowEffect) {
+        if (isPlaying && isActive) {
+            // 用 while(true) 而非 kotlinx.coroutines.isActive：后者会被同名参数 isActive 遮蔽。
+            // withFrameNanos 在协程取消时会抛出 CancellationException，循环自然退出。
+            while (true) {
+                withFrameNanos { frameNano -> frameTick = frameNano }
             }
         }
     }
@@ -182,36 +219,6 @@ fun KaraokeLyricRow(
                 }
             }
 
-            val wordLayouts = line.words.mapIndexed { i, word ->
-                val range = wordRanges[i]
-                val lineIndex = layout.getLineForOffset(range.first)
-                val lineTop = layout.getLineTop(lineIndex)
-                val lineBottom = layout.getLineBottom(lineIndex)
-
-                val wordLeft = try {
-                    layout.getBoundingBox(range.first).left
-                } catch (e: Exception) {
-                    AppLogger.d(TAG, "歌词字符定位 getBoundingBox 失败，回退 getHorizontalPosition", e)
-                    layout.getHorizontalPosition(range.first, true)
-                }
-                val wordRight = try {
-                    layout.getBoundingBox(range.last).right
-                } catch (e: Exception) {
-                    AppLogger.d(TAG, "歌词字符定位 getBoundingBox 失败，回退 getHorizontalPosition", e)
-                    layout.getHorizontalPosition(range.last + 1, true)
-                }
-
-                WordLayout(
-                    startMs = word.startOffsetMs,
-                    endMs = word.startOffsetMs + word.durationMs,
-                    left = wordLeft,
-                    right = wordRight,
-                    top = lineTop,
-                    bottom = lineBottom,
-                    lineIndex = lineIndex
-                )
-            }
-
             val lineLayouts = (0 until layout.lineCount).map { lineIndex ->
                 LineLayout(
                     left = layout.getLineLeft(lineIndex),
@@ -221,159 +228,155 @@ fun KaraokeLyricRow(
                 )
             }
 
-            val wordsByLine = (0 until layout.lineCount).map { lineIndex ->
-                wordLayouts.filter { it.lineIndex == lineIndex }
+            val wordLayouts = line.words.flatMapIndexed { i, word ->
+                val characterBoxes = wordRanges[i].mapNotNull { offset ->
+                    val character = line.text[offset]
+                    if (character.isWhitespace() ||
+                        (Character.isLowSurrogate(character) && offset > 0 && Character.isHighSurrogate(line.text[offset - 1]))) {
+                        null
+                    } else {
+                        val visualLine = layout.getLineForOffset(offset)
+                        try {
+                            val bounds = layout.getBoundingBox(offset)
+                            KaraokeCharacterBox(visualLine, bounds.left, bounds.right)
+                        } catch (e: Exception) {
+                            AppLogger.d(TAG, "歌词字符定位 getBoundingBox 失败，回退 getHorizontalPosition", e)
+                            KaraokeCharacterBox(
+                                visualLine,
+                                layout.getHorizontalPosition(offset, true),
+                                layout.getHorizontalPosition(offset + 1, true)
+                            )
+                        }
+                    }
+                }
+                splitTimedWordAcrossLines(word.startOffsetMs, word.durationMs, characterBoxes).map { segment ->
+                    val visualLine = lineLayouts[segment.lineIndex]
+                    WordLayout(
+                        startMs = segment.startMs,
+                        endMs = segment.endMs,
+                        left = segment.left.coerceIn(visualLine.left, visualLine.right),
+                        right = segment.right.coerceIn(visualLine.left, visualLine.right),
+                        top = visualLine.top,
+                        bottom = visualLine.bottom,
+                        lineIndex = segment.lineIndex
+                    )
+                }
             }
 
-            LyricLayoutInfo(wordLayouts, lineLayouts, wordsByLine)
+            LyricLayoutInfo(wordLayouts, lineLayouts)
         }
-    }
-
-    val boxAlignment = when (textAlign) {
-        TextAlign.Center -> Alignment.Center
-        TextAlign.End -> Alignment.CenterEnd
-        else -> Alignment.CenterStart
     }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
-        contentAlignment = boxAlignment
+        contentAlignment = if (textAlign == TextAlign.End) Alignment.CenterEnd else Alignment.CenterStart
     ) {
         // 底层灰色（未激活）歌词
         Text(
             text = line.text,
             fontSize = fontSize,
             lineHeight = lineHeight,
-            fontWeight = FontWeight.ExtraBold,
+            fontWeight = fontWeight,
             color = inactiveColor,
             textAlign = textAlign,
             onTextLayout = { textLayoutResult = it },
             modifier = Modifier.fillMaxWidth()
         )
 
-        // 顶层高亮歌词
-        if (advancedEffect) {
-            Text(
-                text = line.text,
-                fontSize = fontSize,
-                lineHeight = lineHeight,
-                fontWeight = FontWeight.ExtraBold,
-                color = activeColor,
-                textAlign = textAlign,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithContent {
-                        val unused = frameTick
-                        drawContent()
-                        val info = lyricLayoutInfo ?: return@drawWithContent
-                        val smoothPosition = timeInterpolator.getSmoothPosition(
-                            currentPositionProviderState.value(),
-                            isPlaying
-                        )
-                        val relativeProgress = smoothPosition - line.timeMs
-                        val featherPx = 18.dp.toPx()
-
-                        // 逐行进行流光渐变推进遮罩擦除
+        // 顶层高亮（已激活）歌词：
+        // ·实色部分沿用 Path 硬裁剪（GPU clip，不重绘文本），仅当前演唱行的裁剪右缘外扩半个羽化带
+        // ·柔边用 DstIn 横向渐变把羽化带压成 1→0 透明，消除已播/未播之间的硬竖线
+        // 进度只在绘制阶段读取，不触发重组；裁剪与羽化共用同一次区间推导。
+        // 通过 Path 对每一行分别建立独立的裁剪矩形，防止单行歌词折行时产生漏光和干扰
+        Text(
+            text = line.text,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = fontWeight,
+            color = activeColor,
+            textAlign = textAlign,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    // 走逐字裁剪时，排版结果出来之前先不显示，避免闪一帧整行高亮
+                    alpha = if (lyricLayoutInfo != null && isActive) 1f else 0f
+                    // DstIn 只混合本层文字像素，不擦除底层灰色歌词与背景。
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    val info = lyricLayoutInfo
+                    if (info != null && isActive) {
+                        // 读取逐帧心跳：这一步是本行能按屏幕刷新率重绘的唯一依据。
+                        // 不读它，绘制阶段只会在 50ms 一次的播放器进度变化时失效，逐字扫色看起来就是掉帧。
+                        @Suppress("UNUSED_VARIABLE")
+                        val frameTickRead = frameTick
+                        val featherHalfPx = if (advancedEffect) (featherWidth / 2).toPx() else 0f
+                        val relativeProgress = currentPositionProviderState.value() - line.timeMs
+                        val spans = computePlayedSpans(info, relativeProgress, featherHalfPx)
+                        val path = reusableClipPath
+                        path.rewind()
                         info.lineLayouts.forEachIndexed { lineIndex, lineLayout ->
-                            val maxRight = calculateLineProgressRight(lineIndex, lineLayout, info, relativeProgress)
-
-                            if (maxRight < lineLayout.right) {
-                                val fadeStart = (maxRight - featherPx).coerceAtLeast(lineLayout.left)
-                                val fadeEnd = maxRight.coerceAtMost(lineLayout.right)
-
-                                if (fadeEnd < lineLayout.right) {
-                                    drawRect(
-                                        color = Color.Black,
-                                        topLeft = Offset(fadeEnd, lineLayout.top),
-                                        size = Size(lineLayout.right - fadeEnd, lineLayout.bottom - lineLayout.top),
-                                        blendMode = BlendMode.DstOut
+                            val clipRight = spans[lineIndex].clipRight
+                            if (clipRight > lineLayout.left) {
+                                path.addRect(
+                                    Rect(
+                                        left = lineLayout.left,
+                                        top = lineLayout.top,
+                                        right = clipRight.coerceIn(lineLayout.left, lineLayout.right),
+                                        bottom = lineLayout.bottom
                                     )
-                                }
-                                if (fadeEnd > fadeStart) {
-                                    drawRect(
-                                        brush = Brush.horizontalGradient(
-                                            colors = listOf(Color.Transparent, Color.Black),
-                                            startX = fadeStart,
-                                            endX = fadeEnd
-                                        ),
-                                        topLeft = Offset(fadeStart, lineLayout.top),
-                                        size = Size(fadeEnd - fadeStart, lineLayout.bottom - lineLayout.top),
-                                        blendMode = BlendMode.DstOut
-                                    )
-                                }
+                                )
                             }
                         }
-
-                        // 当前字词呼吸光晕
-                        info.wordLayouts.forEach { word ->
-                            if (relativeProgress in word.startMs..word.endMs) {
-                                val wordDuration = (word.endMs - word.startMs).coerceAtLeast(1)
-                                val ratio = (relativeProgress - word.startMs).toFloat() / wordDuration
-                                val pulse = kotlin.math.sin(ratio * kotlin.math.PI).toFloat()
-                                if (pulse > 0f) {
-                                    drawRect(
-                                        color = Color.White.copy(alpha = 0.22f * pulse),
-                                        topLeft = Offset(word.left, word.top),
-                                        size = Size(word.right - word.left, word.bottom - word.top),
-                                        blendMode = BlendMode.Plus
-                                    )
+                        clipPath(path) {
+                            this@drawWithContent.drawContent()
+                            if (featherHalfPx > 0f) {
+                                val featherIndex = spans.indexOfFirst { it.featherCenterX != null }
+                                if (featherIndex != -1) {
+                                    val lineLayout = info.lineLayouts[featherIndex]
+                                    val centerX = spans[featherIndex].featherCenterX!!
+                                    val left = (centerX - featherHalfPx).coerceAtLeast(lineLayout.left)
+                                    val right = (centerX + featherHalfPx).coerceAtMost(lineLayout.right)
+                                    // 遮罩横向覆盖整行：渐变右侧必须透明，窄矩形 DstIn 会让未覆盖的
+                                    // 裁剪区域保留白色细线。纵向仍严格限制在当前行盒内。
+                                    if (right > left) {
+                                        drawRect(
+                                            brush = Brush.horizontalGradient(
+                                                0f to Color.Black,
+                                                1f to Color.Transparent,
+                                                startX = left,
+                                                endX = right
+                                            ),
+                                            topLeft = Offset(lineLayout.left, lineLayout.top),
+                                            size = Size(lineLayout.right - lineLayout.left, lineLayout.bottom - lineLayout.top),
+                                            blendMode = BlendMode.DstIn
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    }
-            )
-        } else {
-            Text(
-                text = line.text,
-                fontSize = fontSize,
-                lineHeight = lineHeight,
-                fontWeight = FontWeight.ExtraBold,
-                color = activeColor,
-                textAlign = textAlign,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        val unused = frameTick
-                        val info = lyricLayoutInfo
-                        if (info == null) {
-                            alpha = 0f
-                        } else {
-                            alpha = 1f
-                            clip = true
-                            shape = object : Shape {
-                                override fun createOutline(
-                                    size: Size,
-                                    layoutDirection: LayoutDirection,
-                                    density: Density
-                                ): Outline {
-                                    val path = androidx.compose.ui.graphics.Path()
-                                    val smoothPosition = timeInterpolator.getSmoothPosition(
-                                        currentPositionProviderState.value(),
-                                        isPlaying
-                                    )
-                                    val relativeProgress = smoothPosition - line.timeMs
-
-                                    info.lineLayouts.forEachIndexed { lineIndex, lineLayout ->
-                                        val maxRight = calculateLineProgressRight(lineIndex, lineLayout, info, relativeProgress)
-                                        if (maxRight > lineLayout.left) {
-                                            path.addRect(
-                                                Rect(
-                                                    left = lineLayout.left,
-                                                    top = lineLayout.top,
-                                                    right = maxRight,
-                                                    bottom = lineLayout.bottom
-                                                )
+                            if (glowEffect) {
+                                // 绘制原版演唱字词的呼吸光晕微光脉冲
+                                info.wordLayouts.forEach { word ->
+                                    if (relativeProgress in word.startMs..word.endMs) {
+                                        val wordDuration = (word.endMs - word.startMs).coerceAtLeast(1)
+                                        val ratio = (relativeProgress - word.startMs).toFloat() / wordDuration
+                                        val pulse = kotlin.math.sin(ratio * kotlin.math.PI).toFloat()
+                                        if (pulse > 0f) {
+                                            drawRect(
+                                                color = Color.White.copy(alpha = 0.22f * pulse),
+                                                topLeft = Offset(word.left, word.top),
+                                                size = Size((word.right - word.left).coerceAtLeast(0f), (word.bottom - word.top).coerceAtLeast(0f)),
+                                                blendMode = BlendMode.Plus
                                             )
                                         }
                                     }
-
-                                    return Outline.Generic(path)
                                 }
                             }
                         }
+                    } else {
+                        drawContent()
                     }
-            )
-        }
+                }
+        )
     }
 }

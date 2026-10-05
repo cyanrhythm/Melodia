@@ -1,7 +1,5 @@
 package com.lin0721.linmusic.core.player
 
-import android.net.Uri
-import androidx.media3.common.MediaItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -30,14 +28,11 @@ class PlaybackStateTest {
     }
 
     @Test
-    fun `RestoredTrack 携带断点进度与总时长`() {
-        val mediaItem = MediaItem.Builder()
-            .setMediaId("2002")
-            .build()
-
-        val restored = RestoredTrack(mediaItem, positionMs = 30000L, durationMs = 240000L)
-        assertEquals("2002", restored.mediaItem.mediaId)
-        assertEquals(30000L, restored.positionMs)
-        assertEquals(240000L, restored.durationMs)
+    fun `上次曲目转换为 MediaItem 保留 mediaId 与元数据`() {
+        val state = PlaybackState(songId = 2002L, title = "歌曲", artist = "歌手", lastPositionMs = 30000L, durationMs = 240000L)
+        val mediaItem = state.toRestoredMediaItem()
+        assertEquals("2002", mediaItem.mediaId)
+        assertEquals("歌曲", mediaItem.mediaMetadata.title)
+        assertNotNull(mediaItem.mediaMetadata.extras)
     }
 }

@@ -24,6 +24,8 @@ import com.lin0721.linmusic.core.ui.components.MelodiaTextButton
 import com.lin0721.linmusic.core.ui.components.MelodiaButton
 import com.lin0721.linmusic.core.ui.components.LoginBottomSheet
 import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
+import com.lin0721.linmusic.core.ui.components.ArtistPickerEntry
+import com.lin0721.linmusic.core.ui.components.ArtistPickerSheet
 import com.lin0721.linmusic.core.ui.components.WebViewLoginScreen
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
@@ -59,7 +61,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.zIndex
-import coil.compose.SubcomposeAsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
@@ -93,7 +95,7 @@ fun PlaylistScreen(
     onNavigateToProfile: (Long) -> Unit = {}
 ) {
     val uiState      by viewModel.uiState.collectAsStateWithLifecycle()
-    val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
+    val currentTrack by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
     val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
     val playMode by viewModel.playerManager.playMode.collectAsStateWithLifecycle()
     val playContext by viewModel.playerManager.playContext.collectAsStateWithLifecycle()
@@ -164,6 +166,7 @@ fun PlaylistScreen(
     val composerState by viewModel.composerState.collectAsStateWithLifecycle()
     val floorState by viewModel.floorState.collectAsStateWithLifecycle()
     var showMoreMenuSheet by remember { mutableStateOf(false) }
+    var artistPickerEntries by remember { mutableStateOf<List<ArtistPickerEntry>>(emptyList()) }
     var showImportTargetSheet by remember { mutableStateOf(false) }
     var showEditInfoDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -559,8 +562,10 @@ fun PlaylistScreen(
                     onAlbumClick   = onAlbumClick,
                     onToggleLike   = viewModel::toggleLikeSong,
                     onPlaySong     = { track ->
-                        viewModel.playSongInList(track, state.playlist.tracks)
+                        // 队列需包含歌单全部曲目，超过1000首时会先补全未加载的部分
+                        viewModel.playTrackInPlaylist(track)
                     },
+                    onPlayRecommendedSong = viewModel::playRecommendedTrack,
                     onAddToPlayNext = { track ->
                         viewModel.addTrackToPlayNext(track)
                     },
@@ -569,12 +574,9 @@ fun PlaylistScreen(
                             // 已经是当前播放队列，播放键只做暂停/继续切换
                             viewModel.playerManager.togglePlayPause()
                         } else {
-                            val tracks = state.playlist.tracks
-                            if (tracks.isNotEmpty()) {
-                                // 随机开关是全局播放模式，起播时按当前开关状态决定顺序播放还是打乱播放
-                                val ordered = if (isShuffleActive) tracks.shuffled() else tracks
-                                viewModel.playSongInList(ordered.first(), ordered)
-                            }
+                            // 随机开关是全局播放模式，起播时按当前开关状态决定顺序播放还是打乱播放；
+                            // 超过1000首的歌单会先补全未加载的曲目再起播
+                            viewModel.playAll(shuffle = isShuffleActive)
                         }
                     },
                     isShuffleActive = isShuffleActive,
@@ -690,7 +692,8 @@ fun PlaylistScreen(
                 },
                 onRequireLogin = { showLoginSheet = true },
                 onLoadMore = viewModel::loadMoreComments,
-                onRetry = { viewModel.loadPlaylistComments(playlistId) }
+                onRetry = { viewModel.loadPlaylistComments(playlistId) },
+                bottomOverlayInset = LocalBottomOverlayInset.current
             )
         }
 
@@ -720,14 +723,20 @@ fun PlaylistScreen(
 
         val successState = uiState as? PlaylistUiState.Success
         if (showDownloadQualitySheet && successState != null) {
+            val playlist = successState.playlist
+            // 超过1000首的歌单 tracks 被截断，以完整的 trackIds 统计已下载数
+            val batchSongIds = remember(playlist.trackIds, playlist.tracks) {
+                playlist.trackIds.map { it.id }.ifEmpty { playlist.tracks.map { it.id } }
+            }
             com.lin0721.linmusic.core.download.ui.DownloadQualityPickerSheet(
                 onQualitySelected = { level ->
-                    viewModel.downloadPlaylist(
-                        successState.playlist.id, successState.playlist.name, successState.playlist.tracks, level
-                    )
+                    viewModel.downloadPlaylist(playlist.id, playlist.name, level)
                     showDownloadQualitySheet = false
                 },
-                onDismiss = { showDownloadQualitySheet = false }
+                onDismiss = { showDownloadQualitySheet = false },
+                headline = playlist.name,
+                supportingText = "共 ${batchSongIds.size} 首",
+                batchSongIds = batchSongIds
             )
         }
 
@@ -738,7 +747,19 @@ fun PlaylistScreen(
                     viewModel.downloadTrack(trackToDownload, level)
                     pendingDownloadTrack = null
                 },
-                onDismiss = { pendingDownloadTrack = null }
+                onDismiss = { pendingDownloadTrack = null },
+                songId = trackToDownload.id,
+                maxDownloadLevel = trackToDownload.privilege?.dlLevel,
+                headline = trackToDownload.name,
+                supportingText = trackToDownload.ar.joinToString("/") { it.name }
+            )
+        }
+
+        if (artistPickerEntries.isNotEmpty()) {
+            ArtistPickerSheet(
+                artists = artistPickerEntries,
+                onArtistClick = onArtistClick,
+                onDismiss = { artistPickerEntries = emptyList() }
             )
         }
 
@@ -756,8 +777,12 @@ fun PlaylistScreen(
                         .navigationBarsPadding()
                         .padding(bottom = MelodiaSpacing.md)
                 ) {
-                    val firstArtist = playlist.tracks.firstOrNull()?.ar?.firstOrNull()
-                    val artistName = firstArtist?.name ?: "未知歌手"
+                    // 优先用专辑署名歌手，旧数据/歌单退回首曲歌手；多位时全部保留供选择
+                    val linkedArtists = playlist.artists
+                        .ifEmpty { playlist.tracks.firstOrNull()?.ar.orEmpty() }
+                        .filter { it.id > 0L }
+                        .distinctBy { it.id }
+                    val artistName = linkedArtists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
                     val resourceLabel = if (isAlbum) "专辑" else "歌单"
 
                     val subtitleText = buildString {
@@ -841,10 +866,16 @@ fun PlaylistScreen(
                                 title = "跳转至艺人"
                             ) {
                                 showMoreMenuSheet = false
-                                if (firstArtist != null) {
-                                    onArtistClick(firstArtist.id)
-                                } else {
-                                    com.lin0721.linmusic.core.ui.components.ToastManager.showToast("未找到关联艺人信息")
+                                when (linkedArtists.size) {
+                                    0 -> com.lin0721.linmusic.core.ui.components.ToastManager.showToast("未找到关联艺人信息")
+                                    1 -> onArtistClick(linkedArtists.first().id)
+                                    else -> artistPickerEntries = linkedArtists.map { artist ->
+                                        ArtistPickerEntry(
+                                            id = artist.id,
+                                            name = artist.name,
+                                            avatarUrl = artist.picUrl.ifBlank { artist.img1v1Url }.takeIf { it.isNotBlank() }
+                                        )
+                                    }
                                 }
                             }
                         )
@@ -854,7 +885,7 @@ fun PlaylistScreen(
                                 title = "加入播放队列"
                             ) {
                                 showMoreMenuSheet = false
-                                viewModel.addTracksToPlayNext(playlist.tracks)
+                                viewModel.addAllTracksToPlayNext()
                             }
                         )
                         add(

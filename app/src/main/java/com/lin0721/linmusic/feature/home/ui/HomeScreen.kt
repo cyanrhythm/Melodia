@@ -27,15 +27,16 @@ import com.lin0721.linmusic.core.ui.components.WebViewLoginScreen
 import com.lin0721.linmusic.core.ui.theme.ScreenSlideDurationMs
 import com.lin0721.linmusic.feature.music.ui.MusicContent
 import com.lin0721.linmusic.feature.music.ui.MusicViewModel
+import com.lin0721.linmusic.feature.newworks.ui.NewWorksFeedActions
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksFeedContent
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastContent
 import com.lin0721.linmusic.feature.podcast.ui.PodcastViewModel
 import org.koin.androidx.compose.koinViewModel
 
-private const val TAB_ALL = 0
-private const val TAB_MUSIC = 1
-private const val TAB_PODCAST = 2
+internal const val TAB_ALL = 0
+internal const val TAB_MUSIC = 1
+internal const val TAB_PODCAST = 2
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -53,7 +54,7 @@ fun HomeScreen(
     onPlaylistClick: (Long, Boolean) -> Unit = { _, _ -> },
     onArtistClick: (Long) -> Unit = {},
     onRadioClick: (Long) -> Unit = {},
-    onMvClick: (Long, String) -> Unit = { _, _ -> },
+    onStyleClick: (id: Long, name: String) -> Unit = { _, _ -> },
     onSearchClick: () -> Unit = {},
     onOpenSidebar: () -> Unit = {},
     onLoginScreenVisibilityChanged: (Boolean) -> Unit = {}
@@ -64,6 +65,9 @@ fun HomeScreen(
     val musicUiState by musicViewModel.uiState.collectAsStateWithLifecycle()
     val podcastUiState by podcastViewModel.uiState.collectAsStateWithLifecycle()
     val newWorksUiState by newWorksViewModel.uiState.collectAsStateWithLifecycle()
+    val newWorksCollectState by newWorksViewModel.collectState.collectAsStateWithLifecycle()
+    val newWorksImportState by newWorksViewModel.importState.collectAsStateWithLifecycle()
+    val newWorksStatus by newWorksViewModel.releaseStatus.collectAsStateWithLifecycle()
 
     var showLoginSheet by remember { mutableStateOf(false) }
     var showWebViewLogin by remember { mutableStateOf(false) }
@@ -79,8 +83,8 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(musicViewModel) {
-        musicViewModel.toastEvent.collect { message ->
+    LaunchedEffect(newWorksViewModel) {
+        newWorksViewModel.toastEvent.collect { message ->
             ToastManager.showToast(message)
         }
     }
@@ -125,25 +129,30 @@ fun HomeScreen(
                 when {
                     selectedTab == TAB_MUSIC && showNewWorksFeed -> NewWorksFeedContent(
                         uiState = newWorksUiState,
-                        onMvClick = onMvClick,
-                        onAlbumClick = { id -> onPlaylistClick(id, true) },
-                        onSongPlay = { newWorksViewModel.playRelease(it) },
-                        onRetry = { newWorksViewModel.load() },
-                        onLoadMore = { newWorksViewModel.loadMore() }
+                        collectState = newWorksCollectState,
+                        importState = newWorksImportState,
+                        status = newWorksStatus,
+                        actions = remember(newWorksViewModel, onPlaylistClick) {
+                            NewWorksFeedActions(
+                                onAlbumClick = { id -> onPlaylistClick(id, true) },
+                                onTogglePlay = newWorksViewModel::togglePlayRelease,
+                                onToggleLibrary = newWorksViewModel::toggleInLibrary,
+                                onAddToPlayNext = newWorksViewModel::addToPlayNext,
+                                onPrepareCollect = newWorksViewModel::prepareCollectDialog,
+                                onSaveCollection = newWorksViewModel::savePlaylistCollection,
+                                onSaveNewCollection = newWorksViewModel::createPlaylistAndAddSong,
+                                onPrepareImportTargets = newWorksViewModel::prepareImportTargets,
+                                onAddToPlaylist = newWorksViewModel::addToPlaylist,
+                                onCreatePlaylistAndAdd = newWorksViewModel::createPlaylistAndAdd,
+                                onRetry = newWorksViewModel::load,
+                                onLoadMore = newWorksViewModel::loadMore
+                            )
+                        }
                     )
 
                     selectedTab == TAB_MUSIC -> MusicContent(
                         uiState = musicUiState,
-                        onStyleSelect = { musicViewModel.selectStyle(it) },
-                        onChildStyleSelect = { musicViewModel.selectChildStyle(it) },
-                        onPlaylistClick = { onPlaylistClick(it.id, false) },
-                        onArtistClick = { onArtistClick(it.id) },
-                        onPlaySongAt = { musicViewModel.playSongAt(it) },
-                        onPlayFavourite = {
-                            (musicUiState as? com.lin0721.linmusic.feature.music.ui.MusicUiState.Success)
-                                ?.data?.content?.head?.favouriteSong
-                                ?.let { musicViewModel.playFavouriteSong(it) }
-                        },
+                        onStyleClick = onStyleClick,
                         onRetry = { musicViewModel.loadStyles() }
                     )
 

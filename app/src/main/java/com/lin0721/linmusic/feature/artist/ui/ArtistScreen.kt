@@ -35,14 +35,13 @@ fun ArtistScreen(
     onBack: () -> Unit,
     onArtistClick: (Long) -> Unit,
     onPlaylistClick: (Long) -> Unit,
-    onAlbumClick: (Long) -> Unit,
-    onMvClick: (Long, String) -> Unit
+    onAlbumClick: (Long) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
-    val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
+    val currentTrack by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
     val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
 
     var showLoginSheet by remember { mutableStateOf(false) }
@@ -89,8 +88,6 @@ fun ArtistScreen(
                     albums = state.albums,
                     albumsHasMore = state.albumsHasMore,
                     albumsLoadingMore = state.albumsLoadingMore,
-                    mvs = state.mvs,
-                    mvsLoadingMore = state.mvsLoadingMore,
                     allSongs = state.allSongs,
                     allSongsLoadingMore = state.allSongsLoadingMore,
                     similarArtists = state.similarArtists,
@@ -104,16 +101,10 @@ fun ArtistScreen(
                     onArtistClick = onArtistClick,
                     onPlaylistClick = onPlaylistClick,
                     onAlbumClick = onAlbumClick,
-                    onMvClick = onMvClick,
                     onFollowClick = { viewModel.toggleFollow(artistId) },
                     onBlockClick = { viewModel.toggleBlockArtist(artistId) },
-                    onPlaySong = { track ->
-                        viewModel.playSongInList(track, state.topSongs)
-                    },
-                    onPlayAll = {
-                        state.topSongs.firstOrNull()?.let { first ->
-                            viewModel.playSongInList(first, state.topSongs)
-                        }
+                    onPlaySong = { track, queue ->
+                        viewModel.playSongInList(track, queue)
                     },
                     onLikeClick = { songId ->
                         viewModel.prepareCollectDialog(songId)
@@ -134,7 +125,6 @@ fun ArtistScreen(
                         showLoginSheet = true
                     },
                     onLoadMoreAlbums = { viewModel.loadMoreAlbums() },
-                    onLoadMoreMvs = { viewModel.loadMoreMvs() },
                     onLoadAllSongsIfNeeded = { viewModel.loadAllSongsIfNeeded() },
                     onLoadMoreAllSongs = { viewModel.loadMoreAllSongs() }
                 )

@@ -14,6 +14,7 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
     val showLockscreen by viewModel.showLockscreen.collectAsStateWithLifecycle()
     val carMode by viewModel.carMode.collectAsStateWithLifecycle()
     val showCreateEntry by viewModel.showCreateEntry.collectAsStateWithLifecycle()
+    val panelDefaultFullscreen by viewModel.panelDefaultFullscreen.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -49,6 +50,17 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
                         subtitle = "关闭后可在「我的」页面通过右上角按钮创建歌单",
                         checked = showCreateEntry,
                         onCheckedChange = { viewModel.updateShowCreateEntry(it) }
+                    )
+                }
+            }
+
+            item {
+                SettingsGroupCard(SettingsSubMenu.EXTENSIONS.sectionTitles[3]) {
+                    SettingsSwitchRow(
+                        title = "播放页默认全屏",
+                        subtitle = "平板上点击播放条时直接全屏展开，关闭则以侧栏展开",
+                        checked = panelDefaultFullscreen,
+                        onCheckedChange = { viewModel.updatePanelDefaultFullscreen(it) }
                     )
                 }
             }

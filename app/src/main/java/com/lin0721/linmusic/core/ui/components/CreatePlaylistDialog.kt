@@ -17,17 +17,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 
-// "新建歌单并收藏"对话框，供收藏到歌单弹窗内触发
+// 默认文案对应"新建歌单并收藏"，本地歌单新建/重命名传入自己的文案
 @Composable
 fun CreatePlaylistDialog(
     onDismiss: () -> Unit,
-    onCreate: (name: String) -> Unit
+    onCreate: (name: String) -> Unit,
+    title: String = "新建歌单并收藏",
+    confirmText: String = "创建并收藏",
+    initialName: String = ""
 ) {
-    var nameInput by remember { mutableStateOf("") }
+    var nameInput by remember { mutableStateOf(initialName) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新建歌单并收藏", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
+        title = { Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 Text("请输入新歌单的名称：", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
@@ -51,7 +54,7 @@ fun CreatePlaylistDialog(
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text("创建并收藏", fontWeight = FontWeight.Bold)
+                Text(confirmText, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

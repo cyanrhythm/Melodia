@@ -96,7 +96,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew :app:assembleRelease \
             -PreleaseVersionName=${{ steps.version.outputs.name }} \
             -PreleaseVersionCode=${{ steps.version.outputs.code }} \
             --no-daemon

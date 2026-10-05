@@ -61,3 +61,6 @@ REFACTOR_ROADMAP.md
 RELEASE_SIGNING.md
 # Gradle updateDaemonJvm 在本地生成的后台进程 JDK 约束，不纳入版本管理
 gradle/gradle-daemon-jvm.properties
+
+# 桌面端播放引擎动态库，本地放置
+desktopApp/native/

@@ -16,8 +16,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -252,13 +250,8 @@ fun MiniPlayerCard(
                         )
                     }
                     // 播放/暂停按钮
-                    MelodiaIconButton(onClick = onTogglePlay) {
-                        Icon(
-                            imageVector = if (displayedIsPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = "播放/暂停",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
+                    MelodiaIconButton(onClick = onTogglePlay, style = MelodiaPress.Transport) {
+                        PlayPauseIcon(displayedIsPlaying, Color.White, contentDescription = "播放/暂停")
                     }
                     // 下一首按钮
                     MelodiaIconButton(onClick = onNext) {

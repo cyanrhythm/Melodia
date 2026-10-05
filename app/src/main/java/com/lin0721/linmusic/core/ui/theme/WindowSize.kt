@@ -32,7 +32,7 @@ fun rememberMelodiaWindowSizeClass(): MelodiaWindowSizeClass {
 val LocalMelodiaWindowSizeClass = compositionLocalOf { MelodiaWindowSizeClass.Compact }
 
 // 方向维度，与宽度断点独立组合使用。横屏下可用宽度更大、可用高度更矮，
-// 部分模块（首页货架密度、MV 播放页视频+评论布局等）需要在同为 Expanded 的前提下再区分横竖屏
+// 部分模块（首页货架密度等）需要在同为 Expanded 的前提下再区分横竖屏
 enum class MelodiaOrientationClass {
     Portrait,
     Landscape

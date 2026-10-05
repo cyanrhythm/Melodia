@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import androidx.media3.common.Player
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -16,12 +17,24 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "ExternalInterruptionResumeController"
-// 防抖窗口：防止短视频快速滑动切屏期间频繁触发起播
+// 短视频切换防抖延时
 private const val DEBOUNCE_DELAY_MS = 1500L
-// 打断等待超时时间：超过 10 分钟自动作废，防止用户长时间离开后突发放歌
+// 打断等待超时阈值（10 分钟）
 private const val MAX_INTERRUPTION_WINDOW_MS = 10 * 60 * 1000L
+// 用户主动暂停后的异步焦点丢失竞态保护时间窗
+private const val PAUSE_GRACE_PERIOD_MS = 800L
 
-// 外部视频/音频打断后自动恢复播放控制器
+enum class UserPlaybackIntent {
+    PLAYING,
+    PAUSED_BY_USER
+}
+
+private data class InterruptionSession(
+    val songId: Long?,
+    val interruptionTimestamp: Long
+)
+
+// 外部音视频打断与自动恢复控制器
 class ExternalInterruptionResumeController(
     private val context: Context,
     private val settingsPreferences: SettingsPreferences
@@ -35,9 +48,14 @@ class ExternalInterruptionResumeController(
     private var isEnabled: Boolean = true
 
     @Volatile
-    private var isAwaitingResume: Boolean = false
+    private var userIntent: UserPlaybackIntent = UserPlaybackIntent.PAUSED_BY_USER
 
-    private var interruptionTimestamp: Long = 0L
+    @Volatile
+    private var isCurrentlyPlaying: Boolean = false
+
+    private var activeSession: InterruptionSession? = null
+    private var lastUserPauseTimestamp: Long = 0L
+
     private var debounceJob: Job? = null
     private var pollingJob: Job? = null
     private var isRegistered: Boolean = false
@@ -53,7 +71,7 @@ class ExternalInterruptionResumeController(
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
                 AppLogger.i(TAG, "监听到耳机拔出，取消外部打断恢复等待")
-                cancelWaiting()
+                onExplicitUserPause()
             }
         }
     }
@@ -75,27 +93,73 @@ class ExternalInterruptionResumeController(
         }
     }
 
-    fun onAudioFocusLoss() {
-        if (!isEnabled) return
-        AppLogger.i(TAG, "收到外部音频焦点丢失，开始等待外部音频停止")
-        isAwaitingResume = true
-        interruptionTimestamp = SystemClock.elapsedRealtime()
-        debounceJob?.cancel()
-        debounceJob = null
-        startPollingFallback()
-    }
+    fun isAwaitingResumeActive(): Boolean = activeSession != null
 
-    fun onUserOrSystemPause() {
-        if (isAwaitingResume) {
-            AppLogger.i(TAG, "用户或系统触发非焦点丢失暂停，重置外部恢复等待")
-            cancelWaiting()
+    fun onIsPlayingChanged(isPlaying: Boolean) {
+        isCurrentlyPlaying = isPlaying
+        if (isPlaying) {
+            userIntent = UserPlaybackIntent.PLAYING
         }
     }
 
     fun onPlaybackStarted() {
-        if (isAwaitingResume) {
+        userIntent = UserPlaybackIntent.PLAYING
+        if (activeSession != null) {
             cancelWaiting()
         }
+    }
+
+    fun onExplicitUserPlay() {
+        userIntent = UserPlaybackIntent.PLAYING
+        if (activeSession != null) {
+            cancelWaiting()
+        }
+    }
+
+    fun onExplicitUserPause() {
+        userIntent = UserPlaybackIntent.PAUSED_BY_USER
+        lastUserPauseTimestamp = SystemClock.elapsedRealtime()
+        if (activeSession != null) {
+            AppLogger.i(TAG, "用户主动触发暂停，作废外部打断恢复等待")
+            cancelWaiting()
+        }
+    }
+
+    fun onTrackTransition(newSongId: Long?) {
+        if (activeSession != null) {
+            AppLogger.i(TAG, "外部打断等待期间发生切歌(songId=$newSongId)，作废恢复等待")
+            userIntent = UserPlaybackIntent.PAUSED_BY_USER
+            cancelWaiting()
+        }
+    }
+
+    fun onAudioFocusLoss(playbackState: Int, currentSongId: Long?) {
+        if (!isEnabled) return
+
+        if (userIntent != UserPlaybackIntent.PLAYING) {
+            AppLogger.i(TAG, "收到音频焦点丢失，但用户意图非播放($userIntent)，忽略")
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastUserPauseTimestamp < PAUSE_GRACE_PERIOD_MS) {
+            AppLogger.i(TAG, "收到音频焦点丢失，但处于用户主动暂停保护期(${now - lastUserPauseTimestamp}ms)，忽略")
+            return
+        }
+
+        if (!isCurrentlyPlaying || playbackState != Player.STATE_READY) {
+            AppLogger.i(TAG, "收到音频焦点丢失，但丢失前非有效播放出声状态(isPlaying=$isCurrentlyPlaying, state=$playbackState)，忽略")
+            return
+        }
+
+        AppLogger.i(TAG, "确认音乐由外部音频打断，开始等待外部音频停止 (songId=$currentSongId)")
+        activeSession = InterruptionSession(
+            songId = currentSongId,
+            interruptionTimestamp = now
+        )
+        debounceJob?.cancel()
+        debounceJob = null
+        startPollingFallback()
     }
 
     fun release() {
@@ -106,7 +170,7 @@ class ExternalInterruptionResumeController(
     }
 
     private fun cancelWaiting() {
-        isAwaitingResume = false
+        activeSession = null
         debounceJob?.cancel()
         debounceJob = null
         pollingJob?.cancel()
@@ -118,9 +182,14 @@ class ExternalInterruptionResumeController(
     }
 
     private fun checkAndScheduleResume() {
-        if (!isAwaitingResume) return
+        val session = activeSession ?: return
 
-        val elapsed = SystemClock.elapsedRealtime() - interruptionTimestamp
+        if (userIntent != UserPlaybackIntent.PLAYING) {
+            cancelWaiting()
+            return
+        }
+
+        val elapsed = SystemClock.elapsedRealtime() - session.interruptionTimestamp
         if (elapsed > MAX_INTERRUPTION_WINDOW_MS) {
             AppLogger.i(TAG, "外部打断已超过最大等待窗口(${elapsed}ms)，放弃自动恢复")
             cancelWaiting()
@@ -136,13 +205,12 @@ class ExternalInterruptionResumeController(
             }
             debounceJob = scope?.launch {
                 delay(DEBOUNCE_DELAY_MS)
-                if (isAwaitingResume && !isExternalAudioActive()) {
-                    val currentElapsed = SystemClock.elapsedRealtime() - interruptionTimestamp
+                val currentSession = activeSession
+                if (currentSession != null && userIntent == UserPlaybackIntent.PLAYING && !isExternalAudioActive()) {
+                    val currentElapsed = SystemClock.elapsedRealtime() - currentSession.interruptionTimestamp
                     if (currentElapsed <= MAX_INTERRUPTION_WINDOW_MS) {
                         AppLogger.i(TAG, "外部音视频已停止发声，防抖确认通过，触发恢复播放")
-                        isAwaitingResume = false
-                        pollingJob?.cancel()
-                        pollingJob = null
+                        cancelWaiting()
                         onResumeRequested?.invoke()
                     } else {
                         cancelWaiting()
@@ -155,9 +223,9 @@ class ExternalInterruptionResumeController(
     private fun startPollingFallback() {
         pollingJob?.cancel()
         pollingJob = scope?.launch {
-            while (isAwaitingResume) {
+            while (activeSession != null) {
                 delay(1000L)
-                if (isAwaitingResume) {
+                if (activeSession != null) {
                     checkAndScheduleResume()
                 }
             }

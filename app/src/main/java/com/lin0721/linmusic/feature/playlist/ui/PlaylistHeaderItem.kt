@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.feature.playlist.ui
 
+import com.lin0721.linmusic.core.ui.components.PlayPauseIcon
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -15,8 +16,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
@@ -42,15 +41,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.crossfade
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.theme.RadiusCompact
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.darken
 import com.lin0721.linmusic.core.ui.theme.extractBaseColorFromUrl
+import com.lin0721.linmusic.core.ui.theme.smoothVerticalGradient
 import com.lin0721.linmusic.core.model.PlaylistDetail
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -114,11 +116,12 @@ fun PlaylistHeaderItem(
         label = "playlist_header_color"
     )
     val gradientTop = remember(animatedDominant) { animatedDominant.darken(0.35f) }
+    val bgDark = MaterialTheme.colorScheme.background
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            // 使用从封面提取的主色调渐变到背景黑
-            .background(Brush.verticalGradient(listOf(gradientTop, MaterialTheme.colorScheme.background)))
+            // 封面主色余弦平滑过渡到背景色，消除暗阶断层
+            .background(Brush.smoothVerticalGradient(from = gradientTop, to = bgDark))
     ) {
         // 封面：与操作区的返回键水平对齐
         Box(
@@ -166,8 +169,9 @@ fun PlaylistHeaderItem(
                     } else if (playlist.id == -2L) {
                         Text("网易云个人听歌记录统计", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     } else {
-                        val creatorModifier = if (playlist.creator != null && playlist.creator.userId > 0L) {
-                            Modifier.clickable { onCreatorClick(playlist.creator.userId) }
+                        val creator = playlist.creator
+                        val creatorModifier = if (creator != null && creator.userId > 0L) {
+                            Modifier.clickable { onCreatorClick(creator.userId) }
                         } else {
                             Modifier
                         }
@@ -175,26 +179,27 @@ fun PlaylistHeaderItem(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = creatorModifier
                         ) {
-                            if (playlist.creator != null) {
+                            if (creator != null) {
                                 AsyncImage(
-                                    model = "${playlist.creator.avatarUrl}?param=50y50",
+                                    model = "${creator.avatarUrl}?param=50y50",
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(20.dp)
                                         .clip(CircleShape)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text(playlist.creator.nickname, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                Text(creator.nickname, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             } else {
                                 Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("为你打造", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             }
                         }
-                        if (!playlist.description.isNullOrBlank()) {
+                        val description = playlist.description
+                        if (!description.isNullOrBlank()) {
                             Spacer(Modifier.height(MelodiaSpacing.xs))
                             Text(
-                                text = playlist.description,
+                                text = description,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp,
                                 maxLines = 2,
@@ -326,11 +331,11 @@ fun PlaylistHeaderItem(
                                     }
                                     .alpha(0f)
                             ) {
-                                Icon(
-                                    imageVector = if (isCurrentlyPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isCurrentlyPlayingThis) "暂停" else "播放",
+                                PlayPauseIcon(
+                                    isPlaying = isCurrentlyPlayingThis,
                                     tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(32.dp)
+                                    size = 32.dp,
+                                    contentDescription = if (isCurrentlyPlayingThis) "暂停" else "播放"
                                 )
                             }
                         }

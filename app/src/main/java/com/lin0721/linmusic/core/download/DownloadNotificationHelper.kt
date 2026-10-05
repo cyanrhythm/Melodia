@@ -97,6 +97,19 @@ class DownloadNotificationHelper(private val context: Context) {
         notify(terminalNotificationIdFor(songId), notification)
     }
 
+    fun showAlreadyDownloaded(songId: Long, songName: String) {
+        if (!notificationManager.areNotificationsEnabled()) return
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("$songName 已下载")
+            .setContentText("本地已有同等或更高音质，无需重复下载")
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent())
+            .build()
+        notify(terminalNotificationIdFor(songId), notification)
+    }
+
     fun showFailed(songId: Long, songName: String, reason: String) {
         if (!notificationManager.areNotificationsEnabled()) return
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)

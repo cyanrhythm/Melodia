@@ -80,7 +80,9 @@ object LyricInfoBuilder {
         songId: String,
         album: String? = null,
         lines: List<LyricLine>,
-        showTranslation: Boolean = true
+        showTranslation: Boolean = true,
+        sessionGeneration: Int = 0,
+        trackKey: String? = null
     ): String {
         val isPureMusic = lines.size == 1 && lines[0].text == "纯音乐"
         val hasNoLyric = lines.isEmpty() || isPureMusic
@@ -93,6 +95,12 @@ object LyricInfoBuilder {
         json.put("provider", "com.lin0721.linmusic")
         json.put("source", "com.lin0721.linmusic")
         json.put("noLyric", hasNoLyric)
+        if (sessionGeneration > 0) {
+            json.put("sessionGeneration", sessionGeneration)
+        }
+        if (!trackKey.isNullOrBlank()) {
+            json.put("trackKey", trackKey)
+        }
 
         if (!album.isNullOrBlank()) {
             json.put("album", album)

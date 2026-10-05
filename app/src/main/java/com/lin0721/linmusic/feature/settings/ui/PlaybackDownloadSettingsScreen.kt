@@ -182,8 +182,8 @@ fun PlaybackDownloadSettingsView(viewModel: SettingsViewModel) {
                 )
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                 SettingsSwitchRow(
-                    title = "下载歌词",
-                    subtitle = "下载歌曲时额外保存一份同名 .lrc 歌词文件",
+                    title = "内嵌歌词",
+                    subtitle = "下载歌曲与边听边存时将逐字歌词内嵌写入音频文件",
                     checked = downloadLyricsEnabled,
                     onCheckedChange = { viewModel.updateDownloadLyricsEnabled(it) }
                 )

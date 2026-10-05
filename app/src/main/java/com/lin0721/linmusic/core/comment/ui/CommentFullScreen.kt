@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.comment.data.CommentSortType
@@ -69,7 +70,8 @@ fun CommentFullScreen(
     onSubmitComment: (content: String, replyTarget: CommentItem?) -> Unit,
     onRequireLogin: () -> Unit,
     onLoadMore: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    bottomOverlayInset: Dp = 0.dp
 ) {
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     val focusRequester = remember { FocusRequester() }
@@ -232,6 +234,7 @@ fun CommentFullScreen(
             replyTarget = replyTarget,
             composerState = composerState,
             focusRequester = focusRequester,
+            bottomOverlayInset = bottomOverlayInset,
             onClearReplyTarget = { replyTarget = null },
             onSubmit = { content ->
                 if (currentUserId == null) {

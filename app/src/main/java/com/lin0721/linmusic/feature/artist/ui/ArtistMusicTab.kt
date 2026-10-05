@@ -34,7 +34,7 @@ fun LazyListScope.artistMusicTab(
     currentTrackId: String?,
     isPlaying: Boolean,
     isLoggedIn: Boolean,
-    onPlaySong: (Track) -> Unit,
+    onPlaySong: (Track, List<Track>) -> Unit,
     onLikeClick: (Long) -> Unit,
     onOpenCollectSheet: (Long) -> Unit,
     onOpenMoreOptions: (Track) -> Unit,
@@ -76,7 +76,7 @@ fun LazyListScope.artistMusicTab(
                 isActive = isActive,
                 isPlaying = isPlaying,
                 index = index + 1,
-                onClick = { onPlaySong(track) },
+                onClick = { onPlaySong(track, songs) },
                 trailingSlot = {
                     val isLiked = track.id in likedSongIds
                     MelodiaIconButton(

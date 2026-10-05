@@ -56,8 +56,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import coil.compose.SubcomposeAsyncImage
-import coil.request.ImageRequest
+import coil3.compose.SubcomposeAsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.lin0721.linmusic.core.download.DownloadPreferences
 import com.lin0721.linmusic.core.ui.theme.RadiusCompact
 import com.lin0721.linmusic.core.ui.theme.DownloadedGreen
@@ -76,7 +77,8 @@ data class SongRowData(
     val artist: String,
     val coverUrl: String?,
     val isVip: Boolean = false,
-    val durationText: String? = null
+    val durationText: String? = null,
+    val platformTag: String? = null
 )
 
 // 通用歌曲行：Playlist/Artist/Home/Search 共用，compact 控制紧凑尺寸，index 控制是否显示序号列
@@ -180,7 +182,23 @@ fun SongRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (data.isVip) {
+                if (!data.platformTag.isNullOrBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                            .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary), RoundedCornerShape(3.dp))
+                            .padding(horizontal = MelodiaSpacing.xs, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = data.platformTag,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 10.sp
+                        )
+                    }
+                } else if (data.isVip) {
                     Spacer(Modifier.width(6.dp))
                     Box(
                         modifier = Modifier

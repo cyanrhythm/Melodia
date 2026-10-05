@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -29,8 +28,10 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
-import coil.Coil
-import coil.request.ImageRequest
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.toBitmap
 import com.lin0721.linmusic.MainActivity
 import com.lin0721.linmusic.R
 import com.lin0721.linmusic.core.auth.UserPreferences
@@ -64,6 +65,7 @@ class MelodiaPlaybackService : MediaSessionService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isLikedListLoaded = false
+    private var isShowLockscreenEnabled = true
 
     private var player: Player? = null
     private var crossfadePlayer: CrossfadePlayer? = null
@@ -100,10 +102,10 @@ class MelodiaPlaybackService : MediaSessionService() {
                     .data(coverUri)
                     .allowHardware(false)
                     .build()
-                val result = Coil.imageLoader(this@MelodiaPlaybackService).execute(request)
-                val drawable = result.drawable
-                if (drawable is BitmapDrawable) {
-                    currentCoverBitmap = drawable.bitmap
+                val result = SingletonImageLoader.get(this@MelodiaPlaybackService).execute(request)
+                val bitmap = result.image?.toBitmap()
+                if (bitmap != null) {
+                    currentCoverBitmap = bitmap
                     withContext(Dispatchers.Main) {
                         updateMediaSessionButtons()
                     }
@@ -125,6 +127,12 @@ class MelodiaPlaybackService : MediaSessionService() {
         serviceScope.launch {
             songLikeRepository.likedSongIds.collect {
                 updateMediaSessionButtons()
+            }
+        }
+
+        serviceScope.launch {
+            settingsPreferences.showLockscreen.collect { enabled ->
+                isShowLockscreenEnabled = enabled
             }
         }
 
@@ -158,15 +166,24 @@ class MelodiaPlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .setUsage(C.USAGE_MEDIA)
             .build()
+        // 耳机拔出 / 蓝牙耳机断开（如收回耳机盒）时系统发出 AUDIO_BECOMING_NOISY，需自动暂停，避免外放；
+        // 两台都开启：交叉淡化期间淡出方和缓冲中的新歌也要一起停
         val sessionPlayer = CrossfadePlayer(
-            primary = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSourceFactory).build(),
-            secondary = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSourceFactory).build(),
+            primary = ExoPlayer.Builder(this)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .setHandleAudioBecomingNoisy(true)
+                .build(),
+            secondary = ExoPlayer.Builder(this)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .setHandleAudioBecomingNoisy(true)
+                .build(),
             audioAttributes = audioAttributes
         )
         sessionPlayer.setMetadataTransformer { base ->
             externalLyricCoordinator.applyToMediaMetadata(base.buildUpon(), base)
         }
         crossfadePlayer = sessionPlayer
+        playerManager.setPlaybackPositionSource(sessionPlayer::currentPositionSample)
 
         serviceScope.launch {
             settingsPreferences.playWithOtherApps.collect { playWithOtherApps ->
@@ -207,8 +224,14 @@ class MelodiaPlaybackService : MediaSessionService() {
 
         // 监听歌曲切换以更新控制栏上的红心图标及通知封面状态，并监听焦点变化
         sessionPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                super.onIsPlayingChanged(isPlaying)
+                externalInterruptionResumeController.onIsPlayingChanged(isPlaying)
+            }
+
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                 super.onMediaItemTransition(mediaItem, reason)
+                externalInterruptionResumeController.onTrackTransition(mediaItem?.mediaId?.toLongOrNull())
                 loadCoverBitmap(mediaItem?.mediaMetadata?.artworkUri)
                 mediaItem?.mediaId?.toLongOrNull()?.let { songId ->
                     checkAndFetchLikedStatus(songId)
@@ -219,9 +242,12 @@ class MelodiaPlaybackService : MediaSessionService() {
                 super.onPlayWhenReadyChanged(playWhenReady, reason)
                 if (!playWhenReady) {
                     if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                        externalInterruptionResumeController.onAudioFocusLoss()
+                        externalInterruptionResumeController.onAudioFocusLoss(
+                            playbackState = sessionPlayer.playbackState,
+                            currentSongId = sessionPlayer.currentMediaItem?.mediaId?.toLongOrNull()
+                        )
                     } else {
-                        externalInterruptionResumeController.onUserOrSystemPause()
+                        externalInterruptionResumeController.onExplicitUserPause()
                     }
                 } else {
                     externalInterruptionResumeController.onPlaybackStarted()
@@ -231,8 +257,7 @@ class MelodiaPlaybackService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        val showLock = runBlocking { settingsPreferences.showLockscreen.first() }
-        if (!showLock) {
+        if (!isShowLockscreenEnabled) {
             val allowedPackages = listOf(packageName, "com.android.bluetooth")
             if (controllerInfo.packageName !in allowedPackages) {
                 return null
@@ -242,6 +267,7 @@ class MelodiaPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        playerManager.setPlaybackPositionSource(null)
         AppLogger.i(TAG, "Service onDestroy instanceId=${System.identityHashCode(this)}")
         externalInterruptionResumeController.release()
         externalLyricCoordinator.onMetadataChanged = null
@@ -377,13 +403,23 @@ class MelodiaPlaybackService : MediaSessionService() {
             when (playerCommand) {
                 Player.COMMAND_SEEK_TO_NEXT,
                 Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                    externalInterruptionResumeController.onTrackTransition(null)
                     playerManager.playNext()
                     return SessionResult.RESULT_SUCCESS
                 }
                 Player.COMMAND_SEEK_TO_PREVIOUS,
                 Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                    externalInterruptionResumeController.onTrackTransition(null)
                     playerManager.playPrevious()
                     return SessionResult.RESULT_SUCCESS
+                }
+                Player.COMMAND_PLAY_PAUSE -> {
+                    if (externalInterruptionResumeController.isAwaitingResumeActive() && player?.playWhenReady == false) {
+                        externalInterruptionResumeController.onExplicitUserPause()
+                    }
+                }
+                Player.COMMAND_STOP -> {
+                    externalInterruptionResumeController.onExplicitUserPause()
                 }
             }
             return super.onPlayerCommandRequest(session, controller, playerCommand)

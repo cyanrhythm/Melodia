@@ -14,8 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
-import com.lin0721.linmusic.core.localmusic.LocalTrack
-import com.lin0721.linmusic.core.localmusic.LocalTrackSource
+import com.lin0721.linmusic.feature.localmusic.domain.LocalTrack
+import com.lin0721.linmusic.feature.localmusic.domain.LocalTrackSource
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.feature.cloud.domain.formatFileSize
 
