@@ -66,6 +66,11 @@ class SettingsPreferences(private val dataStore: DataStore<Preferences>) {
         private val KEY_SHOW_CREATE_ENTRY = booleanPreferencesKey("show_create_entry")
         // 平板点击播放条时播放页直接全屏展开，默认 false（侧栏展开）
         private val KEY_PANEL_DEFAULT_FULLSCREEN = booleanPreferencesKey("panel_default_fullscreen")
+        private val KEY_PLAYER_PAGE_MODE = stringPreferencesKey("player_page_mode")
+        private val KEY_SIDE_PLAYER_PINNED = booleanPreferencesKey("side_player_pinned")
+        const val PLAYER_PAGE_MODE_AUTO = "auto"
+        const val PLAYER_PAGE_MODE_FULLSCREEN = "fullscreen"
+        const val PLAYER_PAGE_MODE_SIDE = "side"
         // 悬浮歌词字体大小，默认 14sp
         private val KEY_LYRIC_TEXT_SIZE = intPreferencesKey("lyric_text_size")
         // 悬浮歌词颜色，默认 "#FFFFFF"
@@ -356,13 +361,26 @@ class SettingsPreferences(private val dataStore: DataStore<Preferences>) {
         }
     }
 
-    val panelDefaultFullscreen: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_PANEL_DEFAULT_FULLSCREEN] ?: false
+    // 播放页模式：auto 按方向（竖屏全屏式、横屏侧边式）、fullscreen、side；未设置时沿用旧「默认全屏」开关
+    val playerPageMode: Flow<String> = dataStore.data.map { prefs ->
+        prefs[KEY_PLAYER_PAGE_MODE]
+            ?: if (prefs[KEY_PANEL_DEFAULT_FULLSCREEN] == true) PLAYER_PAGE_MODE_FULLSCREEN else PLAYER_PAGE_MODE_AUTO
     }
 
-    suspend fun savePanelDefaultFullscreen(enabled: Boolean) {
+    suspend fun savePlayerPageMode(mode: String) {
         dataStore.edit { prefs ->
-            prefs[KEY_PANEL_DEFAULT_FULLSCREEN] = enabled
+            prefs[KEY_PLAYER_PAGE_MODE] = mode
+        }
+    }
+
+    // 侧边播放页是否钉住；关闭后返回键直接收起
+    val sidePlayerPinned: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_SIDE_PLAYER_PINNED] ?: true
+    }
+
+    suspend fun saveSidePlayerPinned(pinned: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_SIDE_PLAYER_PINNED] = pinned
         }
     }
 

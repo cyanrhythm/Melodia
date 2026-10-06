@@ -114,7 +114,9 @@ class SettingsViewModel(
 
     val showCreateEntry = settingsPreferences.showCreateEntry.asState(true)
 
-    val panelDefaultFullscreen = settingsPreferences.panelDefaultFullscreen.asState(false)
+    val playerPageMode = settingsPreferences.playerPageMode.asState(SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
+
+    val sidePlayerPinned = settingsPreferences.sidePlayerPinned.asState(true)
 
     val lyricTextSize = settingsPreferences.lyricTextSize.asState(14)
 
@@ -426,7 +428,9 @@ class SettingsViewModel(
 
     fun updateShowCreateEntry(enabled: Boolean) = launchSave { settingsPreferences.saveShowCreateEntry(enabled) }
 
-    fun updatePanelDefaultFullscreen(enabled: Boolean) = launchSave { settingsPreferences.savePanelDefaultFullscreen(enabled) }
+    fun updatePlayerPageMode(mode: String) = launchSave { settingsPreferences.savePlayerPageMode(mode) }
+
+    fun updateSidePlayerPinned(pinned: Boolean) = launchSave { settingsPreferences.saveSidePlayerPinned(pinned) }
 
     fun updateLyricTextSize(size: Int) = launchSave { settingsPreferences.saveLyricTextSize(size) }
 
