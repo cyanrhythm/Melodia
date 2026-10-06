@@ -192,7 +192,8 @@ fun HomeScreen(
                         onRetry = { viewModel.loadHomeData() },
                         onLoadMore = { viewModel.loadMoreShelves() },
                         onIntelligenceClick = { viewModel.startIntelligenceMode() },
-                        onRoamingClick = { viewModel.startRoaming() }
+                        onRoamingClick = { viewModel.startRoaming() },
+                        onDailyPlay = { viewModel.playDailySong() }
                     )
                 }
             }
