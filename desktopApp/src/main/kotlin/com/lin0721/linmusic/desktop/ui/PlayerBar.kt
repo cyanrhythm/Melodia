@@ -134,16 +134,45 @@ fun PlayerBar(
                         )
                     }
                 } else {
-                    BarIconButton(
-                        icon = if (songDetail.isLiked) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
-                        description = if (songDetail.isLiked) "从喜欢的音乐中移除" else "添加到喜欢的音乐",
-                        active = songDetail.isLiked,
-                        size = SideButtonSize, iconSize = SideIconSize,
-                        modifier = Modifier.padding(start = 4.dp),
-                        onClick = {
-                            if (navigator.isLoggedIn) playerViewModel.toggleLike() else navigator.showMessage("请先登录账号")
+                    val collectState by playerViewModel.collectState.collectAsState()
+                    var showCollectPopup by remember(track.songId) { mutableStateOf(false) }
+
+                    Box {
+                        BarIconButton(
+                            icon = if (songDetail.isLiked) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
+                            description = "收藏到歌单",
+                            active = songDetail.isLiked,
+                            size = SideButtonSize, iconSize = SideIconSize,
+                            modifier = Modifier.padding(start = 4.dp),
+                            onClick = {
+                                if (!navigator.isLoggedIn) {
+                                    navigator.showMessage("请先登录账号")
+                                } else {
+                                    track.songId?.let { songId ->
+                                        playerViewModel.prepareCollectDialog(songId)
+                                        showCollectPopup = true
+                                    }
+                                }
+                            }
+                        )
+
+                        if (showCollectPopup && track.songId != null) {
+                            val songId = track.songId!!
+                            CollectToPlaylistPopup(
+                                songId = songId,
+                                state = collectState,
+                                onSave = { items ->
+                                    playerViewModel.savePlaylistCollection(songId, items)
+                                    showCollectPopup = false
+                                },
+                                onCreate = { name ->
+                                    playerViewModel.createPlaylistAndAddSong(name, songId)
+                                    showCollectPopup = false
+                                },
+                                onDismiss = { showCollectPopup = false }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
