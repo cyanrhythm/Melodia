@@ -1,5 +1,34 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.lerp
+import com.lin0721.linmusic.desktop.ui.nowplaying.ScrollArrow
+import com.lin0721.linmusic.desktop.ui.palette.FallbackCoverPalette
+import com.lin0721.linmusic.desktop.ui.palette.extractCoverPaletteFromUrl
+import com.lin0721.linmusic.feature.home.data.DailySong
+import com.lin0721.linmusic.feature.recent.domain.RecentPlaylist
+import java.time.LocalDate
+import kotlinx.coroutines.launch
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -69,6 +98,30 @@ private const val RECENT_MAX_COLUMNS = 4
 private val RecentTileMinWidth = 200.dp
 private val RecentGridGap = 8.dp
 private val RecentGridPadding = 24.dp
+// 格子高度（即封面边长）与字号随格子宽度在区间内线性变化，宽屏下不显得扁长
+private val RecentTileMinHeight = 48.dp
+private val RecentTileMaxHeight = 72.dp
+private val RecentTileScaleStartWidth = 200.dp
+private val RecentTileScaleEndWidth = 420.dp
+private const val RECENT_TITLE_MIN_SP = 13f
+private const val RECENT_TITLE_MAX_SP = 16f
+
+private val TileRadius = 6.dp
+private const val HOVER_FADE_MS = 150
+
+// 卡片外宽仍是 CardWidth，内边距让出悬停衬底
+private val CardInnerPadding = 8.dp
+private val CardCoverSize = CardWidth - CardInnerPadding * 2
+private val ShelfCardGap = 8.dp
+
+// 抵消卡片内边距，让封面左缘与标题对齐在 24dp
+private val ShelfContentPadding = 24.dp - CardInnerPadding
+
+private val SpotlightCoverSize = 96.dp
+
+// 封面取色后再压暗，保证白字在任意封面色上都看得清
+private const val SPOTLIGHT_DARKEN_FRACTION = 0.35f
+private const val SPOTLIGHT_TRACK_PREVIEW_COUNT = 8
 
 // 顶部固定「全部 / 音乐 / 播客」胶囊，下方按选中项切换内容；各 tab 的数据切过去才拉，
 // 滚动位置在首页内按 tab 各自保留
@@ -250,12 +303,17 @@ private fun LazyListScope.homeItems(
 ) {
     if (data.recentPlaylists.isNotEmpty()) {
         item(key = "recent") {
-            RecentGrid(data, reflow()) { id, title -> onPlaylistClick(id, title) }
+            RecentGrid(
+                data = data,
+                modifier = reflow(),
+                onClick = { id, title -> onPlaylistClick(id, title) },
+                onPlay = { id -> viewModel.playCollection(id, isAlbum = false) }
+            )
         }
     }
     if (data.dailySongs.isNotEmpty()) {
         item(key = "daily") {
-            Box(reflow()) { DailyBanner(data.dailySongs.size) { viewModel.playDailySong() } }
+            Box(reflow()) { DailySpotlight(data.dailySongs) { viewModel.playDailySong() } }
         }
     }
     // 服务端货架已含推荐歌单，仅在货架缺失时兜底展示
@@ -263,7 +321,13 @@ private fun LazyListScope.homeItems(
         item(key = "recommend") {
             Box(reflow()) {
                 ShelfRow("推荐歌单", data.recommendPlaylists) { playlist ->
-                    CardTile(playlist.picUrl, playlist.name, "") { onPlaylistClick(playlist.id, playlist.name) }
+                    CardTile(
+                        coverUrl = playlist.picUrl,
+                        title = playlist.name,
+                        caption = "",
+                        typeLabel = "歌单",
+                        onPlay = { viewModel.playCollection(playlist.id, isAlbum = false) }
+                    ) { onPlaylistClick(playlist.id, playlist.name) }
                 }
             }
         }
@@ -282,11 +346,21 @@ private fun LazyListScope.homeItems(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RecentGrid(data: HomeFeedData, modifier: Modifier, onClick: (Long, String) -> Unit) {
+private fun RecentGrid(
+    data: HomeFeedData,
+    modifier: Modifier,
+    onClick: (Long, String) -> Unit,
+    onPlay: (Long) -> Unit
+) {
     BoxWithConstraints(modifier) {
         val available = maxWidth - RecentGridPadding * 2
         val columns = ((available + RecentGridGap) / (RecentTileMinWidth + RecentGridGap)).toInt()
             .coerceIn(RECENT_MIN_COLUMNS, RECENT_MAX_COLUMNS)
+        val tileWidth = (available - RecentGridGap * (columns - 1)) / columns
+        val scale = ((tileWidth - RecentTileScaleStartWidth) / (RecentTileScaleEndWidth - RecentTileScaleStartWidth))
+            .coerceIn(0f, 1f)
+        val tileHeight = lerp(RecentTileMinHeight, RecentTileMaxHeight, scale)
+        val titleSize = (RECENT_TITLE_MIN_SP + (RECENT_TITLE_MAX_SP - RECENT_TITLE_MIN_SP) * scale).sp
         Column(Modifier.padding(horizontal = RecentGridPadding), verticalArrangement = Arrangement.spacedBy(RecentGridGap)) {
             SectionTitle("最近播放", horizontalPadding = 0)
             // 列数变化时格子从旧位置平滑移到新位置，整体高度同步过渡
@@ -302,23 +376,14 @@ private fun RecentGrid(data: HomeFeedData, modifier: Modifier, onClick: (Long, S
                 val shown = data.recentPlaylists.take(RECENT_ITEM_COUNT)
                 shown.forEach { playlist ->
                     key(playlist.id) {
-                        Row(
-                            Modifier.weight(1f).height(56.dp).homeReflowBounds().clip(RoundedCornerShape(4.dp))
-                                .background(DesktopColors.Surface)
-                                .clickable { onClick(playlist.id, playlist.name) },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Cover(playlist.coverUrl, 56.dp, shape = RoundedCornerShape(0.dp))
-                            Text(
-                                playlist.name,
-                                color = DesktopColors.TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            )
-                        }
+                        RecentTile(
+                            playlist = playlist,
+                            height = tileHeight,
+                            titleSize = titleSize,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onClick(playlist.id, playlist.name) },
+                            onPlay = { onPlay(playlist.id) }
+                        )
                     }
                 }
                 // 末行不足时补位，保持列宽一致
@@ -329,18 +394,128 @@ private fun RecentGrid(data: HomeFeedData, modifier: Modifier, onClick: (Long, S
 }
 
 @Composable
-private fun DailyBanner(songCount: Int, onPlay: () -> Unit) {
+private fun RecentTile(
+    playlist: RecentPlaylist,
+    height: Dp,
+    titleSize: TextUnit,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    onPlay: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val background by animateColorAsState(
+        if (hovered) DesktopColors.SurfaceLight else DesktopColors.Surface,
+        tween(HOVER_FADE_MS),
+        label = "recentTileBg"
+    )
     Row(
-        Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp))
-            .background(DesktopColors.Accent).clickable(onClick = onPlay).padding(20.dp),
+        modifier.height(height).homeReflowBounds().clip(RoundedCornerShape(TileRadius))
+            .background(background)
+            .hoverable(interaction)
+            .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("每日推荐", color = DesktopColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("$songCount 首专属好歌", color = DesktopColors.TextPrimary.copy(alpha = 0.8f), fontSize = 14.sp)
+        // 尺寸随拖动连续变化，固定请求尺寸避免反复换缩略图
+        Cover(playlist.coverUrl, height, shape = RoundedCornerShape(0.dp), requestSize = RecentTileMaxHeight)
+        Text(
+            playlist.name,
+            color = DesktopColors.TextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = titleSize,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
+        )
+        HoverReveal(revealed = hovered, modifier = Modifier.padding(end = 12.dp)) {
+            HomePlayButton(size = 32.dp, description = "播放${playlist.name}", onClick = onPlay)
         }
-        Text("播放", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold)
     }
+}
+
+// 每日推荐聚焦卡：底色取自首曲封面并压暗。桌面端没有日推列表页，卡片与播放钮都直接起播
+@Composable
+private fun DailySpotlight(songs: List<DailySong>, onPlay: () -> Unit) {
+    val coverUrl = songs.firstOrNull()?.al?.picUrl.orEmpty()
+    var baseColor by remember { mutableStateOf(FallbackCoverPalette.base) }
+    LaunchedEffect(coverUrl) {
+        if (coverUrl.isNotBlank()) baseColor = extractCoverPaletteFromUrl(coverUrl).base
+    }
+    val containerColor by animateColorAsState(
+        lerp(baseColor, Color.Black, SPOTLIGHT_DARKEN_FRACTION),
+        label = "dailySpotlightColor"
+    )
+    val today = remember { LocalDate.now() }
+    val trackLine = remember(songs) {
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold)) {
+                append("${songs.size} 首")
+            }
+            songs.take(SPOTLIGHT_TRACK_PREVIEW_COUNT).forEach { song ->
+                append(" · ")
+                append(song.name)
+            }
+        }
+    }
+
+    Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle("今日为你推荐", horizontalPadding = 0)
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(containerColor)
+                .clickable(onClick = onPlay).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Cover(coverUrl, SpotlightCoverSize, shape = RoundedCornerShape(4.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                Text("每日推荐", color = DesktopColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "根据你的口味 · ${today.monthValue}月${today.dayOfMonth}日",
+                    color = DesktopColors.TextPrimary.copy(alpha = 0.7f),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Text(
+                    trackLine,
+                    color = DesktopColors.TextPrimary.copy(alpha = 0.75f),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            HomePlayButton(
+                size = 48.dp,
+                description = "播放每日推荐",
+                containerColor = DesktopColors.TextPrimary,
+                iconTint = Color.Black,
+                onClick = onPlay
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomePlayButton(
+    size: Dp,
+    description: String,
+    containerColor: Color = DesktopColors.Accent,
+    iconTint: Color = DesktopColors.TextPrimary,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier.size(size).clip(CircleShape).background(containerColor).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Rounded.PlayArrow, description, tint = iconTint, modifier = Modifier.size(size * 0.6f))
+    }
+}
+
+private fun HomeCard.typeLabel(): String = when (this) {
+    is HomeCard.Playlist -> "歌单"
+    is HomeCard.Album -> "专辑"
+    is HomeCard.Song -> "单曲"
+    is HomeCard.Voice -> "播客"
 }
 
 @Composable
@@ -349,47 +524,121 @@ private fun ServerShelf(
     viewModel: HomeViewModel,
     onPlaylistClick: (Long, String) -> Unit
 ) {
+    val navigator = LocalDesktopNavigator.current
     val songs = shelf.cards.filterIsInstance<HomeCard.Song>()
     val voices = shelf.cards.filterIsInstance<HomeCard.Voice>()
-    ShelfRow(shelf.title, shelf.cards) { card ->
-        CardTile(card.coverUrl, card.title, card.caption) {
+    ShelfRow(shelf.title, shelf.cards.withIndex().toList()) { (index, card) ->
+        val play: () -> Unit = {
             when (card) {
-                is HomeCard.Playlist -> onPlaylistClick(card.id, card.title)
+                is HomeCard.Playlist -> viewModel.playCollection(card.id, isAlbum = false)
+                is HomeCard.Album -> viewModel.playCollection(card.id, isAlbum = true)
                 is HomeCard.Song -> viewModel.playShelfSong(shelf.title, songs, card)
                 is HomeCard.Voice -> viewModel.playShelfVoice(shelf.title, voices, card)
-                // 专辑页在后续阶段接入
-                is HomeCard.Album -> Unit
+            }
+        }
+        CardTile(
+            coverUrl = card.coverUrl,
+            title = card.title,
+            caption = card.caption,
+            typeLabel = if (shelf.showRank) "${card.typeLabel()} · ${index + 1}" else card.typeLabel(),
+            onPlay = play
+        ) {
+            when (card) {
+                is HomeCard.Playlist -> onPlaylistClick(card.id, card.title)
+                is HomeCard.Album -> navigator.openAlbum(card.id, card.title)
+                is HomeCard.Song, is HomeCard.Voice -> play()
             }
         }
     }
 }
 
+// 横向货架：悬停整行时标题右侧出现翻页箭头，按可视宽度整屏滚动，已到头的一侧不显示
 @Composable
 internal fun <T> ShelfRow(title: String, items: List<T>, itemContent: @Composable (T) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitle(title)
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pageScroll: (Int) -> Unit = { direction ->
+        val page = listState.layoutInfo.viewportSize.width - with(density) { (ShelfContentPadding * 2).toPx() }
+        scope.launch { listState.animateScrollBy(direction * page.coerceAtLeast(0f)) }
+    }
+    Column(Modifier.hoverable(interaction), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SectionTitle(title, horizontalPadding = 0, modifier = Modifier.weight(1f))
+            ScrollArrow(
+                revealed = hovered && listState.canScrollBackward,
+                left = true,
+                description = "上一页",
+                modifier = Modifier
+            ) { pageScroll(-1) }
+            ScrollArrow(
+                revealed = hovered && listState.canScrollForward,
+                left = false,
+                description = "下一页",
+                modifier = Modifier
+            ) { pageScroll(1) }
+        }
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            state = listState,
+            contentPadding = PaddingValues(horizontal = ShelfContentPadding),
+            horizontalArrangement = Arrangement.spacedBy(ShelfCardGap)
         ) {
             items(items) { itemContent(it) }
         }
     }
 }
 
+// 卡片自带内边距，悬停时整块衬底；外宽仍为 CardWidth，网格页的列宽计算不受影响
 @Composable
-internal fun CardTile(coverUrl: String, title: String, caption: String, onClick: () -> Unit) {
+internal fun CardTile(
+    coverUrl: String,
+    title: String,
+    caption: String,
+    typeLabel: String? = null,
+    onPlay: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val background by animateColorAsState(
+        if (hovered) DesktopColors.CardSurface else Color.Transparent,
+        tween(HOVER_FADE_MS),
+        label = "cardTileBg"
+    )
     Column(
-        Modifier.width(CardWidth).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick)
+        Modifier.width(CardWidth).clip(RoundedCornerShape(TileRadius)).background(background)
+            .hoverable(interaction).clickable(onClick = onClick).padding(CardInnerPadding)
     ) {
-        Cover(coverUrl, CardWidth, shape = RoundedCornerShape(6.dp))
+        Box {
+            Cover(coverUrl, CardCoverSize, shape = RoundedCornerShape(TileRadius))
+            if (onPlay != null) {
+                HoverReveal(revealed = hovered, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)) {
+                    HomePlayButton(size = 40.dp, description = "播放$title", onClick = onPlay)
+                }
+            }
+        }
+        if (typeLabel != null) {
+            Text(
+                typeLabel,
+                color = DesktopColors.TextGray,
+                fontSize = 12.sp,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
         Text(
             title,
             color = DesktopColors.TextPrimary,
             fontSize = 14.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.padding(top = if (typeLabel != null) 2.dp else 8.dp)
         )
         if (caption.isNotBlank()) {
             Text(caption, color = DesktopColors.TextGray, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -398,12 +647,14 @@ internal fun CardTile(coverUrl: String, title: String, caption: String, onClick:
 }
 
 @Composable
-internal fun SectionTitle(text: String, horizontalPadding: Int = 24) {
+internal fun SectionTitle(text: String, horizontalPadding: Int = 24, modifier: Modifier = Modifier) {
     Text(
         text,
         color = DesktopColors.TextPrimary,
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(horizontal = horizontalPadding.dp)
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(horizontal = horizontalPadding.dp)
     )
 }

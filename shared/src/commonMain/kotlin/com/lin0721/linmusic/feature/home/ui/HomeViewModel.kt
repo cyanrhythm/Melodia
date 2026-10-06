@@ -39,6 +39,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.QueueItem
+import com.lin0721.linmusic.core.player.PlaySource
+import com.lin0721.linmusic.feature.playlist.data.PlaylistRepository
 
 private const val TAG = "HomeViewModel"
 
@@ -55,7 +57,8 @@ class HomeViewModel(
     private val loadLikedSongIdsUseCase: LoadLikedSongIdsUseCase,
     private val songLikeRepository: SongLikeRepository,
     private val songCollectDelegate: SongCollectDelegate,
-    private val podcastPlayer: PodcastPlayerController
+    private val podcastPlayer: PodcastPlayerController,
+    private val playlistRepository: PlaylistRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -254,6 +257,35 @@ class HomeViewModel(
             playerManager.playQueue(queueItems, index.coerceIn(0, queueItems.size - 1), "每日推荐")
         } else {
             viewModelScope.launch { _toastEvent.emit("每日推荐暂无歌曲") }
+        }
+    }
+
+    // 卡片上直接播放歌单/专辑：先拉详情，歌单还要补全被服务端截断的曲目，再整列起播
+    fun playCollection(id: Long, isAlbum: Boolean) {
+        viewModelScope.launch {
+            val detailFlow = if (isAlbum) playlistRepository.getAlbumDetail(id) else playlistRepository.getPlaylistDetail(id)
+            val detail = detailFlow.first().getOrElse {
+                _toastEvent.emit(it.toUserMessage(resourceProvider))
+                return@launch
+            }
+            val tracks = if (isAlbum) {
+                detail.tracks
+            } else {
+                // 补全失败时退回详情自带的部分曲目，仍可起播
+                playlistRepository.loadAllTracks(detail).first().getOrElse { detail.tracks }
+            }
+            if (tracks.isEmpty()) {
+                _toastEvent.emit("暂无可播放的歌曲")
+                return@launch
+            }
+            val queueItems = tracks.map { QueueItem(it.id, it.name, it.ar.joinToString { ar -> ar.name }, it.al.picUrl) }
+            val kind = if (isAlbum) PlaySource.Kind.ALBUM else PlaySource.Kind.PLAYLIST
+            playerManager.playQueue(
+                queueItems,
+                0,
+                detail.name,
+                PlaySource(kind, detail.id, detail.name, detail.coverImgUrl)
+            )
         }
     }
 
