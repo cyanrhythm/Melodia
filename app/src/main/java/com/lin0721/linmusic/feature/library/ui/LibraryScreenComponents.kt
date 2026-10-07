@@ -75,13 +75,19 @@ fun LibraryFilterPillsRow(
     onClear: () -> Unit,
     selectedPlaylistOwnerFilter: LibraryPlaylistOwnerFilter? = null,
     onSelectPlaylistOwnerFilter: (LibraryPlaylistOwnerFilter) -> Unit = {},
+    showCategoryFilters: Boolean = true,
+    onLocalMusicClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val filters = listOf(
-        LibraryFilter.PLAYLIST to "歌单${if (playlistCount > 0) " $playlistCount" else ""}",
-        LibraryFilter.ALBUM to "专辑${if (albumCount > 0) " $albumCount" else ""}",
-        LibraryFilter.ARTIST to "歌手${if (artistCount > 0) " $artistCount" else ""}"
-    )
+    val filters = if (showCategoryFilters) {
+        listOf(
+            LibraryFilter.PLAYLIST to "歌单${if (playlistCount > 0) " $playlistCount" else ""}",
+            LibraryFilter.ALBUM to "专辑${if (albumCount > 0) " $albumCount" else ""}",
+            LibraryFilter.ARTIST to "歌手${if (artistCount > 0) " $artistCount" else ""}"
+        )
+    } else {
+        emptyList()
+    }
     val visibleFilters = if (selectedFilter == null) filters else filters.filter { it.first == selectedFilter }
     val ownerFilters = listOf(
         LibraryPlaylistOwnerFilter.MINE to "我创建的",
@@ -179,6 +185,27 @@ fun LibraryFilterPillsRow(
                     Text(
                         text = label,
                         color = contentColor,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+        // 本地音乐胶囊：未筛选时展示在最右侧
+        if (selectedFilter == null && onLocalMusicClick != null) {
+            item(key = "local_music") {
+                Box(
+                    modifier = Modifier
+                        .animateItem(fadeInSpec, placementSpec, fadeOutSpec)
+                        .height(36.dp)
+                        .pressable(MelodiaPress.Pill) { onLocalMusicClick() }
+                        .clip(RoundedCornerShape(PillRadius))
+                        .background(Color.White.copy(alpha = 0.1f))
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "本地音乐",
+                        color = Color.LightGray,
                         fontSize = 14.sp
                     )
                 }
