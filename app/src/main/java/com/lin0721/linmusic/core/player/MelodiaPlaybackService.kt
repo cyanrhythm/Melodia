@@ -36,6 +36,7 @@ import com.lin0721.linmusic.MainActivity
 import com.lin0721.linmusic.R
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.core.log.AppLogger
+import com.lin0721.linmusic.core.player.external.EXTRA_LYRIC_INFO
 import com.lin0721.linmusic.core.player.external.ExternalLyricCoordinator
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.core.songlike.SongLikeRepository
@@ -532,9 +533,10 @@ class MelodiaPlaybackService : MediaSessionService() {
                 .addAction(playPauseAction)
                 .addAction(nextAction)
                 .addAction(likeAction)
-                val lyricInfo = metadata?.extras?.getString("lyricInfo")
+
+            val lyricInfo = metadata?.extras?.getString(EXTRA_LYRIC_INFO)
             if (!lyricInfo.isNullOrBlank()) {
-                builder.addExtras(Bundle().apply { putString("lyricInfo", lyricInfo) })
+                builder.addExtras(Bundle().apply { putString(EXTRA_LYRIC_INFO, lyricInfo) })
             }
 
             currentCoverBitmap?.let { bitmap ->
