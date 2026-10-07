@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.lin0721.linmusic.desktop.player.AUTO_AUDIO_DEVICE
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 enum class CloseAction { TRAY, EXIT }
@@ -37,6 +38,8 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
         private val KEY_NOW_PLAYING_WIDTH = floatPreferencesKey("now_playing_width")
         private val KEY_AUDIO_DEVICE = stringPreferencesKey("audio_device")
         private val KEY_LYRICS_VIEW_FONT_SIZE = intPreferencesKey("lyrics_view_font_size")
+        private val KEY_WINDOW_BOUNDS = stringPreferencesKey("window_bounds")
+        private val KEY_WINDOW_MAXIMIZED = booleanPreferencesKey("window_maximized")
     }
 
     val hotkeys: Flow<Map<HotkeyAction, HotkeyCombo?>> = dataStore.data.map { prefs ->
@@ -113,6 +116,21 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
 
     suspend fun saveNowPlayingWidth(widthDp: Float) {
         dataStore.edit { it[KEY_NOW_PLAYING_WIDTH] = widthDp }
+    }
+
+    suspend fun loadWindow(): SavedWindow = dataStore.data.first().let { prefs ->
+        SavedWindow(
+            bounds = prefs[KEY_WINDOW_BOUNDS]?.let(WindowBounds::decode),
+            maximized = prefs[KEY_WINDOW_MAXIMIZED] ?: false
+        )
+    }
+
+    // bounds 为 null 时保留已存的浮动位置与大小
+    suspend fun saveWindow(bounds: WindowBounds?, maximized: Boolean) {
+        dataStore.edit { prefs ->
+            if (bounds != null) prefs[KEY_WINDOW_BOUNDS] = bounds.encode()
+            prefs[KEY_WINDOW_MAXIMIZED] = maximized
+        }
     }
 
     // 解析失败的条目忽略，回落到默认值

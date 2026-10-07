@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -34,6 +35,10 @@ import com.lin0721.linmusic.desktop.platform.CloseAction
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
+import com.lin0721.linmusic.desktop.platform.MIN_WINDOW_HEIGHT
+import com.lin0721.linmusic.desktop.platform.MIN_WINDOW_WIDTH
+import com.lin0721.linmusic.desktop.platform.WindowBounds
+import com.lin0721.linmusic.desktop.platform.currentScreenBounds
 import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
 import com.lin0721.linmusic.desktop.ui.MelodiaDesktopApp
@@ -50,11 +55,14 @@ import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.podcast.data.PodcastProgressTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.lin0721.linmusic.desktop.platform.DesktopCacheMigration
 import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
 import com.lin0721.linmusic.desktop.platform.DesktopLogging
@@ -67,7 +75,18 @@ import java.awt.Dimension
 
 private const val VOLUME_STEP = 5
 private const val EXIT_ANIMATION_MS = 250L
+private const val WINDOW_SAVE_DEBOUNCE_MS = 400L
+private val DEFAULT_WINDOW_SIZE = DpSize(1280.dp, 800.dp)
 
+private data class WindowSnapshot(
+    val placement: WindowPlacement,
+    val minimized: Boolean,
+    val size: DpSize,
+    val position: WindowPosition,
+    val awtBounds: java.awt.Rectangle
+)
+
+@OptIn(FlowPreview::class)
 fun main() {
     DesktopLogging.install()
     DesktopImageLoader.install()
@@ -92,6 +111,9 @@ fun main() {
     val smtc = koin.get<SmtcSession>()
     // 系统媒体卡片可用时由它接管媒体键，否则回退全局热键
     val smtcActive = smtc.start()
+    val savedWindow = runBlocking { desktopPreferences.loadWindow() }
+    val restoredBounds = savedWindow.bounds
+    val restoredPosition = restoredBounds?.takeIf { it.isReachableOn(currentScreenBounds()) }
 
     application {
         val scope = rememberCoroutineScope()
@@ -181,8 +203,9 @@ fun main() {
         )
 
         val windowState = rememberWindowState(
-            size = DpSize(1280.dp, 800.dp),
-            position = WindowPosition(Alignment.Center)
+            placement = if (savedWindow.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+            size = restoredBounds?.let { DpSize(it.width.dp, it.height.dp) } ?: DEFAULT_WINDOW_SIZE,
+            position = restoredPosition?.let { WindowPosition(it.x.dp, it.y.dp) } ?: WindowPosition(Alignment.Center)
         )
         val fullscreen = rememberFullscreenState(windowState)
         val lyricsView = rememberLyricsViewState(fullscreen)
@@ -213,7 +236,25 @@ fun main() {
             }
         ) {
             LaunchedEffect(Unit) {
-                window.minimumSize = Dimension(960, 600)
+                window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+            }
+            // 全屏不记；最小化时系统会把窗口挪到屏外，同样不记
+            LaunchedEffect(windowState) {
+                // 读 size/position 只为订阅它们的变化，实际取值用 AWT 窗口
+                snapshotFlow {
+                    WindowSnapshot(windowState.placement, windowState.isMinimized, windowState.size, windowState.position, window.bounds)
+                }
+                    .debounce(WINDOW_SAVE_DEBOUNCE_MS)
+                    .collect { snapshot ->
+                        if (snapshot.minimized) return@collect
+                        val bounds = snapshot.awtBounds
+                        when (snapshot.placement) {
+                            WindowPlacement.Floating ->
+                                desktopPreferences.saveWindow(WindowBounds(bounds.x, bounds.y, bounds.width, bounds.height), false)
+                            WindowPlacement.Maximized -> desktopPreferences.saveWindow(null, true)
+                            WindowPlacement.Fullscreen -> Unit
+                        }
+                    }
             }
             LaunchedEffect(isMainVisible, bringToFrontRequest) {
                 if (isMainVisible) {
