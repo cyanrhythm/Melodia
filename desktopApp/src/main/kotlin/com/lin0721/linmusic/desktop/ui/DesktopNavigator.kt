@@ -20,7 +20,10 @@ class DesktopNavigator(
     val downloadLevel: String,
     val downloadTrack: (Track) -> Unit,
     val showMessage: (String) -> Unit,
-    val goBack: () -> Unit
+    val goBack: () -> Unit,
+    // 在右侧栏打开（或关闭已打开的）歌单评论
+    val toggleCommentsPanel: (CommentsHost) -> Unit,
+    val isCommentsPanelOpen: (CommentsHost) -> Boolean
 )
 
 val LocalDesktopNavigator = compositionLocalOf<DesktopNavigator> {

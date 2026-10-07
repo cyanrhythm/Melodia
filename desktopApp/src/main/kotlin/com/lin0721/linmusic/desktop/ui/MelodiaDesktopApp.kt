@@ -172,6 +172,20 @@ fun WindowScope.MelodiaDesktopApp(
             setDockOpen(true)
         }
     }
+    var playlistComments by remember { mutableStateOf<CommentsHost?>(null) }
+    val toggleCommentsPanel: (CommentsHost) -> Unit = { host ->
+        if (dockOpen && dockOverlay == DockOverlay.PlaylistComments && playlistComments === host) {
+            dockOverlay = null
+        } else {
+            playlistComments = host
+            dockOverlay = DockOverlay.PlaylistComments
+            setDockOpen(true)
+        }
+    }
+    // 歌单评论属于所在页面，离开该页就收起
+    LaunchedEffect(backStack.currentEntry.id) {
+        if (dockOverlay == DockOverlay.PlaylistComments) dockOverlay = null
+    }
     val searchInput by searchViewModel.inputState.collectAsState()
     val discovery by searchViewModel.discoveryState.collectAsState()
     val defaultKeyword = (discovery as? DiscoveryUiState.Success)?.defaultKeyword.orEmpty()
@@ -200,7 +214,9 @@ fun WindowScope.MelodiaDesktopApp(
             navigatorMessages.tryEmit("已加入下载队列")
         },
         showMessage = { navigatorMessages.tryEmit(it) },
-        goBack = backStack::back
+        goBack = backStack::back,
+        toggleCommentsPanel = toggleCommentsPanel,
+        isCommentsPanelOpen = { host -> dockOpen && dockOverlay == DockOverlay.PlaylistComments && playlistComments === host }
     )
 
     val saveableStateHolder = rememberSaveableStateHolder()
@@ -287,7 +303,8 @@ fun WindowScope.MelodiaDesktopApp(
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
                     // 无曲目时下载面板也要能打开，右侧栏只承载它
-                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads
+                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads ||
+                        dockOverlay == DockOverlay.PlaylistComments
                     // 侧栏最宽不超过固定上限，且尽量给中间内容区留出 CenterMinWidth；
                     // 两侧互相让位时，音乐库按正在播放栏的记忆宽度算，正在播放栏按音乐库的实际占用算
                     val dockStaticOccupied = when {
@@ -446,6 +463,7 @@ fun WindowScope.MelodiaDesktopApp(
                                 downloader = downloader,
                                 onCloseOverlay = { dockOverlay = null },
                                 onOpenComments = { toggleOverlay(DockOverlay.Comments) },
+                                playlistComments = playlistComments,
                                 onOpenLyricsView = lyricsView::open,
                                 onOpenLyricsFullscreen = lyricsView::openWithFullscreen,
                                 onOpenChange = setDockOpen,

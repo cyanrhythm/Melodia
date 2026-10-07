@@ -53,6 +53,7 @@ enum class DockOverlay {
     Queue,
     Devices,
     Comments,
+    PlaylistComments,
     Downloads
 }
 
@@ -125,6 +126,7 @@ fun NowPlayingDock(
     downloader: DesktopSongDownloader?,
     onCloseOverlay: () -> Unit,
     onOpenComments: () -> Unit,
+    playlistComments: CommentsHost?,
     onOpenLyricsView: () -> Unit,
     onOpenLyricsFullscreen: () -> Unit,
     onOpenChange: (Boolean) -> Unit,
@@ -137,6 +139,7 @@ fun NowPlayingDock(
     val hoverSource = remember { MutableInteractionSource() }
     val hovered by hoverSource.collectIsHoveredAsState()
     val collapsed = hasTrack && !open
+    val playerCommentsHost = remember(playerViewModel) { playerViewModel.asCommentsHost() }
 
     // 停留一小段时间才预览，避免鼠标掠过窗口边缘时误触
     LaunchedEffect(hovered, collapsed) {
@@ -194,7 +197,12 @@ fun NowPlayingDock(
                         onOpenLyricsFullscreen = onOpenLyricsFullscreen
                     )
                     OverlayLayer(visible = open && overlay == DockOverlay.Comments) { modifier ->
-                        CommentsPanel(playerViewModel = playerViewModel, onClose = onCloseOverlay, modifier = modifier)
+                        CommentsPanel(host = playerCommentsHost, onClose = onCloseOverlay, modifier = modifier)
+                    }
+                    if (playlistComments != null) {
+                        OverlayLayer(visible = open && overlay == DockOverlay.PlaylistComments) { modifier ->
+                            CommentsPanel(host = playlistComments, onClose = onCloseOverlay, modifier = modifier)
+                        }
                     }
                     OverlayLayer(visible = open && overlay == DockOverlay.Queue) { modifier ->
                         PlayQueuePanel(controller = controller, onClose = onCloseOverlay, modifier = modifier)

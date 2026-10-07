@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
@@ -181,6 +182,8 @@ private fun PlaylistContent(
         onRemove = removeTrack
     )
 
+    val commentsHost = remember(viewModel) { viewModel.asCommentsHost() }
+    val commentsOpen = navigator.isCommentsPanelOpen(commentsHost)
     val isSavingInfo by viewModel.isSavingInfo.collectAsState()
     var showEdit by remember(playlist.id) { mutableStateOf(false) }
     var showAddSongs by remember(playlist.id) { mutableStateOf(false) }
@@ -301,6 +304,12 @@ private fun PlaylistContent(
                         showAdded = hasDates,
                         canDelete = isOwned,
                         onDelete = { showDelete = true },
+                        showComments = playlist.id > 0,
+                        commentsOpen = commentsOpen,
+                        onToggleComments = {
+                            if (!commentsOpen) viewModel.loadPlaylistComments(playlist.id)
+                            navigator.toggleCommentsPanel(commentsHost)
+                        },
                         onPlay = { playDisplayed(false) },
                         onShuffle = { playDisplayed(true) },
                         onToggleSubscribe = {
@@ -534,6 +543,9 @@ private fun PlaylistActionBar(
     showAdded: Boolean,
     canDelete: Boolean,
     onDelete: () -> Unit,
+    showComments: Boolean,
+    commentsOpen: Boolean,
+    onToggleComments: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onToggleSubscribe: () -> Unit,
@@ -566,6 +578,14 @@ private fun PlaylistActionBar(
                 if (isSubscribed) "取消收藏$resourceLabel" else "收藏$resourceLabel",
                 tint = if (isSubscribed) DesktopColors.Accent else DesktopColors.TextGray,
                 onClick = onToggleSubscribe
+            )
+        }
+        if (showComments) {
+            ActionIcon(
+                Icons.Rounded.ChatBubbleOutline,
+                "${resourceLabel}评论",
+                tint = if (commentsOpen) DesktopColors.TextPrimary else DesktopColors.TextGray,
+                onClick = onToggleComments
             )
         }
         ActionIcon(Icons.Rounded.Download, "下载$resourceLabel", onClick = onDownload)

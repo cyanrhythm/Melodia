@@ -702,6 +702,10 @@ class PlaylistViewModel(
         commentsController.load(commentThreadId(playlistId))
     }
 
+    fun retryComments() {
+        commentsController.retry()
+    }
+
     fun likeComment(comment: CommentItem) {
         viewModelScope.launch {
             if (userProfile.value == null) {
