@@ -428,6 +428,7 @@ fun WindowScope.MelodiaDesktopApp(
                         controller = playbackController,
                         playerViewModel = playerViewModel,
                         settingsPreferences = settingsPreferences,
+                        desktopPreferences = desktopPreferences,
                         isFullscreen = isFullscreen
                     )
                 }

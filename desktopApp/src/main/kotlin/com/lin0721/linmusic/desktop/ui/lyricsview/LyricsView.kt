@@ -2,6 +2,7 @@ package com.lin0721.linmusic.desktop.ui.lyricsview
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +48,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -53,39 +56,37 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.lin0721.linmusic.core.player.NowPlaying
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.domain.LyricLine
 import com.lin0721.linmusic.core.player.domain.lyricLineKey
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.ui.DesktopTooltip
 import com.lin0721.linmusic.desktop.ui.nowplaying.rememberCoverBase
 import com.lin0721.linmusic.desktop.ui.nowplaying.verticalEdgeFade
 import com.lin0721.linmusic.desktop.ui.palette.darken
 import com.lin0721.linmusic.desktop.ui.palette.saturateIfChromatic
-import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import kotlinx.coroutines.delay
 
 private const val FADE_MS = 150
 private const val RESUME_FOLLOW_MS = 3_000L
+private const val AUTO_HIDE_MS = 5_000L
+private const val HEADER_FADE_MS = 200
 
 // 当前行落在视口自上而下的这个比例处
 private const val ANCHOR_FRACTION = 0.38f
 
-// 歌词列占整体宽度的比例，居中，左对齐
+// 歌词列占整体宽度的比例，居中
 private const val COLUMN_WIDTH_FRACTION = 0.72f
-private val LyricFontSize = 40.sp
-private val SecondaryFontSize = 22.sp
-private val BackgroundFontSize = 28.sp
-private val BackgroundSecondarySize = 18.sp
-private val LineSpacing = 24.dp
-private val SecondarySpacing = 6.dp
 private val EdgeFade = 48.dp
 private val HeaderButtonSize = 32.dp
 private val InactiveColor = Color.White.copy(alpha = 0.55f)
@@ -97,6 +98,7 @@ fun LyricsViewOverlay(
     controller: PlaybackController,
     playerViewModel: PlayerViewModel,
     settingsPreferences: SettingsPreferences,
+    desktopPreferences: DesktopPreferences,
     isFullscreen: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -111,16 +113,17 @@ fun LyricsViewOverlay(
         val detail by playerViewModel.songDetailState.collectAsState()
         val primaryIndex by playerViewModel.primaryLyricIndex.collectAsState()
         val activeIndices by playerViewModel.activeLyricIndices.collectAsState()
-        val secondaryMode by settingsPreferences.fullScreenLyricSecondaryMode.collectAsState(initial = "translation")
         val isPlaying by controller.isPlaying.collectAsState()
         val clock = rememberLyricClock(controller)
+        val (settings, actions) = rememberLyricsViewSettings(settingsPreferences, desktopPreferences)
         LyricsViewContent(
             track = track,
             lines = detail.lyrics,
             isLoading = detail.isLyricsLoading,
             primaryIndex = primaryIndex,
             activeIndices = activeIndices,
-            secondaryMode = secondaryMode,
+            settings = settings,
+            actions = actions,
             isPlaying = isPlaying,
             clock = clock,
             isFullscreen = isFullscreen,
@@ -131,6 +134,7 @@ fun LyricsViewOverlay(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun LyricsViewContent(
     track: NowPlaying,
@@ -138,7 +142,8 @@ private fun LyricsViewContent(
     isLoading: Boolean,
     primaryIndex: Int,
     activeIndices: Set<Int>,
-    secondaryMode: String,
+    settings: LyricsViewSettings,
+    actions: LyricsViewSettingsActions,
     isPlaying: Boolean,
     clock: () -> Long,
     isFullscreen: Boolean,
@@ -149,15 +154,40 @@ private fun LyricsViewContent(
     // 与移动端全屏歌词同一配方：主色提饱和后压暗铺底
     val base = rememberCoverBase(track.artworkUri)
     val fill = remember(base) { base.saturateIfChromatic(0.6f).darken(0.35f) }
+    val hasTranslation = remember(lines) { lines.any { it.translation != null } }
+    val hasRoma = remember(lines) { lines.any { it.roma != null } }
+
+    var settingsOpen by remember { mutableStateOf(false) }
+    var headerShown by remember { mutableStateOf(true) }
+    var moveTick by remember { mutableIntStateOf(0) }
+    // 开启自动隐藏后，鼠标 5 秒没有动作就收起顶栏；设置面板打开期间保持显示
+    LaunchedEffect(settings.autoHideControls, settingsOpen, moveTick) {
+        headerShown = true
+        if (settings.autoHideControls && !settingsOpen) {
+            delay(AUTO_HIDE_MS)
+            headerShown = false
+        }
+    }
+    val headerAlpha by animateFloatAsState(if (headerShown) 1f else 0f, tween(HEADER_FADE_MS), label = "lyricsHeaderAlpha")
 
     Box(
         Modifier.fillMaxSize().padding(horizontal = DesktopDimens.PaneGap)
             .clip(RoundedCornerShape(DesktopDimens.PaneRadius))
             .background(fill)
+            .onPointerEvent(PointerEventType.Move) { moveTick++ }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
         Column(Modifier.fillMaxSize()) {
-            Header(track, isFullscreen, onToggleFullscreen, onClose)
+            Header(
+                track = track,
+                isFullscreen = isFullscreen,
+                settingsOpen = settingsOpen,
+                onSettingsOpenChange = { settingsOpen = it },
+                settingsContent = { LyricsSettingsPanel(settings, actions, hasTranslation, hasRoma) },
+                onToggleFullscreen = onToggleFullscreen,
+                onClose = onClose,
+                modifier = Modifier.graphicsLayer { alpha = headerAlpha }
+            )
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (lyricsPlaceholder(lines, isLoading)) {
                     LyricsPlaceholder.Loading -> CircularProgressIndicator(
@@ -167,7 +197,7 @@ private fun LyricsViewContent(
                     )
                     LyricsPlaceholder.Empty -> Placeholder("暂无歌词")
                     LyricsPlaceholder.PureMusic -> Placeholder("纯音乐，请欣赏")
-                    null -> LyricsList(lines, primaryIndex, activeIndices, secondaryMode, isPlaying, clock, onSeek)
+                    null -> LyricsList(lines, primaryIndex, activeIndices, settings, isPlaying, clock, onSeek)
                 }
             }
         }
@@ -175,8 +205,22 @@ private fun LyricsViewContent(
 }
 
 @Composable
-private fun Header(track: NowPlaying, isFullscreen: Boolean, onToggleFullscreen: () -> Unit, onClose: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun Header(
+    track: NowPlaying,
+    isFullscreen: Boolean,
+    settingsOpen: Boolean,
+    onSettingsOpenChange: (Boolean) -> Unit,
+    settingsContent: @Composable () -> Unit,
+    onToggleFullscreen: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val popupOffset = IntOffset(0, with(density) { (HeaderButtonSize + 8.dp).roundToPx() })
+    Row(
+        modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f).padding(end = 16.dp)) {
             Text(
                 track.title,
@@ -188,7 +232,22 @@ private fun Header(track: NowPlaying, isFullscreen: Boolean, onToggleFullscreen:
             )
             Text(track.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        HeaderButton(if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen, if (isFullscreen) "退出全屏" else "全屏", onToggleFullscreen)
+        Box {
+            HeaderButton(Icons.Rounded.Tune, "歌词设置") { onSettingsOpenChange(!settingsOpen) }
+            if (settingsOpen) {
+                Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = popupOffset,
+                    onDismissRequest = { onSettingsOpenChange(false) },
+                    properties = PopupProperties(focusable = true)
+                ) { settingsContent() }
+            }
+        }
+        HeaderButton(
+            if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+            if (isFullscreen) "退出全屏" else "全屏",
+            onToggleFullscreen
+        )
         HeaderButton(Icons.Rounded.CloseFullscreen, "收起", onClose)
     }
 }
@@ -214,13 +273,12 @@ private fun LyricsList(
     lines: List<LyricLine>,
     primaryIndex: Int,
     activeIndices: Set<Int>,
-    secondaryMode: String,
+    settings: LyricsViewSettings,
     isPlaying: Boolean,
     clock: () -> Long,
     onSeek: (Long) -> Unit
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
         val listState = rememberLazyListState()
         var following by remember { mutableStateOf(true) }
         var interactionTick by remember { mutableIntStateOf(0) }
@@ -247,7 +305,7 @@ private fun LyricsList(
                     following = false
                     interactionTick++
                 },
-            verticalArrangement = Arrangement.spacedBy(LineSpacing),
+            verticalArrangement = Arrangement.spacedBy(settings.lineSpacing.dp),
             contentPadding = PaddingValues(start = sidePadding, end = sidePadding, top = topPadding, bottom = bottomPadding)
         ) {
             itemsIndexed(lines, key = { index, line -> lyricLineKey(index, line) }) { index, line ->
@@ -256,7 +314,8 @@ private fun LyricsList(
                 LyricsRow(
                     line = line,
                     active = isActiveLine(index, primaryIndex, activeIndices),
-                    secondary = secondaryText(line, secondaryMode),
+                    secondary = secondaryText(line, settings.secondaryMode),
+                    settings = settings,
                     isPlaying = isPlaying,
                     clock = clock,
                     onClick = {
@@ -274,6 +333,7 @@ private fun LyricsRow(
     line: LyricLine,
     active: Boolean,
     secondary: String?,
+    settings: LyricsViewSettings,
     isPlaying: Boolean,
     clock: () -> Long,
     onClick: () -> Unit
@@ -289,15 +349,13 @@ private fun LyricsRow(
         tween(300),
         label = "lyricsRowColor"
     )
-    // 对唱行靠右，其余靠左
-    val end = isEndAligned(line)
-    val textAlign = if (end) TextAlign.End else TextAlign.Start
-    val horizontal = if (end) Alignment.End else Alignment.Start
+    val alignment = effectiveAlignment(settings.alignment, line.alignment)
+    val fontSize = settings.fontSize.sp
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hoverable(hoverSource).pointerHoverIcon(PointerIcon.Hand)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
-        horizontalAlignment = horizontal
+        horizontalAlignment = alignment.horizontal
     ) {
         if (active && line.words.isNotEmpty()) {
             KaraokeText(
@@ -305,19 +363,21 @@ private fun LyricsRow(
                 positionProvider = clock,
                 inactiveColor = InactiveColor,
                 activeColor = Color.White,
-                fontSize = LyricFontSize,
-                lineHeight = LyricFontSize * 1.3f,
-                textAlign = textAlign,
-                isPlaying = isPlaying
+                fontSize = fontSize,
+                lineHeight = fontSize * 1.3f,
+                textAlign = alignment.textAlign,
+                isPlaying = isPlaying,
+                advancedEffect = settings.advancedEffect,
+                glowEffect = settings.glowEffect
             )
         } else {
             Text(
                 line.text,
                 color = color,
-                fontSize = LyricFontSize,
-                lineHeight = LyricFontSize * 1.3f,
+                fontSize = fontSize,
+                lineHeight = fontSize * 1.3f,
                 fontWeight = FontWeight.ExtraBold,
-                textAlign = textAlign,
+                textAlign = alignment.textAlign,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -325,14 +385,14 @@ private fun LyricsRow(
             Text(
                 secondary,
                 color = color.copy(alpha = color.alpha * 0.8f),
-                fontSize = SecondaryFontSize,
-                lineHeight = SecondaryFontSize * 1.35f,
-                textAlign = textAlign,
-                modifier = Modifier.fillMaxWidth().padding(top = SecondarySpacing)
+                fontSize = settings.secondaryFontSize,
+                lineHeight = settings.secondaryFontSize * 1.35f,
+                textAlign = alignment.textAlign,
+                modifier = Modifier.fillMaxWidth().padding(top = settings.secondarySpacing.dp)
             )
         }
         line.backgroundLine?.let { background ->
-            BackgroundVocal(background, active, textAlign, horizontal, isPlaying, clock)
+            BackgroundVocal(background, active, alignment, settings, isPlaying, clock)
         }
     }
 }
@@ -342,44 +402,48 @@ private fun LyricsRow(
 private fun BackgroundVocal(
     line: LyricLine,
     active: Boolean,
-    textAlign: TextAlign,
-    horizontal: Alignment.Horizontal,
+    alignment: RowAlignment,
+    settings: LyricsViewSettings,
     isPlaying: Boolean,
     clock: () -> Long
 ) {
     // 未激活与本行激活但和声尚未开唱时用同一底色，避免状态切换变色
     val inactive = Color.White.copy(alpha = 0.22f)
     val activeColor = Color.White.copy(alpha = 0.82f)
-    Column(Modifier.fillMaxWidth(0.9f).padding(top = 8.dp), horizontalAlignment = horizontal) {
+    val fontSize = settings.backgroundFontSize
+    Column(Modifier.fillMaxWidth(0.9f).padding(top = 8.dp), horizontalAlignment = alignment.horizontal) {
         if (active && line.words.isNotEmpty()) {
             KaraokeText(
                 line = line,
                 positionProvider = clock,
                 inactiveColor = inactive,
                 activeColor = activeColor,
-                fontSize = BackgroundFontSize,
-                lineHeight = BackgroundFontSize * 1.4f,
-                textAlign = textAlign,
+                fontSize = fontSize,
+                lineHeight = fontSize * 1.4f,
+                textAlign = alignment.textAlign,
                 isPlaying = isPlaying,
+                advancedEffect = settings.advancedEffect,
+                glowEffect = settings.glowEffect,
                 fontWeight = FontWeight.Bold
             )
         } else {
             Text(
                 line.text,
                 color = if (active) activeColor else inactive,
-                fontSize = BackgroundFontSize,
-                lineHeight = BackgroundFontSize * 1.4f,
+                fontSize = fontSize,
+                lineHeight = fontSize * 1.4f,
                 fontWeight = FontWeight.Bold,
-                textAlign = textAlign,
+                textAlign = alignment.textAlign,
                 modifier = Modifier.fillMaxWidth()
             )
         }
         val tint = if (active) activeColor else inactive
+        val secondarySize = settings.backgroundSecondaryFontSize
         line.translation?.let {
-            Text(it, color = tint, fontSize = BackgroundSecondarySize, textAlign = textAlign, modifier = Modifier.fillMaxWidth().padding(top = 3.dp))
+            Text(it, color = tint, fontSize = secondarySize, textAlign = alignment.textAlign, modifier = Modifier.fillMaxWidth().padding(top = 3.dp))
         }
         line.roma?.let {
-            Text(it, color = tint, fontSize = BackgroundSecondarySize, textAlign = textAlign, modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
+            Text(it, color = tint, fontSize = secondarySize, textAlign = alignment.textAlign, modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
         }
     }
 }

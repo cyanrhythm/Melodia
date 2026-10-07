@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.lin0721.linmusic.desktop.player.AUTO_AUDIO_DEVICE
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,7 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
 
     companion object {
         const val STORE_NAME = "desktop_prefs"
+        const val DEFAULT_LYRICS_VIEW_FONT_SIZE = 40
 
         private val KEY_HOTKEYS = stringPreferencesKey("hotkeys")
         private val KEY_MEDIA_KEYS_ENABLED = booleanPreferencesKey("media_keys_enabled")
@@ -34,6 +36,7 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
         private val KEY_LIBRARY_WIDTH = floatPreferencesKey("library_width")
         private val KEY_NOW_PLAYING_WIDTH = floatPreferencesKey("now_playing_width")
         private val KEY_AUDIO_DEVICE = stringPreferencesKey("audio_device")
+        private val KEY_LYRICS_VIEW_FONT_SIZE = intPreferencesKey("lyrics_view_font_size")
     }
 
     val hotkeys: Flow<Map<HotkeyAction, HotkeyCombo?>> = dataStore.data.map { prefs ->
@@ -65,6 +68,9 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
     val nowPlayingWidth: Flow<Float?> = dataStore.data.map { it[KEY_NOW_PLAYING_WIDTH] }.distinctUntilChanged()
 
     // 音频输出设备的 mpv 设备名，缺省跟随系统默认
+    // 全屏歌词字号（sp）：与移动端共用的同名偏好默认值只适合手机，桌面端单独存
+    val lyricsViewFontSize: Flow<Int> = dataStore.data.map { it[KEY_LYRICS_VIEW_FONT_SIZE] ?: DEFAULT_LYRICS_VIEW_FONT_SIZE }.distinctUntilChanged()
+
     val audioDevice: Flow<String> = dataStore.data.map { it[KEY_AUDIO_DEVICE] ?: AUTO_AUDIO_DEVICE }.distinctUntilChanged()
 
     suspend fun saveHotkeys(hotkeys: Map<HotkeyAction, HotkeyCombo?>) {
@@ -99,6 +105,10 @@ class DesktopPreferences(private val dataStore: DataStore<Preferences>) {
 
     suspend fun saveAudioDevice(name: String) {
         dataStore.edit { it[KEY_AUDIO_DEVICE] = name }
+    }
+
+    suspend fun saveLyricsViewFontSize(size: Int) {
+        dataStore.edit { it[KEY_LYRICS_VIEW_FONT_SIZE] = size }
     }
 
     suspend fun saveNowPlayingWidth(widthDp: Float) {

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
@@ -33,6 +34,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.domain.LyricLine
+import kotlin.math.PI
+import kotlin.math.sin
 
 private const val TAG = "KaraokeText"
 
@@ -53,6 +56,10 @@ fun KaraokeText(
     lineHeight: TextUnit,
     textAlign: TextAlign,
     isPlaying: Boolean,
+    // 关闭流光只去掉柔边羽化，仍按逐字时间裁剪并逐帧推进
+    advancedEffect: Boolean = true,
+    // 演唱中的字词叠加呼吸高亮微光
+    glowEffect: Boolean = false,
     fontWeight: FontWeight = FontWeight.ExtraBold
 ) {
     var textLayoutResult by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
@@ -74,7 +81,12 @@ fun KaraokeText(
     // 排版结果出来后只算一次每个字词与行的物理坐标，避免每帧重复定位字符
     val layoutInfo = remember(line, textLayoutResult) { textLayoutResult?.let { buildLayoutInfo(line, it) } }
 
-    Box(Modifier.fillMaxWidth(), contentAlignment = if (textAlign == TextAlign.End) Alignment.CenterEnd else Alignment.CenterStart) {
+    val contentAlignment = when (textAlign) {
+        TextAlign.End -> Alignment.CenterEnd
+        TextAlign.Center -> Alignment.Center
+        else -> Alignment.CenterStart
+    }
+    Box(Modifier.fillMaxWidth(), contentAlignment = contentAlignment) {
         Text(
             line.text,
             fontSize = fontSize,
@@ -108,7 +120,7 @@ fun KaraokeText(
                     // 读取帧心跳是本行按屏幕刷新率重绘的唯一依据
                     @Suppress("UNUSED_VARIABLE")
                     val frameTickRead = frameTick
-                    val featherHalfPx = (KaraokeEdgeFeather / 2).toPx()
+                    val featherHalfPx = if (advancedEffect) (KaraokeEdgeFeather / 2).toPx() else 0f
                     val relativeProgress = positionState.value() - line.timeMs
                     val spans = computePlayedSpans(info, relativeProgress, featherHalfPx)
                     clipPath.rewind()
@@ -122,7 +134,7 @@ fun KaraokeText(
                     }
                     clipPath(clipPath) {
                         this@drawWithContent.drawContent()
-                        val featherIndex = spans.indexOfFirst { it.featherCenterX != null }
+                        val featherIndex = if (featherHalfPx > 0f) spans.indexOfFirst { it.featherCenterX != null } else -1
                         if (featherIndex != -1) {
                             val lineLayout = info.lineLayouts[featherIndex]
                             val centerX = spans[featherIndex].featherCenterX!!
@@ -139,9 +151,27 @@ fun KaraokeText(
                                 )
                             }
                         }
+                        if (glowEffect) drawBreathingGlow(info, relativeProgress)
                     }
                 }
         )
+    }
+}
+
+// 演唱中的字词按进度叠一层随正弦脉动的白色微光
+private fun DrawScope.drawBreathingGlow(info: LyricLayoutInfo, relativeProgress: Long) {
+    info.wordLayouts.forEach { word ->
+        if (relativeProgress !in word.startMs..word.endMs) return@forEach
+        val duration = (word.endMs - word.startMs).coerceAtLeast(1)
+        val pulse = sin((relativeProgress - word.startMs).toFloat() / duration * PI).toFloat()
+        if (pulse > 0f) {
+            drawRect(
+                color = Color.White.copy(alpha = 0.22f * pulse),
+                topLeft = Offset(word.left, word.top),
+                size = Size((word.right - word.left).coerceAtLeast(0f), (word.bottom - word.top).coerceAtLeast(0f)),
+                blendMode = BlendMode.Plus
+            )
+        }
     }
 }
 
