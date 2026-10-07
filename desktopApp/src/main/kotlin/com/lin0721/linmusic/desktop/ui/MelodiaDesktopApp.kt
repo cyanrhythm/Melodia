@@ -37,6 +37,8 @@ import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryMode
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
+import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewOverlay
+import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewState
 import com.lin0721.linmusic.desktop.ui.navigation.BackStack
 import com.lin0721.linmusic.desktop.ui.navigation.DesktopFrameHost
 import com.lin0721.linmusic.desktop.ui.navigation.DesktopRoute
@@ -70,7 +72,12 @@ import kotlinx.coroutines.runBlocking
 import org.koin.core.context.GlobalContext
 
 @Composable
-fun WindowScope.MelodiaDesktopApp(windowState: WindowState, fullscreen: FullscreenState, onClose: () -> Unit) {
+fun WindowScope.MelodiaDesktopApp(
+    windowState: WindowState,
+    fullscreen: FullscreenState,
+    lyricsView: LyricsViewState,
+    onClose: () -> Unit
+) {
     val koin = remember { GlobalContext.get() }
     val homeViewModel = remember { koin.get<HomeViewModel>() }
     val musicViewModel = remember { koin.get<MusicViewModel>() }
@@ -95,6 +102,8 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, fullscreen: Fullscre
     val isMaximized = windowState.placement == WindowPlacement.Maximized
     val isFullscreen = fullscreen.isFullscreen
     val nowPlaying by playbackController.nowPlaying.collectAsState()
+    // 没有曲目时歌词界面无内容可看，自动收起
+    LaunchedEffect(nowPlaying == null) { if (nowPlaying == null) lyricsView.close() }
     // 初值为关闭：读到已保存的开启状态后，侧栏随动画展开
     val nowPlayingOpen by desktopPreferences.nowPlayingPanelOpen.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
@@ -387,6 +396,8 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, fullscreen: Fullscre
                                 audioOutput = mpvController,
                                 onCloseOverlay = { dockOverlay = null },
                                 onOpenComments = { toggleOverlay(DockOverlay.Comments) },
+                                onOpenLyricsView = lyricsView::open,
+                                onOpenLyricsFullscreen = lyricsView::openWithFullscreen,
                                 onOpenChange = setDockOpen,
                                 controller = playbackController,
                                 playerViewModel = playerViewModel,
@@ -411,6 +422,14 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, fullscreen: Fullscre
                             )
                         }
                     }
+                    // 盖住整个工作区的全屏歌词，收起后原样露出下层
+                    LyricsViewOverlay(
+                        state = lyricsView,
+                        controller = playbackController,
+                        playerViewModel = playerViewModel,
+                        settingsPreferences = settingsPreferences,
+                        isFullscreen = isFullscreen
+                    )
                 }
                 val volume = mpvController?.volume?.collectAsState()?.value
                 PlayerBar(

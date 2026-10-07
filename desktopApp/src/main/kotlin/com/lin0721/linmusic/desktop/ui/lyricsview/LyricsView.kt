@@ -1,0 +1,293 @@
+package com.lin0721.linmusic.desktop.ui.lyricsview
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloseFullscreen
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.lin0721.linmusic.core.player.NowPlaying
+import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.core.player.domain.LyricLine
+import com.lin0721.linmusic.core.player.domain.lyricLineKey
+import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.desktop.ui.DesktopTooltip
+import com.lin0721.linmusic.desktop.ui.nowplaying.rememberCoverBase
+import com.lin0721.linmusic.desktop.ui.nowplaying.verticalEdgeFade
+import com.lin0721.linmusic.desktop.ui.palette.darken
+import com.lin0721.linmusic.desktop.ui.palette.saturateIfChromatic
+import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
+import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
+import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
+import kotlinx.coroutines.delay
+
+private const val FADE_MS = 150
+private const val RESUME_FOLLOW_MS = 3_000L
+
+// 当前行落在视口自上而下的这个比例处
+private const val ANCHOR_FRACTION = 0.38f
+
+// 歌词列占整体宽度的比例，居中，左对齐
+private const val COLUMN_WIDTH_FRACTION = 0.72f
+private val LyricFontSize = 40.sp
+private val SecondaryFontSize = 22.sp
+private val LineSpacing = 24.dp
+private val SecondarySpacing = 6.dp
+private val EdgeFade = 48.dp
+private val HeaderButtonSize = 32.dp
+private val InactiveColor = Color.White.copy(alpha = 0.55f)
+
+// 覆盖在标题栏与播放栏之间整个工作区的全屏歌词界面；不透明底并吞掉点击，收起后原样露出下层
+@Composable
+fun LyricsViewOverlay(
+    state: LyricsViewState,
+    controller: PlaybackController,
+    playerViewModel: PlayerViewModel,
+    settingsPreferences: SettingsPreferences,
+    isFullscreen: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = state.isOpen,
+        modifier = modifier,
+        enter = fadeIn(tween(FADE_MS)),
+        exit = fadeOut(tween(FADE_MS))
+    ) {
+        val nowPlaying by controller.nowPlaying.collectAsState()
+        val track = nowPlaying ?: return@AnimatedVisibility
+        val detail by playerViewModel.songDetailState.collectAsState()
+        val primaryIndex by playerViewModel.primaryLyricIndex.collectAsState()
+        val activeIndices by playerViewModel.activeLyricIndices.collectAsState()
+        val secondaryMode by settingsPreferences.fullScreenLyricSecondaryMode.collectAsState(initial = "translation")
+        LyricsViewContent(
+            track = track,
+            lines = detail.lyrics,
+            isLoading = detail.isLyricsLoading,
+            primaryIndex = primaryIndex,
+            activeIndices = activeIndices,
+            secondaryMode = secondaryMode,
+            isFullscreen = isFullscreen,
+            onSeek = playerViewModel::seekToTime,
+            onToggleFullscreen = state::toggleFullscreen,
+            onClose = state::close
+        )
+    }
+}
+
+@Composable
+private fun LyricsViewContent(
+    track: NowPlaying,
+    lines: List<LyricLine>,
+    isLoading: Boolean,
+    primaryIndex: Int,
+    activeIndices: Set<Int>,
+    secondaryMode: String,
+    isFullscreen: Boolean,
+    onSeek: (Long) -> Unit,
+    onToggleFullscreen: () -> Unit,
+    onClose: () -> Unit
+) {
+    // 与移动端全屏歌词同一配方：主色提饱和后压暗铺底
+    val base = rememberCoverBase(track.artworkUri)
+    val fill = remember(base) { base.saturateIfChromatic(0.6f).darken(0.35f) }
+
+    Box(
+        Modifier.fillMaxSize().padding(horizontal = DesktopDimens.PaneGap)
+            .clip(RoundedCornerShape(DesktopDimens.PaneRadius))
+            .background(fill)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Header(track, isFullscreen, onToggleFullscreen, onClose)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (lyricsPlaceholder(lines, isLoading)) {
+                    LyricsPlaceholder.Loading -> CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.Center).size(28.dp),
+                        strokeWidth = 2.dp
+                    )
+                    LyricsPlaceholder.Empty -> Placeholder("暂无歌词")
+                    LyricsPlaceholder.PureMusic -> Placeholder("纯音乐，请欣赏")
+                    null -> LyricsList(lines, primaryIndex, activeIndices, secondaryMode, onSeek)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(track: NowPlaying, isFullscreen: Boolean, onToggleFullscreen: () -> Unit, onClose: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(
+                track.title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(track.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        HeaderButton(if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen, if (isFullscreen) "退出全屏" else "全屏", onToggleFullscreen)
+        HeaderButton(Icons.Rounded.CloseFullscreen, "收起", onClose)
+    }
+}
+
+@Composable
+private fun HeaderButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    DesktopTooltip(description) {
+        IconButton(onClick = onClick, modifier = Modifier.size(HeaderButtonSize)) {
+            Icon(icon, description, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.Placeholder(text: String) {
+    Text(text, color = Color.White.copy(alpha = 0.7f), fontSize = 20.sp, modifier = Modifier.align(Alignment.Center))
+}
+
+// 可滚轮浏览：滚动后暂停跟随，停止操作 3 秒或点击歌词后回到当前行
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun LyricsList(
+    lines: List<LyricLine>,
+    primaryIndex: Int,
+    activeIndices: Set<Int>,
+    secondaryMode: String,
+    onSeek: (Long) -> Unit
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val listState = rememberLazyListState()
+        var following by remember { mutableStateOf(true) }
+        var interactionTick by remember { mutableIntStateOf(0) }
+        val sidePadding = maxWidth * ((1f - COLUMN_WIDTH_FRACTION) / 2f)
+        val topPadding = maxHeight * ANCHOR_FRACTION
+        val bottomPadding = maxHeight * (1f - ANCHOR_FRACTION)
+
+        LaunchedEffect(interactionTick) {
+            if (interactionTick > 0) {
+                delay(RESUME_FOLLOW_MS)
+                following = true
+            }
+        }
+        // 内容区顶部留出锚点高度，滚到某行即让它落在锚点处
+        LaunchedEffect(primaryIndex, following, lines) {
+            if (following && primaryIndex in lines.indices) listState.animateScrollToItem(primaryIndex)
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize()
+                .verticalEdgeFade(top = EdgeFade, bottom = EdgeFade)
+                .onPointerEvent(PointerEventType.Scroll) {
+                    following = false
+                    interactionTick++
+                },
+            verticalArrangement = Arrangement.spacedBy(LineSpacing),
+            contentPadding = PaddingValues(start = sidePadding, end = sidePadding, top = topPadding, bottom = bottomPadding)
+        ) {
+            itemsIndexed(lines, key = { index, line -> lyricLineKey(index, line) }) { index, line ->
+                // 纯音乐段的空白占位行不占用位置
+                if (line.text.isBlank()) return@itemsIndexed
+                LyricsRow(
+                    line = line,
+                    active = isActiveLine(index, primaryIndex, activeIndices),
+                    secondary = secondaryText(line, secondaryMode),
+                    onClick = {
+                        following = true
+                        onSeek(line.timeMs)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LyricsRow(line: LyricLine, active: Boolean, secondary: String?, onClick: () -> Unit) {
+    val hoverSource = remember { MutableInteractionSource() }
+    val hovered by hoverSource.collectIsHoveredAsState()
+    val color by animateColorAsState(
+        when {
+            active -> Color.White
+            hovered -> Color.White.copy(alpha = 0.85f)
+            else -> InactiveColor
+        },
+        tween(300),
+        label = "lyricsRowColor"
+    )
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hoverable(hoverSource).pointerHoverIcon(PointerIcon.Hand)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+    ) {
+        Text(
+            line.text,
+            color = color,
+            fontSize = LyricFontSize,
+            lineHeight = LyricFontSize * 1.3f,
+            fontWeight = FontWeight.ExtraBold
+        )
+        if (secondary != null) {
+            Text(
+                secondary,
+                color = color.copy(alpha = color.alpha * 0.8f),
+                fontSize = SecondaryFontSize,
+                lineHeight = SecondaryFontSize * 1.35f,
+                modifier = Modifier.padding(top = SecondarySpacing)
+            )
+        }
+    }
+}

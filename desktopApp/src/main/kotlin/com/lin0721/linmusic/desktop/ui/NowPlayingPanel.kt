@@ -77,7 +77,9 @@ fun NowPlayingPanel(
     hovered: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenComments: () -> Unit = {}
+    onOpenComments: () -> Unit = {},
+    onOpenLyricsView: () -> Unit = {},
+    onOpenLyricsFullscreen: () -> Unit = {}
 ) {
     val nowPlaying by controller.nowPlaying.collectAsState()
     val track = nowPlaying ?: return
@@ -120,8 +122,8 @@ fun NowPlayingPanel(
                                     currentIndex = currentLyricIndex,
                                     base = base,
                                     onSeek = playerViewModel::seekToTime,
-                                    onOpenFullscreen = { navigator.showMessage("暂未支持") },
-                                    onOpenLyricsView = { navigator.showMessage("暂未支持") }
+                                    onOpenFullscreen = onOpenLyricsFullscreen,
+                                    onOpenLyricsView = onOpenLyricsView
                                 )
                                 FullPlayerCard.COMMENTS_PREVIEW -> CommentsPreviewCard(
                                     state = commentsState,

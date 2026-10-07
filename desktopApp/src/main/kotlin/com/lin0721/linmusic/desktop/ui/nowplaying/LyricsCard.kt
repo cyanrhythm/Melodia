@@ -203,7 +203,7 @@ private fun DrawScope.drawSingleHueMesh(fill: Color, darkBlob: Color, darkCenter
 }
 
 // 视口上下边缘渐隐：用 DstIn 把内容按渐变蒙版擦淡，顶部渐隐只在需要时启用
-private fun Modifier.verticalEdgeFade(top: Dp, bottom: Dp): Modifier =
+internal fun Modifier.verticalEdgeFade(top: Dp, bottom: Dp): Modifier =
     graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }.drawWithContent {
         drawContent()
         val height = size.height

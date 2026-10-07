@@ -122,6 +122,8 @@ fun NowPlayingDock(
     audioOutput: AudioOutputControl?,
     onCloseOverlay: () -> Unit,
     onOpenComments: () -> Unit,
+    onOpenLyricsView: () -> Unit,
+    onOpenLyricsFullscreen: () -> Unit,
     onOpenChange: (Boolean) -> Unit,
     controller: PlaybackController,
     playerViewModel: PlayerViewModel,
@@ -184,7 +186,9 @@ fun NowPlayingDock(
                         playerViewModel = playerViewModel,
                         hovered = hovered && !collapsed,
                         onClose = { onOpenChange(false) },
-                        onOpenComments = onOpenComments
+                        onOpenComments = onOpenComments,
+                        onOpenLyricsView = onOpenLyricsView,
+                        onOpenLyricsFullscreen = onOpenLyricsFullscreen
                     )
                     OverlayLayer(visible = open && overlay == DockOverlay.Comments) { modifier ->
                         CommentsPanel(playerViewModel = playerViewModel, onClose = onCloseOverlay, modifier = modifier)

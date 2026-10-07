@@ -24,6 +24,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.lin0721.linmusic.desktop.ui.lyricsview.rememberLyricsViewState
 import com.lin0721.linmusic.desktop.ui.rememberFullscreenState
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
@@ -164,6 +165,7 @@ fun main() {
             position = WindowPosition(Alignment.Center)
         )
         val fullscreen = rememberFullscreenState(windowState)
+        val lyricsView = rememberLyricsViewState(fullscreen)
         Window(
             onCloseRequest = closeMainWindow,
             visible = isMainVisible,
@@ -172,9 +174,19 @@ fun main() {
             icon = appIcon,
             undecorated = true,
             onPreviewKeyEvent = { event ->
-                if (fullscreen.isFullscreen && event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                    fullscreen.exit()
-                    true
+                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                    // 先收起全屏歌词；其后才轮到退出窗口全屏
+                    when {
+                        lyricsView.isOpen -> {
+                            lyricsView.close()
+                            true
+                        }
+                        fullscreen.isFullscreen -> {
+                            fullscreen.exit()
+                            true
+                        }
+                        else -> false
+                    }
                 } else {
                     false
                 }
@@ -192,7 +204,12 @@ fun main() {
             // 全屏与最大化一样不要圆角和边框线
             WindowChromeEffect(maximized = windowState.placement != WindowPlacement.Floating)
             MelodiaDesktopTheme {
-                MelodiaDesktopApp(windowState = windowState, fullscreen = fullscreen, onClose = closeMainWindow)
+                MelodiaDesktopApp(
+                    windowState = windowState,
+                    fullscreen = fullscreen,
+                    lyricsView = lyricsView,
+                    onClose = closeMainWindow
+                )
             }
         }
 
