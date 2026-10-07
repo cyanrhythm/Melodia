@@ -98,6 +98,10 @@ private const val TRACK_LOAD_MORE_THRESHOLD = 10
 private const val HERO_DARKEN_FRACTION = 0.35f
 private const val PRIVATE_PLAYLIST = 10
 
+// PlaylistViewModel 约定的特殊歌单 id：每日推荐
+internal const val DAILY_RECOMMEND_ID = -1L
+internal const val DAILY_RECOMMEND_NAME = "每日推荐"
+
 // 表头项与吸顶列头占用的列表下标
 private const val LEADING_LIST_ITEMS = 2
 
@@ -325,6 +329,7 @@ private fun PlaylistContent(
                                 navigator.showMessage("请先登录账号")
                             }
                         },
+                        canCopyLink = playlist.id > 0,
                         onCopyLink = {
                             navigator.showMessage(if (copyPlaylistLink(isAlbum, playlist.id)) "已复制链接" else "复制失败")
                         },
@@ -496,6 +501,7 @@ private fun PlaylistContent(
 @Composable
 private fun PlaylistHero(playlist: PlaylistDetail, isAlbum: Boolean, count: Int, totalMs: Long?) {
     val typeLabel = when {
+        playlist.id == DAILY_RECOMMEND_ID -> "为你推荐"
         isAlbum -> "专辑"
         playlist.privacy == PRIVATE_PLAYLIST -> "隐私歌单"
         else -> "公开歌单"
@@ -552,6 +558,7 @@ private fun PlaylistActionBar(
     onDownload: () -> Unit,
     onPlayNextAll: () -> Unit,
     onImport: () -> Unit,
+    canCopyLink: Boolean,
     onCopyLink: () -> Unit,
     onQueryChange: (String) -> Unit,
     onOrderChange: (PlaylistSortOrder) -> Unit
@@ -589,7 +596,7 @@ private fun PlaylistActionBar(
             )
         }
         ActionIcon(Icons.Rounded.Download, "下载$resourceLabel", onClick = onDownload)
-        PlaylistMoreMenu(resourceLabel, canDelete, onPlayNextAll, onImport, onCopyLink, onDelete)
+        PlaylistMoreMenu(resourceLabel, canDelete, canCopyLink, onPlayNextAll, onImport, onCopyLink, onDelete)
         Spacer(Modifier.weight(1f))
         PlaylistSearchBox(query, onQueryChange)
         PlaylistSortMenu(order, showAdded) { key ->
@@ -616,6 +623,7 @@ private fun ActionIcon(
 private fun PlaylistMoreMenu(
     resourceLabel: String,
     canDelete: Boolean,
+    canCopyLink: Boolean,
     onPlayNextAll: () -> Unit,
     onImport: () -> Unit,
     onCopyLink: () -> Unit,
@@ -645,14 +653,16 @@ private fun PlaylistMoreMenu(
                     onImport()
                 }
             )
-            DropdownMenuItem(
-                text = { Text("复制${resourceLabel}链接", fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.Rounded.Link, null, modifier = Modifier.size(18.dp)) },
-                onClick = {
-                    expanded = false
-                    onCopyLink()
-                }
-            )
+            if (canCopyLink) {
+                DropdownMenuItem(
+                    text = { Text("复制${resourceLabel}链接", fontSize = 14.sp) },
+                    leadingIcon = { Icon(Icons.Rounded.Link, null, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        expanded = false
+                        onCopyLink()
+                    }
+                )
+            }
             if (canDelete) {
                 DropdownMenuItem(
                     text = { Text("删除歌单", fontSize = 14.sp, color = DangerColor) },
