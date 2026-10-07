@@ -44,7 +44,8 @@ fun LazyListScope.playlistTrackItems(
     onLikeClick: (Long) -> Unit = {},
     onOpenCollectSheet: (Long) -> Unit = {},
     onMoreClick: (Track) -> Unit,
-    trackPlayCounts: Map<Long, Int> = emptyMap()
+    trackPlayCounts: Map<Long, Int> = emptyMap(),
+    unplayableIds: Set<Long> = emptySet()
 ) {
     items(tracks, key = { it.id }) { track ->
         // SongRow 本身不接受外部 modifier，外层套 Box 挂 animateItem：
@@ -61,6 +62,7 @@ fun LazyListScope.playlistTrackItems(
                 isActive = currentTrackId == track.id.toString(),
                 isPlaying = isPlaying,
                 onClick = { onPlaySong(track) },
+                enabled = track.id !in unplayableIds,
                 trailingSlot = {
                     val playCount = trackPlayCounts[track.id]
                     if (playCount != null) {

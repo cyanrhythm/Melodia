@@ -16,6 +16,7 @@ import com.lin0721.linmusic.feature.home.domain.HomeCard
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.feature.home.domain.ToplistInfo
 import com.lin0721.linmusic.core.network.AppString
+import com.lin0721.linmusic.core.network.OnlineStateProvider
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.toUserMessage
 import com.lin0721.linmusic.core.songlike.LoadLikedSongIdsUseCase
@@ -58,7 +59,8 @@ class HomeViewModel(
     private val songLikeRepository: SongLikeRepository,
     private val songCollectDelegate: SongCollectDelegate,
     private val podcastPlayer: PodcastPlayerController,
-    private val playlistRepository: PlaylistRepository
+    private val playlistRepository: PlaylistRepository,
+    private val onlineState: OnlineStateProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -90,6 +92,16 @@ class HomeViewModel(
         }
         viewModelScope.launch {
             playbackRepository.playlistRecorded.collect { refreshRecentPlaylists() }
+        }
+        // 离线转在线后重新拉取，替换离线时展示的缓存；首页尚未加载成功时走完整加载
+        viewModelScope.launch {
+            var wasOnline = onlineState.isOnline()
+            onlineState.online.collect { online ->
+                if (online && !wasOnline) {
+                    if (_uiState.value is HomeUiState.Success) refreshHomeData() else loadHomeData()
+                }
+                wasOnline = online
+            }
         }
         viewModelScope.launch {
             userProfile.collect { profile ->

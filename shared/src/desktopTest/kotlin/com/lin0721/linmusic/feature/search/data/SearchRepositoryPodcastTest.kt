@@ -1,6 +1,7 @@
 package com.lin0721.linmusic.feature.search.data
 
 import com.lin0721.linmusic.core.auth.UserPreferences
+import com.lin0721.linmusic.core.cache.testOfflineFallback
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.feature.podcast.ui.InMemoryPreferencesStore
 import com.lin0721.linmusic.feature.search.data.dto.CloudSearchRequest
@@ -62,7 +63,7 @@ class SearchRepositoryPodcastTest {
     }
 
     private fun repository(api: FakeSearchApi) =
-        SearchRepositoryImpl(api, ContentFilter(UserPreferences(InMemoryPreferencesStore())))
+        SearchRepositoryImpl(api, ContentFilter(UserPreferences(InMemoryPreferencesStore())), testOfflineFallback())
 
     // 取自云搜索 type=1009 的真实响应结构，第二项缺封面
     private fun radioJson(total: Int) = """

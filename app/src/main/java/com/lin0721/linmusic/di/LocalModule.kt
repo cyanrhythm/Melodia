@@ -1,9 +1,12 @@
 package com.lin0721.linmusic.di
 
 import com.lin0721.linmusic.core.auth.UserPreferences
+import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.download.DownloadPreferences
 import com.lin0721.linmusic.core.network.AndroidNetworkStateProvider
+import com.lin0721.linmusic.core.network.AndroidOnlineStateProvider
+import com.lin0721.linmusic.core.network.OnlineStateProvider
 import com.lin0721.linmusic.core.network.AndroidResourceProvider
 import com.lin0721.linmusic.core.network.NetworkStateProvider
 import com.lin0721.linmusic.feature.library.data.AndroidLibraryPreferences
@@ -20,8 +23,10 @@ import com.lin0721.linmusic.feature.cloud.upload.CloudUploadManager
 import com.lin0721.linmusic.feature.podcast.data.PodcastProgressPreferences
 import com.lin0721.linmusic.feature.podcast.data.PodcastSeenPreferences
 import com.lin0721.linmusic.feature.search.data.SearchHistoryPreferences
+import kotlinx.coroutines.flow.first
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import java.io.File
 
 val localModule = module {
     single { PlaybackPreferences(PreferencesStores.get(androidContext(), PreferencesStores.PLAYBACK)) }
@@ -31,6 +36,11 @@ val localModule = module {
     single { ContentFilter(get()) }
     single<ResourceProvider> { AndroidResourceProvider(androidContext()) }
     single<NetworkStateProvider> { AndroidNetworkStateProvider(androidContext()) }
+    single<OnlineStateProvider> { AndroidOnlineStateProvider(androidContext()) }
+    single {
+        val userPreferences = get<UserPreferences>()
+        MetadataCache(File(androidContext().filesDir, "meta_cache")) { userPreferences.userProfile.first()?.uid ?: 0L }
+    }
     single<LibraryPreferences> { AndroidLibraryPreferences(androidContext()) }
     single { SearchHistoryPreferences(PreferencesStores.get(androidContext(), PreferencesStores.SEARCH_HISTORY)) }
     single { PodcastProgressPreferences(PreferencesStores.get(androidContext(), PreferencesStores.PODCAST)) }

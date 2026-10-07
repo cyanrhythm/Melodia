@@ -90,6 +90,7 @@ fun isLikedSongsPlaylist(name: String, playlistId: Long, uid: Long?): Boolean =
     name.contains("喜欢的音乐") || (uid != null && playlistId == uid)
 
 // 歌手领域模型，artist/player/home 等多域共用
+@Serializable
 data class ArtistInfo(
     val id: Long,
     val name: String,

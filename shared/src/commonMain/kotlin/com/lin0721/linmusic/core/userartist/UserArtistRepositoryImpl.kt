@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.core.userartist
 
+import com.lin0721.linmusic.core.cache.OfflineFallback
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.model.ArtistInfo
 import com.lin0721.linmusic.core.network.AppError
@@ -12,10 +13,14 @@ private const val TAG = "UserArtistRepositoryImpl"
 private const val MAX_SUBLIST_PAGES = 50
 
 class UserArtistRepositoryImpl(
-    private val apiService: UserArtistApi
+    private val apiService: UserArtistApi,
+    private val offline: OfflineFallback
 ) : UserArtistRepository {
 
-    override fun getFavoriteArtists(): Flow<Result<List<ArtistInfo>>> = flow {
+    override fun getFavoriteArtists(): Flow<Result<List<ArtistInfo>>> =
+        offline.cached("favorite_artists") { remoteFavoriteArtists() }
+
+    private fun remoteFavoriteArtists(): Flow<Result<List<ArtistInfo>>> = flow {
         val collected = LinkedHashMap<Long, ArtistInfo>()
         var failure: Throwable? = null
 

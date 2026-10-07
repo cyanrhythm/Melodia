@@ -58,6 +58,7 @@ fun PlaylistPage(
     val uiState by viewModel.uiState.collectAsState()
     val nowPlaying by controller.nowPlaying.collectAsState()
     val likedSongIds by viewModel.likedSongIds.collectAsState()
+    val unplayableIds by viewModel.unplayableIds.collectAsState()
     val collectState by viewModel.collectState.collectAsState()
     val actions = rememberTrackActions(
         likedSongIds = likedSongIds,
@@ -121,6 +122,7 @@ fun PlaylistPage(
                             isCurrent = nowPlaying?.songId == track.id,
                             onPlay = { viewModel.playTrackInPlaylist(track) },
                             actions = actions,
+                            enabled = track.id !in unplayableIds,
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }

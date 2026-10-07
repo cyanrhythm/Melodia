@@ -1,6 +1,9 @@
 package com.lin0721.linmusic.feature.home.domain
 
+import kotlinx.serialization.Serializable
+
 // 排行榜领域模型（UI 层直接使用，与 DTO 解耦）
+@Serializable
 data class ToplistInfo(
     val id: Long,
     val name: String,

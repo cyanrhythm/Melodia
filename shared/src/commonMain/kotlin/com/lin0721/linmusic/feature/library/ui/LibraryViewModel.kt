@@ -19,6 +19,7 @@ import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.playlistmutation.PlaylistMutationBus
 import com.lin0721.linmusic.core.playlistmutation.PlaylistMutationEvent
+import com.lin0721.linmusic.core.network.OnlineStateProvider
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.toUserMessage
 import com.lin0721.linmusic.feature.playlist.data.PlaylistRepository
@@ -82,7 +83,8 @@ class LibraryViewModel(
     private val playlistMutationBus: PlaylistMutationBus,
     private val songDownloadManager: SongDownloader,
     private val recentRepository: RecentRepository,
-    private val playbackRepository: PlaybackRepository
+    private val playbackRepository: PlaybackRepository,
+    private val onlineState: OnlineStateProvider
 ) : ViewModel() {
 
     private val _pinnedIds = MutableStateFlow<Set<String>>(getPinnedIdsFromPrefs())
@@ -163,6 +165,15 @@ class LibraryViewModel(
                         loadLibraryData()
                     }
                 }
+            }
+        }
+
+        // 离线转在线后重新拉取，替换离线时展示的缓存
+        viewModelScope.launch {
+            var wasOnline = onlineState.isOnline()
+            onlineState.online.collect { online ->
+                if (online && !wasOnline) loadLibraryData()
+                wasOnline = online
             }
         }
 

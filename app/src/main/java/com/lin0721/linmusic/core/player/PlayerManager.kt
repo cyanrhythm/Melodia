@@ -6,10 +6,12 @@ import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.util.UnstableApi
 import java.util.Collections
 import com.lin0721.linmusic.core.download.DownloadPreferences
 import com.lin0721.linmusic.core.download.DownloadTrackInfo
@@ -18,6 +20,7 @@ import com.lin0721.linmusic.core.download.yearFromEpochMillis
 import com.lin0721.linmusic.core.localmusic.LocalMusicApi
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.network.AppError
+import com.lin0721.linmusic.core.network.OnlineStateProvider
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +39,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "PlayerManager"
 
@@ -60,7 +64,8 @@ class PlayerManager(
     private val downloadPreferences: DownloadPreferences,
     private val localMusicApi: LocalMusicApi,
     private val songDownloadManager: SongDownloadManager,
-    private val externalInterruptionResumeController: ExternalInterruptionResumeController
+    private val externalInterruptionResumeController: ExternalInterruptionResumeController,
+    private val onlineState: OnlineStateProvider
 ) : Player.Listener, PlaybackController {
 
     companion object {
@@ -599,6 +604,22 @@ class PlayerManager(
             // 本地已下载文件优先播放
             val localRecord = downloadPreferences.findVerifiedRecord(item.songId)
 
+            // 离线时只能播已缓存的歌曲，没有缓存的沿当前方向跳到下一首可播放的
+            if (localRecord == null && !onlineState.isOnline()) {
+                val cacheKey = findOfflineCacheKey(item.songId)
+                if (cacheKey == null) {
+                    skipUnplayableOffline(index, fromIndex, playWhenReady, autoTransition)
+                    return@launch
+                }
+                playbackQueue.setCurrentIndex(index)
+                saveQueueState()
+                progress.resetTo(startPosition, preserveDuration = startPosition > 0L)
+                if (playWhenReady) showPendingTrack(item)
+                val mediaItem = item.toOfflineCachedMediaItem(cacheKey, playbackQueue.playContext.value)
+                controllerHolder.playItem(mediaItem.withCrossfade(autoTransition, startPosition), playbackQueue.playMode.value, startPosition, playWhenReady)
+                return@launch
+            }
+
             if (localRecord == null && networkGuard.blockPlaybackOnMobile()) {
                 pendingStartPosition = 0L
                 return@launch
@@ -646,6 +667,46 @@ class PlayerManager(
                 }
             }
         }
+    }
+
+    @OptIn(UnstableApi::class)
+    private suspend fun findOfflineCacheKey(songId: Long): String? {
+        val maxSize = settingsPreferences.audioCacheMaxSize.first()
+        return withContext(Dispatchers.IO) {
+            AudioCacheManager.findCompleteKeys(context, maxSize, setOf(songId))[songId]
+        }
+    }
+
+    // 队列中离线可播放的歌曲：本地音频、已下载、播放缓存已完整
+    @OptIn(UnstableApi::class)
+    private suspend fun offlinePlayableSongIds(): Set<Long> {
+        val items = playbackQueue.original
+        val playable = items.filter { it.localUri != null }.mapTo(HashSet()) { it.songId }
+        val remaining = items.mapTo(HashSet()) { it.songId } - playable
+        playable += downloadPreferences.findVerifiedRecords(remaining).map { it.songId }
+        val maxSize = settingsPreferences.audioCacheMaxSize.first()
+        playable += withContext(Dispatchers.IO) {
+            AudioCacheManager.findCompleteKeys(context, maxSize, remaining - playable).keys
+        }
+        return playable
+    }
+
+    // 目标歌曲离线不可播放：沿切歌方向找下一首可播放的；整队都没有则保持现状并提示
+    private suspend fun skipUnplayableOffline(failedIndex: Int, fromIndex: Int, playWhenReady: Boolean, autoTransition: Boolean) {
+        val size = playbackQueue.size
+        val playable = offlinePlayableSongIds()
+        val backward = failedIndex < fromIndex
+        var candidate = failedIndex
+        repeat(size - 1) {
+            candidate = if (backward) (candidate - 1 + size) % size else playbackQueue.nextIndexFrom(candidate)
+            val item = playbackQueue.itemAt(candidate) ?: return@repeat
+            if (item.songId in playable) {
+                fetchUrlAndPlay(candidate, playWhenReady = playWhenReady, autoTransition = autoTransition)
+                return
+            }
+        }
+        pendingStartPosition = 0L
+        Toast.makeText(context, "离线状态下没有可播放的已缓存歌曲", Toast.LENGTH_SHORT).show()
     }
 
     // 滑动切歌手势专用：目标歌曲的播放地址还没请求回来、还没真正调用播放前可以整个撤销，

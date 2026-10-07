@@ -102,6 +102,7 @@ fun PlaylistScreen(
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
     val userProfile  by viewModel.userProfile.collectAsStateWithLifecycle()
+    val unplayableIds by viewModel.unplayableIds.collectAsStateWithLifecycle()
     val commentsState by viewModel.commentsState.collectAsStateWithLifecycle()
     val historyRecommendState by viewModel.historyRecommendState.collectAsStateWithLifecycle()
     val importState by viewModel.importState.collectAsStateWithLifecycle()
@@ -556,6 +557,7 @@ fun PlaylistScreen(
                     likedSongIds   = likedSongIds,
                     collectState   = collectState,
                     isLoggedIn     = userProfile != null,
+                    unplayableIds  = unplayableIds,
                     recommendedSongs = state.recommendedSongs,
                     onBack         = onBack,
                     onArtistClick  = onArtistClick,

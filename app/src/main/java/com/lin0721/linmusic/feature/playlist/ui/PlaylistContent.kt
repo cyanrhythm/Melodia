@@ -51,6 +51,7 @@ fun PlaylistContent(
     currentTrackId: String?,
     isPlaying: Boolean,
     likedSongIds: Set<Long>,
+    unplayableIds: Set<Long> = emptySet(),
     collectState: PlaylistCollectState,
     isLoggedIn: Boolean,
     recommendedSongs: List<Track>,
@@ -339,7 +340,8 @@ fun PlaylistContent(
                     onLikeClick        = onLikeClick,
                     onOpenCollectSheet = { collectSongId = it },
                     onMoreClick        = { activeSongMoreOptions = it },
-                    trackPlayCounts    = trackPlayCounts
+                    trackPlayCounts    = trackPlayCounts,
+                    unplayableIds      = unplayableIds
                 )
 
                 if (isLoadingMoreTracks) {

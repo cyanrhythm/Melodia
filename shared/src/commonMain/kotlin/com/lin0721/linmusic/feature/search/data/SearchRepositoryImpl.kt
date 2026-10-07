@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.feature.search.data
 
+import com.lin0721.linmusic.core.cache.OfflineFallback
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.model.PlaylistDetail
@@ -32,15 +33,19 @@ private const val MAX_ALBUM_SUGGESTIONS = 2
 
 class SearchRepositoryImpl(
     private val apiService: SearchApi,
-    private val contentFilter: ContentFilter
+    private val contentFilter: ContentFilter,
+    private val offline: OfflineFallback
 ) : SearchRepository {
 
-    override fun getDefaultSearchKeyword(): Flow<Result<String>> = apiFlow(
-        request = { apiService.getSearchDefaultKeyword() },
-        isSuccess = { it.isSuccess && it.data != null },
-        code = { it.code },
-        transform = { it.data!!.showKeyword }
-    )
+    override fun getDefaultSearchKeyword(): Flow<Result<String>> =
+        offline.cached("search_default_keyword") {
+            apiFlow(
+                request = { apiService.getSearchDefaultKeyword() },
+                isSuccess = { it.isSuccess && it.data != null },
+                code = { it.code },
+                transform = { it.data!!.showKeyword }
+            )
+        }
 
     override fun search(keyword: String, type: SearchType, offset: Int, limit: Int): Flow<Result<SearchPageResult>> =
         if (type == SearchType.PROGRAM) searchPrograms(keyword, offset, limit) else cloudSearch(keyword, type, offset, limit)
@@ -186,26 +191,32 @@ class SearchRepositoryImpl(
         Result.failure(e)
     }
 
-    override fun getHotSearches(): Flow<Result<List<HotSearch>>> = apiFlow(
-        request = { apiService.getHotSearchDetail() },
-        isSuccess = { it.isSuccess },
-        code = { it.code },
-        transform = { response ->
-            // 热搜榜偶尔混入 searchWord 为空的运营占位条目，过滤掉避免渲染出空白格子
-            response.data
-                .filter { it.searchWord.isNotBlank() }
-                .map { item ->
-                    HotSearch(
-                        keyword = item.searchWord,
-                        score = item.score,
-                        description = item.content,
-                        iconUrl = item.iconUrl
-                    )
+    override fun getHotSearches(): Flow<Result<List<HotSearch>>> =
+        offline.cached("hot_searches") {
+            apiFlow(
+                request = { apiService.getHotSearchDetail() },
+                isSuccess = { it.isSuccess },
+                code = { it.code },
+                transform = { response ->
+                    // 热搜榜偶尔混入 searchWord 为空的运营占位条目，过滤掉避免渲染出空白格子
+                    response.data
+                        .filter { it.searchWord.isNotBlank() }
+                        .map { item ->
+                            HotSearch(
+                                keyword = item.searchWord,
+                                score = item.score,
+                                description = item.content,
+                                iconUrl = item.iconUrl
+                            )
+                        }
                 }
+            )
         }
-    )
 
-    override fun getPlaylistTags(): Flow<Result<List<PlaylistTag>>> = flow {
+    override fun getPlaylistTags(): Flow<Result<List<PlaylistTag>>> =
+        offline.cached("playlist_tags") { remotePlaylistTags() }
+
+    private fun remotePlaylistTags(): Flow<Result<List<PlaylistTag>>> = flow {
         val (tags, playlists) = coroutineScope {
             val tagsDeferred = async { apiService.getHighQualityTags() }
             val playlistsDeferred = async {

@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.feature.recent.data
 
+import com.lin0721.linmusic.core.cache.OfflineFallback
 import com.lin0721.linmusic.core.network.apiFlow
 import com.lin0721.linmusic.core.player.PlaybackPreferences
 import com.lin0721.linmusic.feature.recent.domain.RecentAlbum
@@ -16,7 +17,8 @@ private const val MAX_RECORDS = 100
 
 class RecentRepositoryImpl(
     private val apiService: RecentApi,
-    private val playbackPreferences: PlaybackPreferences
+    private val playbackPreferences: PlaybackPreferences,
+    private val offline: OfflineFallback
 ) : RecentRepository {
 
     override fun getRecentSongs(): Flow<Result<List<RecentSong>>> = apiFlow(
@@ -26,12 +28,15 @@ class RecentRepositoryImpl(
         transform = { response -> response.data!!.list.take(MAX_RECORDS).map { it.toDomain() } }
     )
 
-    private fun remoteRecentPlaylists(): Flow<Result<List<RecentPlaylist>>> = apiFlow(
-        request = { apiService.getRecentPlaylists() },
-        isSuccess = { it.isSuccess && it.data != null },
-        code = { it.code },
-        transform = { response -> response.data!!.list.take(MAX_RECORDS).map { it.toDomain() } }
-    )
+    private fun remoteRecentPlaylists(): Flow<Result<List<RecentPlaylist>>> =
+        offline.cached("recent_playlists_remote") {
+            apiFlow(
+                request = { apiService.getRecentPlaylists() },
+                isSuccess = { it.isSuccess && it.data != null },
+                code = { it.code },
+                transform = { response -> response.data!!.list.take(MAX_RECORDS).map { it.toDomain() } }
+            )
+        }
 
     // 服务端不记录本客户端的歌单播放，本地记录与服务端列表按播放时间合并去重
     override fun getRecentPlaylists(): Flow<Result<List<RecentPlaylist>>> = flow {

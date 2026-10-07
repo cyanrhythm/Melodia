@@ -2,9 +2,12 @@ package com.lin0721.linmusic.desktop.di
 
 import com.lin0721.linmusic.core.auth.LoginViewModel
 import com.lin0721.linmusic.core.auth.UserPreferences
+import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.download.SongDownloader
 import com.lin0721.linmusic.core.network.NetworkStateProvider
+import com.lin0721.linmusic.core.network.OnlineStateProvider
+import com.lin0721.linmusic.core.offline.CachedAudioIndex
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.crypto.XeapiKeyStore
 import com.lin0721.linmusic.core.network.crypto.XeapiKeyStoreImpl
@@ -17,9 +20,11 @@ import com.lin0721.linmusic.desktop.player.MpvPlaybackController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import com.lin0721.linmusic.core.preferences.PreferencesStores
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopLibraryPreferences
+import com.lin0721.linmusic.desktop.platform.DesktopOnlineStateProvider
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
 import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
@@ -52,6 +57,7 @@ import com.lin0721.linmusic.feature.search.ui.SearchViewModel
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
+import java.io.File
 
 private const val TAG = "DesktopModule"
 
@@ -89,6 +95,13 @@ val desktopPlatformModule = module {
     single<ResourceProvider> { DesktopResourceProvider() }
     // 桌面端不区分 Wi-Fi 与移动网络，统一按 Wi-Fi 音质
     single<NetworkStateProvider> { NetworkStateProvider { true } }
+    single<OnlineStateProvider> { DesktopOnlineStateProvider() }
+    single {
+        val userPreferences = get<UserPreferences>()
+        MetadataCache(File(DesktopPaths.dataDir, "meta_cache")) { userPreferences.userProfile.first()?.uid ?: 0L }
+    }
+    // 桌面端没有音频缓存也不支持下载，离线时所有歌曲都不可播放
+    single<CachedAudioIndex> { CachedAudioIndex { emptySet() } }
     single<LibraryPreferences> { DesktopLibraryPreferences() }
     single<SongDownloader> { UnsupportedSongDownloader() }
     single<PlaybackController> { createPlaybackController(get(), get(), get(), get()) }

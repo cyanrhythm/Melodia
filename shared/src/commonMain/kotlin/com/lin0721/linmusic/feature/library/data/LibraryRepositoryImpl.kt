@@ -1,12 +1,14 @@
 package com.lin0721.linmusic.feature.library.data
 
+import com.lin0721.linmusic.core.cache.OfflineFallback
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.network.apiFlow
 import kotlinx.coroutines.flow.Flow
 
 class LibraryRepositoryImpl(
     private val apiService: LibraryApi,
-    private val contentFilter: ContentFilter
+    private val contentFilter: ContentFilter,
+    private val offline: OfflineFallback
 ) : LibraryRepository {
 
     override fun getUserRecord(uid: Long, type: Int): Flow<Result<List<UserRecordTrack>>> = apiFlow(
@@ -24,17 +26,23 @@ class LibraryRepositoryImpl(
         }
     )
 
-    override fun getCollectedAlbums(limit: Int): Flow<Result<List<AlbumSubItem>>> = apiFlow(
-        request = { apiService.getAlbumSublist(AlbumSublistRequest(limit = limit)) },
-        isSuccess = { it.isSuccess },
-        code = { it.code },
-        transform = { it.data }
-    )
+    override fun getCollectedAlbums(limit: Int): Flow<Result<List<AlbumSubItem>>> =
+        offline.cached("collected_albums") {
+            apiFlow(
+                request = { apiService.getAlbumSublist(AlbumSublistRequest(limit = limit)) },
+                isSuccess = { it.isSuccess },
+                code = { it.code },
+                transform = { it.data }
+            )
+        }
 
-    override fun getUserSubcount(): Flow<Result<UserSubcountResponse>> = apiFlow(
-        request = { apiService.getUserSubcount() },
-        isSuccess = { it.isSuccess },
-        code = { it.code },
-        transform = { it }
-    )
+    override fun getUserSubcount(): Flow<Result<UserSubcountResponse>> =
+        offline.cached("user_subcount") {
+            apiFlow(
+                request = { apiService.getUserSubcount() },
+                isSuccess = { it.isSuccess },
+                code = { it.code },
+                transform = { it }
+            )
+        }
 }
