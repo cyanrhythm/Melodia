@@ -32,6 +32,8 @@ class MediaControllerHolder(private val context: Context) {
 
     val playbackState: Int get() = controller?.playbackState ?: Player.STATE_IDLE
 
+    val playWhenReady: Boolean get() = controller?.playWhenReady ?: false
+
     // 建立连接，onReady 在控制器就绪后、字段赋值前回调，用于同步初始状态
     suspend fun connect(listener: Player.Listener, onReady: (MediaController) -> Unit) {
         if (controller != null) return
