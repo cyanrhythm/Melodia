@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -61,6 +62,11 @@ import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 // 离线不可播放的歌曲行置灰程度
 private const val DISABLED_ROW_ALPHA = 0.38f
 
+// 与歌单页表头的“添加日期”列同宽
+internal val ADDED_COLUMN_WIDTH = 120.dp
+
+private val DangerColor = Color(0xFFFF6B6B)
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TrackRow(
@@ -70,7 +76,9 @@ fun TrackRow(
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
     actions: TrackActions? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    // 非 null 时在专辑后多一列“添加日期”（歌单页专用）
+    addedAtText: String? = null
 ) {
     val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
@@ -132,6 +140,16 @@ fun TrackRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(0.35f).padding(horizontal = 12.dp)
             )
+            if (addedAtText != null) {
+                Text(
+                    addedAtText,
+                    color = DesktopColors.TextGray,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(ADDED_COLUMN_WIDTH)
+                )
+            }
             if (actions != null) {
                 // 已喜欢的红心常亮，其余仅悬停时出现
                 val showLike = hovered || isLiked
@@ -238,14 +256,21 @@ private fun TrackMenu(
                 navigator.openAlbum(track.al.id, track.al.name)
             }
         }
+        actions.onRemove?.let { remove ->
+            TrackMenuItem(Icons.Rounded.Delete, "从歌单中删除", danger = true) {
+                onDismiss()
+                remove(track)
+            }
+        }
     }
 }
 
 @Composable
-private fun TrackMenuItem(icon: ImageVector, text: String, onClick: () -> Unit) {
+private fun TrackMenuItem(icon: ImageVector, text: String, danger: Boolean = false, onClick: () -> Unit) {
+    val color = if (danger) DangerColor else Color.Unspecified
     DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
+        text = { Text(text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = color) },
+        leadingIcon = { Icon(icon, null, tint = color, modifier = Modifier.size(18.dp)) },
         onClick = onClick
     )
 }

@@ -605,7 +605,8 @@ class PlaylistViewModel(
                     _uiState.update { state ->
                         if (state is PlaylistUiState.Success && state.playlist.id == playlistId) {
                             val updatedTracks = state.playlist.tracks.filter { it.id != trackId }
-                            state.copy(playlist = state.playlist.copy(tracks = updatedTracks))
+                            val updatedIds = state.playlist.trackIds.filter { it.id != trackId }
+                            state.copy(playlist = state.playlist.copy(tracks = updatedTracks, trackIds = updatedIds))
                         } else state
                     }
                 }.onFailure { e ->

@@ -79,11 +79,17 @@ data class PlaylistDetail(
     // 完整曲目 id 顺序表；playlist/detail 的 tracks 字段服务端会截断（约1000首），超出部分需按此列表分批用 song/detail 补全
     val trackIds: List<PlaylistTrackId> = emptyList(),
     // 仅专辑详情填充：专辑署名歌手
-    val artists: List<Artist> = emptyList()
+    val artists: List<Artist> = emptyList(),
+    // 歌单可见性：0 公开，10 隐私；专辑无此字段
+    val privacy: Int = 0
 )
 
 @Serializable
-data class PlaylistTrackId(val id: Long = 0)
+data class PlaylistTrackId(
+    val id: Long = 0,
+    // 加入歌单的时间戳（毫秒），专辑与部分接口不下发
+    val at: Long = 0
+)
 
 // "我喜欢的音乐"是网易云的系统歌单，不能改名/改简介/换封面/删除/手动调整曲目顺序。
 fun isLikedSongsPlaylist(name: String, playlistId: Long, uid: Long?): Boolean =

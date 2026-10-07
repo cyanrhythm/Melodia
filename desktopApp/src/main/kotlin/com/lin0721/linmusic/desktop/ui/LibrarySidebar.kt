@@ -302,7 +302,7 @@ private fun LibraryCompactToolbar(
 
 // 输入框内容：图标、输入、清除；外层的宽度与底色由调用方决定。Esc 等同点击清除
 @Composable
-private fun LibrarySearchInput(
+internal fun LibrarySearchInput(
     query: String,
     startPadding: Dp,
     showClear: Boolean,
@@ -310,14 +310,15 @@ private fun LibrarySearchInput(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    onFocusChange: (Boolean) -> Unit = {}
+    onFocusChange: (Boolean) -> Unit = {},
+    placeholder: String = "在音乐库中搜索"
 ) {
     Row(modifier.fillMaxSize().padding(start = startPadding), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.Search, null, tint = DesktopColors.TextGray, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text("在音乐库中搜索", color = DesktopColors.TextGray, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                Text(placeholder, color = DesktopColors.TextGray, fontSize = 13.sp, maxLines = 1, softWrap = false)
             }
             BasicTextField(
                 value = query,

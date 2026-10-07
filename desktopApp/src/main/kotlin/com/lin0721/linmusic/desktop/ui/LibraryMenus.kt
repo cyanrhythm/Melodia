@@ -105,7 +105,7 @@ private fun viewModeLabel(mode: LibraryViewMode): String = when (mode) {
 
 // 音乐库内弹出的菜单统一样式：与触发按钮右缘对齐，保证落在音乐库范围内
 @Composable
-private fun LibraryPopupMenu(
+internal fun LibraryPopupMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     anchorWidth: Dp,
@@ -181,7 +181,7 @@ internal fun LibrarySortViewMenu(
 }
 
 @Composable
-private fun MenuHeader(text: String, trailing: String? = null) {
+internal fun MenuHeader(text: String, trailing: String? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, color = DesktopColors.TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         if (trailing != null) {
@@ -192,11 +192,15 @@ private fun MenuHeader(text: String, trailing: String? = null) {
 }
 
 @Composable
-private fun SortOption(order: LibrarySortOrder, selected: Boolean, onClick: () -> Unit) {
+private fun SortOption(order: LibrarySortOrder, selected: Boolean, onClick: () -> Unit) =
+    MenuOption(sortLabel(order), selected, onClick)
+
+@Composable
+internal fun MenuOption(label: String, selected: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
         text = {
             Text(
-                sortLabel(order),
+                label,
                 fontSize = 14.sp,
                 color = DesktopColors.TextPrimary,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal

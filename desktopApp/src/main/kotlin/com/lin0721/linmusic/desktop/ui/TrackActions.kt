@@ -17,7 +17,9 @@ class TrackActions(
     val onToggleLike: (Track) -> Unit,
     val onPlayNext: (Track) -> Unit,
     val onCollect: (Track) -> Unit,
-    val onDownload: (Track) -> Unit
+    val onDownload: (Track) -> Unit,
+    // 仅自建歌单传入，菜单才出现“从歌单中删除”
+    val onRemove: ((Track) -> Unit)? = null
 )
 
 @Composable
@@ -28,7 +30,8 @@ fun rememberTrackActions(
     onPlayNext: (Track) -> Unit,
     onPrepareCollect: (songId: Long) -> Unit,
     onSaveCollect: (songId: Long, items: List<PlaylistCollectItem>) -> Unit,
-    onCreateAndAdd: (name: String, songId: Long) -> Unit
+    onCreateAndAdd: (name: String, songId: Long) -> Unit,
+    onRemove: ((Track) -> Unit)? = null
 ): TrackActions {
     val navigator = LocalDesktopNavigator.current
     var collectingSongId by remember { mutableStateOf<Long?>(null) }
@@ -62,6 +65,7 @@ fun rememberTrackActions(
                 collectingSongId = track.id
             }
         },
-        onDownload = navigator.downloadTrack
+        onDownload = navigator.downloadTrack,
+        onRemove = onRemove
     )
 }
