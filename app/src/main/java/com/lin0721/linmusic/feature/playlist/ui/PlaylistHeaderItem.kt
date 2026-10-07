@@ -11,9 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Comment
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.rounded.AddCircleOutline
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -190,7 +189,7 @@ fun PlaylistHeaderItem(
                                 Spacer(Modifier.width(6.dp))
                                 Text(creator.nickname, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             } else {
-                                Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("为你打造", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             }
@@ -260,7 +259,7 @@ fun PlaylistHeaderItem(
                             if (!isLikedSongsPlaylistView && !isOwnedPlaylist) {
                                 MelodiaIconButton(onClick = onSubscribeClick) {
                                     Icon(
-                                        imageVector = if (isSubscribed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        imageVector = if (isSubscribed) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
                                         contentDescription = if (isSubscribed) "取消收藏" else "收藏",
                                         tint = if (isSubscribed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(24.dp)

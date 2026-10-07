@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.AddCircleOutline
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -100,9 +102,9 @@ fun PlaylistScreen(
     val playMode by viewModel.playerManager.playMode.collectAsStateWithLifecycle()
     val playContext by viewModel.playerManager.playContext.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
+    val unplayableIds by viewModel.unplayableIds.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
     val userProfile  by viewModel.userProfile.collectAsStateWithLifecycle()
-    val unplayableIds by viewModel.unplayableIds.collectAsStateWithLifecycle()
     val commentsState by viewModel.commentsState.collectAsStateWithLifecycle()
     val historyRecommendState by viewModel.historyRecommendState.collectAsStateWithLifecycle()
     val importState by viewModel.importState.collectAsStateWithLifecycle()
@@ -555,9 +557,9 @@ fun PlaylistScreen(
                         currentTrackId = currentTrack?.mediaId,
                     isPlaying      = isPlaying,
                     likedSongIds   = likedSongIds,
+                    unplayableIds  = unplayableIds,
                     collectState   = collectState,
                     isLoggedIn     = userProfile != null,
-                    unplayableIds  = unplayableIds,
                     recommendedSongs = state.recommendedSongs,
                     onBack         = onBack,
                     onArtistClick  = onArtistClick,
@@ -853,7 +855,7 @@ fun PlaylistScreen(
                     val menuItems = buildList {
                         add(
                             PlaylistMenuItem(
-                                icon = if (successState.isSubscribed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                icon = if (successState.isSubscribed) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
                                 title = if (successState.isSubscribed) "取消收藏$resourceLabel" else "收藏$resourceLabel"
                             ) {
                                 showMoreMenuSheet = false

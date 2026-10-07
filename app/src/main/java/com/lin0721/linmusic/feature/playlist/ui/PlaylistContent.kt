@@ -339,6 +339,7 @@ fun PlaylistContent(
                     onPlaySong         = onPlaySong,
                     onLikeClick        = onLikeClick,
                     onOpenCollectSheet = { collectSongId = it },
+                    onToggleLike       = onToggleLike,
                     onMoreClick        = { activeSongMoreOptions = it },
                     trackPlayCounts    = trackPlayCounts,
                     unplayableIds      = unplayableIds

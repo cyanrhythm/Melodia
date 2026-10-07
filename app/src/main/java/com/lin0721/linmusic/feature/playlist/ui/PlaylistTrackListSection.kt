@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,6 +43,7 @@ fun LazyListScope.playlistTrackItems(
     onPlaySong: (Track) -> Unit,
     onLikeClick: (Long) -> Unit = {},
     onOpenCollectSheet: (Long) -> Unit = {},
+    onToggleLike: (Long, Boolean) -> Unit = { _, _ -> },
     onMoreClick: (Track) -> Unit,
     trackPlayCounts: Map<Long, Int> = emptyMap(),
     unplayableIds: Set<Long> = emptySet()
@@ -61,8 +62,8 @@ fun LazyListScope.playlistTrackItems(
                 ),
                 isActive = currentTrackId == track.id.toString(),
                 isPlaying = isPlaying,
-                onClick = { onPlaySong(track) },
                 enabled = track.id !in unplayableIds,
+                onClick = { onPlaySong(track) },
                 trailingSlot = {
                     val playCount = trackPlayCounts[track.id]
                     if (playCount != null) {
@@ -75,14 +76,13 @@ fun LazyListScope.playlistTrackItems(
                     } else if (isLoggedIn && track.id in likedSongIds) {
                         MelodiaIconButton(
                             onClick = {
-                                onOpenCollectSheet(track.id)
-                                onLikeClick(track.id)
+                                onToggleLike(track.id, false)
                             },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "收藏到歌单",
+                                imageVector = Icons.Rounded.Favorite,
+                                contentDescription = "取消喜欢",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
