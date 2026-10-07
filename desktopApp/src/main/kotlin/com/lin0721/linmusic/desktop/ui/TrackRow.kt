@@ -101,7 +101,9 @@ fun TrackRow(
     // 非 null 时在专辑后多一列“添加日期”（歌单页专用）
     addedAtText: String? = null,
     // 非 null 时整行可长按拖动
-    reorder: TrackReorder? = null
+    reorder: TrackReorder? = null,
+    // 无 actions 时行尾的自定义操作（推荐区的添加按钮）
+    trailingAction: (@Composable () -> Unit)? = null
 ) {
     val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
@@ -249,6 +251,7 @@ fun TrackRow(
                 textAlign = TextAlign.End,
                 modifier = Modifier.width(48.dp)
             )
+            if (actions == null) trailingAction?.invoke()
             if (actions != null) {
                 Box {
                     IconButton(

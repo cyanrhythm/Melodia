@@ -51,10 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.Track
+import com.lin0721.linmusic.core.userplaylist.UserPlaylist
 import com.lin0721.linmusic.desktop.platform.CoverImage
 import com.lin0721.linmusic.desktop.platform.chooseImageFile
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.playlist.ui.AddMusicSearchState
+import com.lin0721.linmusic.feature.playlist.ui.PlaylistImportState
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -228,6 +230,85 @@ internal fun AddSongsDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("完成", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold) }
         }
+    )
+}
+
+@Composable
+internal fun ImportToPlaylistDialog(
+    state: PlaylistImportState,
+    onPick: (UserPlaylist) -> Unit,
+    onCreate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = AlertDialogDefaults.shape,
+        containerColor = DesktopColors.PopupSurface,
+        title = { Text("添加到歌单", color = DesktopColors.TextPrimary) },
+        text = {
+            Box(Modifier.width(420.dp).heightIn(min = 120.dp, max = SEARCH_RESULT_MAX_HEIGHT.dp)) {
+                if (state.isLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(28.dp), color = DesktopColors.Accent)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item(key = "create") {
+                            ImportTargetRow(onClick = onCreate) {
+                                Box(
+                                    Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(DesktopColors.Surface),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Rounded.Add, null, tint = DesktopColors.TextPrimary, modifier = Modifier.size(22.dp))
+                                }
+                                Text(
+                                    "新建歌单",
+                                    color = DesktopColors.TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(start = 12.dp)
+                                )
+                            }
+                        }
+                        items(state.items, key = { it.id }) { playlist ->
+                            ImportTargetRow(onClick = { onPick(playlist) }) {
+                                Cover(playlist.coverImgUrl, 40.dp)
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(
+                                        playlist.name,
+                                        color = DesktopColors.TextPrimary,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text("${playlist.trackCount} 首", color = DesktopColors.TextGray, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        if (state.items.isEmpty()) {
+                            item(key = "empty") {
+                                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                    Text("还没有自建歌单", color = DesktopColors.TextGray, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = DesktopColors.TextGray) }
+        }
+    )
+}
+
+@Composable
+private fun ImportTargetRow(onClick: () -> Unit, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
     )
 }
 

@@ -15,6 +15,7 @@ import com.lin0721.linmusic.core.auth.SyncProfileAfterLoginUseCase
 import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.songlike.LoadLikedSongIdsUseCase
 import com.lin0721.linmusic.core.comment.data.CommentRepository
+import com.lin0721.linmusic.feature.create.data.playlistPrivacyOf
 import com.lin0721.linmusic.feature.playlist.domain.CreatePlaylistAndAddSongUseCase
 import com.lin0721.linmusic.feature.playlist.domain.pendingTrackIds
 import com.lin0721.linmusic.feature.playlist.domain.withLoadedTracks
@@ -656,10 +657,10 @@ class PlaylistViewModel(
     }
 
     // 新建歌单并把当前歌单全部歌曲导入进去
-    fun createPlaylistAndImportAll(name: String) {
+    fun createPlaylistAndImportAll(name: String, isPrivate: Boolean = false) {
         ensureAllTracksLoaded { tracks ->
             viewModelScope.launch {
-                createPlaylistAndAddSongUseCase(name, tracks.map { it.id }).collect { result ->
+                createPlaylistAndAddSongUseCase(name, tracks.map { it.id }, playlistPrivacyOf(isPrivate)).collect { result ->
                     result.onSuccess {
                         _toastEvent.emit("已创建歌单并导入 ${tracks.size} 首歌曲")
                     }.onFailure { e ->

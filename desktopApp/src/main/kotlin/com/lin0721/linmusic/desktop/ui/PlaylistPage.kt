@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.ArrowDownward
@@ -184,6 +185,9 @@ private fun PlaylistContent(
     var showEdit by remember(playlist.id) { mutableStateOf(false) }
     var showAddSongs by remember(playlist.id) { mutableStateOf(false) }
     var showDelete by remember(playlist.id) { mutableStateOf(false) }
+    var showImport by remember(playlist.id) { mutableStateOf(false) }
+    var showCreateImport by remember(playlist.id) { mutableStateOf(false) }
+    val importState by viewModel.importState.collectAsState()
     var query by remember(playlist.id) { mutableStateOf("") }
     var order by remember(playlist.id) { mutableStateOf(PlaylistSortOrder()) }
     val addedAt = remember(playlist.trackIds) { playlist.trackIds.associate { it.id to it.at } }
@@ -304,6 +308,14 @@ private fun PlaylistContent(
                         },
                         onDownload = { viewModel.downloadPlaylist(playlist.id, playlist.name, navigator.downloadLevel) },
                         onPlayNextAll = viewModel::addAllTracksToPlayNext,
+                        onImport = {
+                            if (navigator.isLoggedIn) {
+                                viewModel.prepareImportTargets(playlist.id)
+                                showImport = true
+                            } else {
+                                navigator.showMessage("请先登录账号")
+                            }
+                        },
                         onCopyLink = {
                             navigator.showMessage(if (copyPlaylistLink(isAlbum, playlist.id)) "已复制链接" else "复制失败")
                         },
@@ -361,6 +373,41 @@ private fun PlaylistContent(
                     }
                 }
             }
+            if (isOwned && query.isBlank() && state.recommendedSongs.isNotEmpty()) {
+                item(key = "recommend_header") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = HeaderPadding, end = HeaderPadding, top = 32.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("推荐歌曲", color = DesktopColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text("根据歌单里的歌挑选", color = DesktopColors.TextGray, fontSize = 13.sp)
+                        }
+                        TextButton(onClick = viewModel::refreshRecommendations) {
+                            Text("换一批", color = DesktopColors.TextGray, fontSize = 13.sp)
+                        }
+                    }
+                }
+                itemsIndexed(state.recommendedSongs, key = { _, track -> "recommend_${track.id}" }) { index, track ->
+                    TrackRow(
+                        index = index,
+                        track = track,
+                        isCurrent = nowPlaying?.songId == track.id,
+                        onPlay = { viewModel.playRecommendedTrack(track) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        trailingAction = {
+                            DesktopTooltip("添加到歌单") {
+                                IconButton(
+                                    onClick = { viewModel.addRecommendSongToPlaylist(playlist.id, track) },
+                                    modifier = Modifier.padding(start = 4.dp).size(32.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Add, "添加到歌单", tint = DesktopColors.TextGray, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    )
+                }
+            }
             if (state.isLoadingMoreTracks) {
                 item(key = "loading_more") {
                     Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
@@ -391,6 +438,30 @@ private fun PlaylistContent(
             existingIds = remember(playlist.tracks) { playlist.tracks.mapTo(HashSet()) { it.id } },
             viewModel = viewModel,
             onDismiss = { showAddSongs = false }
+        )
+    }
+    if (showImport) {
+        ImportToPlaylistDialog(
+            state = importState,
+            onPick = { target ->
+                showImport = false
+                viewModel.importAllTracksTo(target.id)
+            },
+            onCreate = {
+                showImport = false
+                showCreateImport = true
+            },
+            onDismiss = { showImport = false }
+        )
+    }
+    if (showCreateImport) {
+        CreatePlaylistDialog(
+            onDismiss = { showCreateImport = false },
+            onCreate = { name, isPrivate ->
+                showCreateImport = false
+                viewModel.createPlaylistAndImportAll(name, isPrivate)
+            },
+            onEmptyName = { navigator.showMessage(EMPTY_NAME_MESSAGE) }
         )
     }
     if (showDelete) {
@@ -468,6 +539,7 @@ private fun PlaylistActionBar(
     onToggleSubscribe: () -> Unit,
     onDownload: () -> Unit,
     onPlayNextAll: () -> Unit,
+    onImport: () -> Unit,
     onCopyLink: () -> Unit,
     onQueryChange: (String) -> Unit,
     onOrderChange: (PlaylistSortOrder) -> Unit
@@ -497,7 +569,7 @@ private fun PlaylistActionBar(
             )
         }
         ActionIcon(Icons.Rounded.Download, "下载$resourceLabel", onClick = onDownload)
-        PlaylistMoreMenu(resourceLabel, canDelete, onPlayNextAll, onCopyLink, onDelete)
+        PlaylistMoreMenu(resourceLabel, canDelete, onPlayNextAll, onImport, onCopyLink, onDelete)
         Spacer(Modifier.weight(1f))
         PlaylistSearchBox(query, onQueryChange)
         PlaylistSortMenu(order, showAdded) { key ->
@@ -525,6 +597,7 @@ private fun PlaylistMoreMenu(
     resourceLabel: String,
     canDelete: Boolean,
     onPlayNextAll: () -> Unit,
+    onImport: () -> Unit,
     onCopyLink: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -542,6 +615,14 @@ private fun PlaylistMoreMenu(
                 onClick = {
                     expanded = false
                     onPlayNextAll()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("添加到歌单", fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, modifier = Modifier.size(18.dp)) },
+                onClick = {
+                    expanded = false
+                    onImport()
                 }
             )
             DropdownMenuItem(
