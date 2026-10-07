@@ -8,41 +8,18 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.lin0721.linmusic.core.log.AppLogger
-import com.lin0721.linmusic.core.model.qualityRank
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private const val TAG = "DownloadPreferences"
 
 private val Context.downloadDataStore by preferencesDataStore(name = "download_prefs")
-
-// 下载记录实体
-@Serializable
-data class DownloadRecord(
-    val songId: Long,
-    val mediaStoreUri: String,
-    val quality: String,
-    val downloadedAt: Long,
-    val fileSize: Long,
-    val songName: String = "",
-    val artistName: String = "",
-    // 发起下载时请求的音质；服务端按歌曲上限降级下发时，据此判断无需再次下载
-    val requestedLevel: String = ""
-)
-
-// 已下载文件是否满足目标音质：实际下发或当初请求的档位不低于目标即视为满足
-fun DownloadRecord.satisfies(level: String): Boolean {
-    val target = qualityRank(level)
-    if (target < 0) return quality == level || requestedLevel == level
-    return maxOf(qualityRank(quality), qualityRank(requestedLevel)) >= target
-}
 
 // 判断是否为默认下载目录 Uri
 fun isDefaultDownloadDirectoryUri(uriString: String): Boolean =

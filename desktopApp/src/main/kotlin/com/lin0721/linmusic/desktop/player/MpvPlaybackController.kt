@@ -58,6 +58,8 @@ class MpvPlaybackController(
     settingsPreferences: SettingsPreferences,
     private val preferences: PlaybackPreferences,
     private val desktopPreferences: DesktopPreferences,
+    // 已下载歌曲的本地文件路径，没有则返回 null
+    private val localAudioOf: suspend (songId: Long) -> String?,
     private val scope: CoroutineScope
 ) : PlaybackController, AudioOutputControl, MpvEngine.Listener {
 
@@ -487,7 +489,7 @@ class MpvPlaybackController(
         )
         saveQueueState()
         playJob = scope.launch {
-            val url = knownUrl ?: repository.getSongUrl(item.songId).first().getOrElse { error ->
+            val url = knownUrl ?: localAudioOf(item.songId) ?: repository.getSongUrl(item.songId).first().getOrElse { error ->
                 AppLogger.w(TAG, "取播放地址失败 songId=${item.songId}", error)
                 handleFailure("《${item.title}》暂无版权或需要会员")
                 return@launch

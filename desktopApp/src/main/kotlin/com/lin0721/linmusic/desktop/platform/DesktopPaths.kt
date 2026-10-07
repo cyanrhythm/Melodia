@@ -9,5 +9,8 @@ object DesktopPaths {
         File(base, "Melodia").apply { mkdirs() }
     }
 
+    // 下载目录默认值：用户音乐目录下的 Melodia
+    val defaultDownloadDir: File by lazy { File(File(System.getProperty("user.home"), "Music"), "Melodia") }
+
     fun preferencesFile(name: String): File = File(File(dataDir, "datastore").apply { mkdirs() }, "$name.preferences_pb")
 }

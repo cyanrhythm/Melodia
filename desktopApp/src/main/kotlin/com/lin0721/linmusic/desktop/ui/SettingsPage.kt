@@ -69,6 +69,7 @@ import com.lin0721.linmusic.core.preferences.FullPlayerCardLayout
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.AutoStart
 import com.lin0721.linmusic.desktop.platform.CloseAction
+import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
@@ -81,6 +82,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
 import java.awt.event.KeyEvent as AwtKeyEvent
+import java.io.File
+import javax.swing.JFileChooser
 
 // 与 Android 音质设置保持同一组选项
 private val QualityOptions = listOf(
@@ -114,6 +117,8 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val unmEnabledModules by sourcePreferences.unmEnabledModules.collectAsState(initial = UnmModule.ALL_KEYS.toSet())
     val unmModuleOrder by sourcePreferences.unmModuleOrder.collectAsState(initial = UnmModule.ALL_KEYS)
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
+    val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
+    val downloadLyrics by settingsPreferences.downloadLyricsEnabled.collectAsState(initial = true)
     val cardLayout by settingsPreferences.fullPlayerCardLayout.collectAsState(initial = FullPlayerCardLayout.DEFAULT)
     val closeAction by desktopPreferences.closeAction.collectAsState(initial = CloseAction.TRAY)
     val mediaKeysEnabled by desktopPreferences.mediaKeysEnabled.collectAsState(initial = true)
@@ -229,6 +234,30 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                 }
             }
 
+            SettingsCard("下载") {
+                val customFolder = downloadFolder?.takeIf { it.isNotBlank() }
+                SettingRow("下载目录", subtitle = customFolder ?: DesktopPaths.defaultDownloadDir.absolutePath) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (customFolder != null) {
+                            TextButton(onClick = { scope.launch { settingsPreferences.saveDownloadFolderUri(null) } }) {
+                                Text("恢复默认", color = DesktopColors.TextGray)
+                            }
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                val initial = File(customFolder ?: DesktopPaths.defaultDownloadDir.absolutePath)
+                                chooseDirectory(initial)?.let { settingsPreferences.saveDownloadFolderUri(it.absolutePath) }
+                            }
+                        }) {
+                            Text("更改", color = DesktopColors.Accent)
+                        }
+                    }
+                }
+                SettingRow("内嵌歌词", subtitle = "下载时把歌词写入音频文件的标签") {
+                    SettingSwitch(downloadLyrics) { scope.launch { settingsPreferences.saveDownloadLyricsEnabled(it) } }
+                }
+            }
+
             SettingsCard("桌面歌词") {
                 SettingRow("显示桌面歌词") {
                     SettingSwitch(showDesktopLyric) { scope.launch { settingsPreferences.saveShowDesktopLrc(it) } }
@@ -270,6 +299,15 @@ fun SettingsPage(modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+// 系统目录选择框；取消返回 null
+private fun chooseDirectory(initial: File): File? {
+    val chooser = JFileChooser(initial.takeIf { it.isDirectory }).apply {
+        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        dialogTitle = "选择下载目录"
+    }
+    return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
 }
 
 @Composable

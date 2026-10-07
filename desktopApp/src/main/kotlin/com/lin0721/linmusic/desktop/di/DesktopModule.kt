@@ -33,7 +33,8 @@ import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
 import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.DesktopResourceProvider
 import com.lin0721.linmusic.desktop.platform.SilentPlaybackController
-import com.lin0721.linmusic.desktop.platform.UnsupportedSongDownloader
+import com.lin0721.linmusic.desktop.platform.download.DesktopDownloadPreferences
+import com.lin0721.linmusic.desktop.platform.download.DesktopSongDownloader
 import com.lin0721.linmusic.feature.artist.ui.ArtistViewModel
 import com.lin0721.linmusic.feature.home.ui.HomeViewModel
 import com.lin0721.linmusic.feature.library.data.LibraryPreferences
@@ -68,9 +69,14 @@ private fun createPlaybackController(
     repository: PlaybackRepository,
     settingsPreferences: SettingsPreferences,
     playbackPreferences: PlaybackPreferences,
-    desktopPreferences: DesktopPreferences
+    desktopPreferences: DesktopPreferences,
+    downloadPreferences: DesktopDownloadPreferences
 ): PlaybackController = try {
-    MpvPlaybackController(repository, settingsPreferences, playbackPreferences, desktopPreferences, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+    MpvPlaybackController(
+        repository, settingsPreferences, playbackPreferences, desktopPreferences,
+        localAudioOf = { songId -> downloadPreferences.findVerifiedRecord(songId)?.mediaStoreUri },
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    )
 } catch (e: LinkageError) {
     AppLogger.e(TAG, "libmpv 加载失败，播放不可用", e)
     SilentPlaybackController()
@@ -102,11 +108,25 @@ val desktopPlatformModule = module {
         val userPreferences = get<UserPreferences>()
         MetadataCache(File(DesktopPaths.dataDir, "meta_cache")) { userPreferences.userProfile.first()?.uid ?: 0L }
     }
-    // 桌面端没有音频缓存也不支持下载，离线时所有歌曲都不可播放
-    single<CachedAudioIndex> { CachedAudioIndex { emptySet() } }
+    single { DesktopDownloadPreferences(store(DesktopDownloadPreferences.STORE_NAME)) }
+    // 离线时只有已下载的歌曲可播放
+    single<CachedAudioIndex> {
+        val downloadPreferences = get<DesktopDownloadPreferences>()
+        CachedAudioIndex { ids -> downloadPreferences.findVerifiedRecords(ids).mapTo(HashSet()) { it.songId } }
+    }
     single<LibraryPreferences> { DesktopLibraryPreferences() }
-    single<SongDownloader> { UnsupportedSongDownloader() }
-    single<PlaybackController> { createPlaybackController(get(), get(), get(), get()) }
+    single {
+        DesktopSongDownloader(
+            downloadApi = get(),
+            playbackRepository = get(),
+            settingsPreferences = get(),
+            downloadPreferences = get(),
+            tempDir = File(DesktopPaths.dataDir, "download_tmp"),
+            defaultDir = DesktopPaths.defaultDownloadDir
+        )
+    }
+    single<SongDownloader> { get<DesktopSongDownloader>() }
+    single<PlaybackController> { createPlaybackController(get(), get(), get(), get(), get()) }
     single { AmllLyricsClient(LyricsCache(File(DesktopPaths.dataDir, "cache"))) }
     // 桌面第一版没有本地音乐，只取在线歌词
     single {

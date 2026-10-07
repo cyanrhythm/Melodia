@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -226,6 +227,10 @@ private fun TrackMenu(
                 onDismiss()
                 navigator.openArtist(artist.id, artist.name)
             }
+        }
+        TrackMenuItem(Icons.Rounded.Download, "下载") {
+            onDismiss()
+            actions.onDownload(track)
         }
         if (track.al.id > 0) {
             TrackMenuItem(Icons.Rounded.Album, "查看专辑") {

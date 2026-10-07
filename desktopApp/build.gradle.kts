@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna)
+    implementation(libs.jaudiotagger)
     testImplementation(libs.junit)
 }
 

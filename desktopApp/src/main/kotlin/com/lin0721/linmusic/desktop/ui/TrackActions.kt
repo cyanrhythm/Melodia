@@ -16,7 +16,8 @@ class TrackActions(
     val likedSongIds: Set<Long>,
     val onToggleLike: (Track) -> Unit,
     val onPlayNext: (Track) -> Unit,
-    val onCollect: (Track) -> Unit
+    val onCollect: (Track) -> Unit,
+    val onDownload: (Track) -> Unit
 )
 
 @Composable
@@ -60,6 +61,7 @@ fun rememberTrackActions(
                 onPrepareCollect(track.id)
                 collectingSongId = track.id
             }
-        }
+        },
+        onDownload = navigator.downloadTrack
     )
 }

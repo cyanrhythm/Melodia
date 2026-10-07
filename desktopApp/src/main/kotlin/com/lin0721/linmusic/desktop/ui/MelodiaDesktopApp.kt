@@ -42,7 +42,11 @@ import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.WindowState
 import com.lin0721.linmusic.core.auth.LoginViewModel
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.core.download.DownloadTrackInfo
+import com.lin0721.linmusic.core.download.SongDownloader
+import com.lin0721.linmusic.core.download.yearFromEpochMillis
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.desktop.platform.download.DesktopSongDownloader
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryMode
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
@@ -104,6 +108,8 @@ fun WindowScope.MelodiaDesktopApp(
     val searchViewModel = remember { koin.get<SearchViewModel>() }
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val settingsPreferences = remember { koin.get<SettingsPreferences>() }
+    val songDownloader = remember { koin.get<SongDownloader>() }
+    val downloadLevel by settingsPreferences.wifiQuality.collectAsState(initial = "standard")
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
     val mpvController = playbackController as? MpvPlaybackController
 
@@ -179,6 +185,18 @@ fun WindowScope.MelodiaDesktopApp(
         openPodcastToplist = { backStack.navigate(DesktopRoute.PodcastToplist) },
         openPodcastCategory = { id, name -> backStack.navigate(DesktopRoute.PodcastCategory(id, name)) },
         openLogin = { showLogin = true },
+        downloadLevel = downloadLevel,
+        downloadTrack = { track ->
+            songDownloader.enqueueSingle(
+                DownloadTrackInfo(
+                    track.id, track.name, track.ar.joinToString("/") { it.name },
+                    track.al.name, track.al.picUrl.takeIf { it.isNotBlank() },
+                    yearFromEpochMillis(track.publishTime)
+                ),
+                downloadLevel
+            )
+            navigatorMessages.tryEmit("已加入下载队列")
+        },
         showMessage = { navigatorMessages.tryEmit(it) }
     )
 
@@ -196,6 +214,7 @@ fun WindowScope.MelodiaDesktopApp(
 
     LaunchedEffect(Unit) {
         val playbackMessages = mpvController?.messages ?: emptyFlow()
+        val downloadMessages = (songDownloader as? DesktopSongDownloader)?.messages ?: emptyFlow()
         merge(
             homeViewModel.toastEvent,
             libraryViewModel.toastEvent,
@@ -203,7 +222,8 @@ fun WindowScope.MelodiaDesktopApp(
             playerViewModel.toastEvent,
             newWorksViewModel.toastEvent,
             navigatorMessages,
-            playbackMessages
+            playbackMessages,
+            downloadMessages
         )
             .collect { snackbarHostState.showSnackbar(it) }
     }
