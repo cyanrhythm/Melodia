@@ -23,6 +23,8 @@ internal interface User32 : Library {
     fun IsZoomed(hWnd: Pointer): Boolean
     fun GetDpiForWindow(hWnd: Pointer): Int
     fun GetSystemMetricsForDpi(nIndex: Int, dpi: Int): Int
+    fun GetSystemMetrics(nIndex: Int): Int
+    fun GetAsyncKeyState(vKey: Int): Short
 
     companion object {
         val INSTANCE: User32 by lazy { Native.load("user32", User32::class.java, W32APIOptions.DEFAULT_OPTIONS) }
@@ -56,6 +58,7 @@ internal interface User32 : Library {
         const val SWP_NOACTIVATE = 0x0010
         const val SWP_FRAMECHANGED = 0x0020
 
+        const val SM_SWAPBUTTON = 23
         const val SM_CXFRAME = 32
         const val SM_CYFRAME = 33
         const val SM_CXPADDEDBORDER = 92
