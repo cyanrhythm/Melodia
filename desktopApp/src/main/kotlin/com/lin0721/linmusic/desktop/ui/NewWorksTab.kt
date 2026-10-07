@@ -98,7 +98,7 @@ class NewWorksTabActions(
     val onSaveNewCollection: (name: String, songId: Long) -> Unit,
     val onPrepareImportTargets: (onReady: () -> Unit) -> Unit,
     val onAddToPlaylist: (NewWorksRelease, playlistId: Long) -> Unit,
-    val onCreatePlaylistAndAdd: (NewWorksRelease, name: String) -> Unit,
+    val onCreatePlaylistAndAdd: (NewWorksRelease, name: String, isPrivate: Boolean) -> Unit,
     val onRetry: () -> Unit,
     val onLoadMore: () -> Unit
 )
@@ -218,8 +218,8 @@ private fun NewWorksGrid(
     createPlaylistFor?.let { release ->
         CreatePlaylistDialog(
             onDismiss = { createPlaylistFor = null },
-            onCreate = { name ->
-                actions.onCreatePlaylistAndAdd(release, name)
+            onCreate = { name, isPrivate ->
+                actions.onCreatePlaylistAndAdd(release, name, isPrivate)
                 createPlaylistFor = null
             },
             onEmptyName = { navigator.showMessage(EMPTY_NAME_MESSAGE) }

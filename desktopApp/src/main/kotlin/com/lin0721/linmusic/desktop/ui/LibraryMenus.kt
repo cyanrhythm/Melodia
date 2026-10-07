@@ -67,9 +67,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.library.ui.LibrarySortOrder
+import org.koin.core.context.GlobalContext
 import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
 
 private const val PLAYLIST_NAME_MAX_LENGTH = 40
@@ -275,9 +277,9 @@ internal fun LibraryCreateButton(viewModel: LibraryViewModel, pill: Boolean) {
     if (dialogOpen) {
         CreatePlaylistDialog(
             onDismiss = { dialogOpen = false },
-            onCreate = { name ->
+            onCreate = { name, isPrivate ->
                 dialogOpen = false
-                viewModel.createPlaylist(name) { id, playlistName -> navigator.openPlaylist(id, playlistName) }
+                viewModel.createPlaylist(name, isPrivate) { id, playlistName -> navigator.openPlaylist(id, playlistName) }
             },
             onEmptyName = { navigator.showMessage(EMPTY_NAME_MESSAGE) }
         )
@@ -285,13 +287,16 @@ internal fun LibraryCreateButton(viewModel: LibraryViewModel, pill: Boolean) {
 }
 
 @Composable
-internal fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit, onEmptyName: () -> Unit) {
+internal fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (name: String, isPrivate: Boolean) -> Unit, onEmptyName: () -> Unit) {
+    val settingsPreferences = remember { GlobalContext.get().get<SettingsPreferences>() }
+    val defaultPrivate by settingsPreferences.defaultPlaylistPrivate.collectAsState(initial = false)
     var name by remember { mutableStateOf("") }
+    var isPrivate by remember(defaultPrivate) { mutableStateOf(defaultPrivate) }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     val submit = {
         val trimmed = name.trim()
-        if (trimmed.isEmpty()) onEmptyName() else onCreate(trimmed)
+        if (trimmed.isEmpty()) onEmptyName() else onCreate(trimmed, isPrivate)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -326,6 +331,17 @@ internal fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> U
                             }
                         }
                 )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text("设为隐私歌单", color = DesktopColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("仅自己可见", color = DesktopColors.TextGray, fontSize = 12.sp)
+                    }
+                    SettingSwitch(isPrivate) { isPrivate = it }
+                }
             }
         },
         confirmButton = {

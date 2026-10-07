@@ -141,6 +141,7 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val crossfadeDurationMs by settingsPreferences.crossfadeDurationMs.collectAsState(initial = CrossfadePolicy.DEFAULT_DURATION_MS)
     val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
     val downloadLyrics by settingsPreferences.downloadLyricsEnabled.collectAsState(initial = true)
+    val defaultPlaylistPrivate by settingsPreferences.defaultPlaylistPrivate.collectAsState(initial = false)
     val cardLayout by settingsPreferences.fullPlayerCardLayout.collectAsState(initial = FullPlayerCardLayout.DEFAULT)
     val closeAction by desktopPreferences.closeAction.collectAsState(initial = CloseAction.TRAY)
     val mediaKeysEnabled by desktopPreferences.mediaKeysEnabled.collectAsState(initial = true)
@@ -320,6 +321,12 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                 }
                 SettingRow("内嵌歌词", subtitle = "下载时把歌词写入音频文件的标签") {
                     SettingSwitch(downloadLyrics) { scope.launch { settingsPreferences.saveDownloadLyricsEnabled(it) } }
+                }
+            }
+
+            SettingsCard("歌单") {
+                SettingRow("新建歌单默认设为隐私", subtitle = "创建歌单对话框中的隐私开关以此为初始值") {
+                    SettingSwitch(defaultPlaylistPrivate) { scope.launch { settingsPreferences.saveDefaultPlaylistPrivate(it) } }
                 }
             }
 
