@@ -14,6 +14,8 @@ class PlaybackQueue {
     private var playItems: List<QueueItem> = emptyList()
 
     // 进入漫游前的队列快照
+    // 备份时队列可能本就为空，因此用独立标志区分"没有快照"与"快照为空队列"
+    private var hasSnapshot: Boolean = false
     private var snapshotItems: List<QueueItem> = emptyList()
     private var snapshotIndex: Int = -1
     private var snapshotContext: String? = null
@@ -253,6 +255,7 @@ class PlaybackQueue {
 
     // 备份当前队列与播放上下文，供退出漫游/心动模式时还原
     fun takeSnapshot() {
+        hasSnapshot = true
         snapshotItems = originalItems
         snapshotIndex = _currentIndex.value
         snapshotContext = _playContext.value
@@ -261,31 +264,44 @@ class PlaybackQueue {
 
     // 还原备份的队列，并把当前正在播放的曲目定位到新队列中
     fun restoreSnapshot() {
-        if (snapshotItems.isEmpty()) return
-        originalItems = snapshotItems
-        val currentTrackItem = playItems.getOrNull(_currentIndex.value)
-        val newIndex = if (currentTrackItem != null) {
-            val idx = snapshotItems.indexOfFirst { it.songId == currentTrackItem.songId }
-            if (idx != -1) idx else snapshotIndex.coerceIn(0, snapshotItems.size - 1)
-        } else {
-            snapshotIndex.coerceIn(0, snapshotItems.size - 1)
-        }
+        if (!hasSnapshot) return
+        if (snapshotItems.isNotEmpty()) {
+            originalItems = snapshotItems
+            val currentTrackItem = playItems.getOrNull(_currentIndex.value)
+            val newIndex = if (currentTrackItem != null) {
+                val idx = snapshotItems.indexOfFirst { it.songId == currentTrackItem.songId }
+                if (idx != -1) idx else snapshotIndex.coerceIn(0, snapshotItems.size - 1)
+            } else {
+                snapshotIndex.coerceIn(0, snapshotItems.size - 1)
+            }
 
-        if (_playMode.value == PlayMode.SHUFFLE) {
-            playItems = shufflePreservingCurrent(snapshotItems, newIndex)
-            _currentIndex.value = 0
-        } else {
-            playItems = snapshotItems
-            _currentIndex.value = newIndex
-        }
+            if (_playMode.value == PlayMode.SHUFFLE) {
+                playItems = shufflePreservingCurrent(snapshotItems, newIndex)
+                _currentIndex.value = 0
+            } else {
+                playItems = snapshotItems
+                _currentIndex.value = newIndex
+            }
 
-        _items.value = playItems
+            _items.value = playItems
+        }
+        // 备份时队列为空则无队列可还原，保留当前正在播放的队列，只退出特殊上下文
         _playContext.value = snapshotContext
         _playSource.value = snapshotSource
+        hasSnapshot = false
         snapshotItems = emptyList()
         snapshotIndex = -1
         snapshotContext = null
         snapshotSource = null
+    }
+
+    // 退出漫游/心动模式：有快照则还原原队列；快照丢失（如应用重启后持久化的上下文仍是特殊模式）则只清除上下文，保证一定能退出
+    fun exitSpecialContext() {
+        if (hasSnapshot) {
+            restoreSnapshot()
+        } else {
+            _playContext.value = null
+        }
     }
 
     // 打乱其余曲目并把当前曲目固定在首位，避免切到随机模式时当前歌曲被换掉
