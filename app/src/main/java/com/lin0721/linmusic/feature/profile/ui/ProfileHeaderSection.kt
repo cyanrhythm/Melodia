@@ -218,7 +218,7 @@ fun ProfileTabBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit
 ) {
-    val tabs = listOf("歌单", "动态", "听歌排行")
+    val tabs = listOf("歌单", "听歌排行")
     Row(
         modifier = Modifier
             .fillMaxWidth()

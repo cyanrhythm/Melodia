@@ -142,7 +142,6 @@ fun ProfileScreen(
                         if (!shouldLoadMore) return@LaunchedEffect
                         when (state.selectedTab) {
                             0 -> if (state.playlistsHasMore && !state.playlistsLoadingMore) viewModel.loadMorePlaylists()
-                            1 -> if (state.eventsHasMore && !state.eventsLoadingMore) viewModel.loadMoreEvents()
                         }
                     }
 
@@ -173,11 +172,7 @@ fun ProfileScreen(
                                     isLoading = state.playlistsLoadingMore,
                                     onPlaylistClick = onPlaylistClick
                                 )
-                                1 -> profileEventItems(
-                                    events = state.events,
-                                    isLoading = state.eventsLoadingMore
-                                )
-                                2 -> profileRecordItems(
+                                1 -> profileRecordItems(
                                     items = state.rankItems,
                                     isLoading = state.rankLoading,
                                     subTab = state.rankSubTab,
