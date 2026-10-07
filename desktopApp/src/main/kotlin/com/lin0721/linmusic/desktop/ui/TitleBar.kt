@@ -3,9 +3,7 @@ package com.lin0721.linmusic.desktop.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.border
-import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.Crossfade
@@ -39,8 +37,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FilterNone
@@ -66,16 +62,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +76,7 @@ import androidx.compose.ui.window.WindowScope
 import com.lin0721.linmusic.core.auth.UserProfile
 import com.lin0721.linmusic.desktop.platform.download.DownloadTaskStatus
 import com.lin0721.linmusic.desktop.platform.download.DownloadTask
+import com.lin0721.linmusic.desktop.ui.icons.DownloadIcons
 import com.lin0721.linmusic.desktop.ui.navigation.BackStack
 import com.lin0721.linmusic.desktop.ui.navigation.DesktopRoute
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
@@ -92,9 +86,14 @@ import kotlinx.coroutines.delay
 
 private val CloseHover = Color(0xFFE81123)
 
-// 下载完成后对勾停留的时长与进度环、图标切换的动画时长
+// 下载完成后对勾停留的时长，以及进度染色与图标切换的动画时长
 private const val CHECK_SHOW_MS = 1_500L
-private const val RING_ANIMATION_MS = 200
+private const val FILL_ANIMATION_MS = 200
+
+// 与底栏侧边图标按钮（PlayerBar）同尺寸、同悬停放大系数
+private val DOWNLOAD_BUTTON_SIZE = 32.dp
+private val DOWNLOAD_ICON_SIZE = 20.dp
+private const val DOWNLOAD_HOVER_SCALE = 1.1f
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -172,8 +171,8 @@ fun WindowScope.TitleBar(
     }
 }
 
-// 头像左侧的下载管理入口：圆形底与头像一致，下载中图标外圈显示整轮进度，
-// 一轮全部成功后图标短暂变为对勾；有暂停或失败的任务时右上角亮红点
+// 头像左侧的下载管理入口，样式与底栏图标按钮一致（灰色，悬停变亮并放大）。
+// 下载中图标按整轮进度自下而上染成强调色，一轮全部成功后短暂变为对勾；有暂停或失败的任务时右上角亮红点
 @Composable
 private fun DownloadsButton(tasks: List<DownloadTask>, open: Boolean, onClick: () -> Unit) {
     val tracker = remember { DownloadRoundTracker() }
@@ -191,49 +190,43 @@ private fun DownloadsButton(tasks: List<DownloadTask>, open: Boolean, onClick: (
             showCheck = false
         }
     }
-    val ringProgress by animateFloatAsState(progress ?: 0f, tween(RING_ANIMATION_MS), label = "downloadRing")
+    val fill by animateFloatAsState(progress ?: 0f, tween(FILL_ANIMATION_MS), label = "downloadFill")
     val needsAttention = tasks.any { it.status == DownloadTaskStatus.PAUSED || it.status == DownloadTaskStatus.FAILED }
 
     val hoverSource = remember { MutableInteractionSource() }
     val hovered by hoverSource.collectIsHoveredAsState()
+    val scale by animateFloatAsState(if (hovered) DOWNLOAD_HOVER_SCALE else 1f, tween(FILL_ANIMATION_MS), label = "downloadHover")
+    val tint = if (hovered || open) DesktopColors.TextPrimary else DesktopColors.TextGray
     val tooltip = progress?.let { "下载中 ${(it * 100).roundToInt()}%" } ?: "下载管理"
     DesktopTooltip(tooltip, side = TooltipSide.Bottom, modifier = Modifier.padding(end = 8.dp)) {
-        Box(
-            Modifier.size(32.dp).clip(CircleShape)
-                .background(if (hovered || open) DesktopColors.SurfaceLight else DesktopColors.Surface)
-                .hoverable(hoverSource)
-                .pointerHoverIcon(PointerIcon.Hand)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            if (progress != null) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    drawCircle(DesktopColors.SurfaceLight, radius = size.minDimension / 2 - stroke.width / 2, style = stroke)
-                    drawArc(
-                        color = DesktopColors.Accent,
-                        startAngle = -90f,
-                        sweepAngle = 360f * ringProgress,
-                        useCenter = false,
-                        topLeft = Offset(stroke.width / 2, stroke.width / 2),
-                        size = Size(size.width - stroke.width, size.height - stroke.width),
-                        style = stroke
-                    )
+        Box(contentAlignment = Alignment.Center) {
+            IconButton(
+                onClick = onClick,
+                interactionSource = hoverSource,
+                modifier = Modifier.size(DOWNLOAD_BUTTON_SIZE).graphicsLayer { scaleX = scale; scaleY = scale }
+            ) {
+                Crossfade(showCheck, animationSpec = tween(FILL_ANIMATION_MS), label = "downloadIcon") { check ->
+                    Box(Modifier.size(DOWNLOAD_ICON_SIZE)) {
+                        val icon = if (check) DownloadIcons.Check else DownloadIcons.Download
+                        Icon(icon, "下载管理", tint = if (check) DesktopColors.TextPrimary else tint, modifier = Modifier.fillMaxSize())
+                        if (!check && fill > 0f) {
+                            Icon(
+                                icon,
+                                null,
+                                tint = DesktopColors.Accent,
+                                modifier = Modifier.fillMaxSize().drawWithContent {
+                                    clipRect(top = size.height * (1f - fill)) { this@drawWithContent.drawContent() }
+                                }
+                            )
+                        }
+                    }
                 }
-            }
-            Crossfade(showCheck, animationSpec = tween(RING_ANIMATION_MS), label = "downloadIcon") { check ->
-                Icon(
-                    if (check) Icons.Rounded.Check else Icons.Rounded.Download,
-                    "下载管理",
-                    tint = if (open || progress != null || check) DesktopColors.TextPrimary else DesktopColors.TextGray,
-                    modifier = Modifier.size(18.dp)
-                )
             }
             if (needsAttention && !showCheck) {
                 Box(
-                    Modifier.align(Alignment.TopEnd).size(10.dp)
-                        .border(1.5.dp, DesktopColors.WindowBackground, CircleShape)
-                        .padding(1.5.dp)
+                    Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 5.dp).size(8.dp)
+                        .border(1.dp, DesktopColors.WindowBackground, CircleShape)
+                        .padding(1.dp)
                         .clip(CircleShape)
                         .background(DesktopColors.Accent)
                 )
