@@ -514,6 +514,8 @@ class MpvPlaybackController(
         crossfadeAttemptedSongId = null
         playJob?.cancel()
         finishReporting()
+        // 取播放地址在弱网下可能很久才返回，界面已切到新歌，旧歌不能继续出声；换音质重载同一首不打断
+        if (loadedSongId != item.songId) engine.setPaused(true)
         playbackQueue.setCurrentIndex(index)
         loadedSongId = null
         _currentPosition.value = startMs
