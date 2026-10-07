@@ -98,6 +98,11 @@ class QueueReorderState internal constructor(
             }
             lastFrameNanos = frameNanos
 
+            if (isPointerOutsideActiveWindow()) {
+                edgeDurationMs = 0f
+                continue
+            }
+
             val layoutInfo = listState.layoutInfo
             val draggingItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == lazyIndexOf(draggedIndex) }
             if (draggingItem == null) {
