@@ -14,7 +14,8 @@ private const val OBSERVE_DURATION = 2L
 private const val OBSERVE_PAUSE = 3L
 
 // 纯音频播放内核：只负责“播这个地址/暂停/跳转/音量”，队列与取地址由上层决定
-class MpvEngine(private val listener: Listener) {
+// extraOptions 在初始化前写入，供测试指定无声输出等
+class MpvEngine(private val listener: Listener, extraOptions: Map<String, String> = emptyMap()) {
 
     interface Listener {
         fun onPositionChanged(positionMs: Long)
@@ -38,6 +39,7 @@ class MpvEngine(private val listener: Listener) {
         setOption("idle", "yes")
         setOption("audio-display", "no")
         setOption("keep-open", "no")
+        extraOptions.forEach { (name, value) -> setOption(name, value) }
         check(mpv.mpv_initialize(ctx) >= 0) { "mpv_initialize 失败" }
         mpv.mpv_observe_property(ctx, OBSERVE_TIME_POS, "time-pos", MpvConst.FORMAT_DOUBLE)
         mpv.mpv_observe_property(ctx, OBSERVE_DURATION, "duration", MpvConst.FORMAT_DOUBLE)
@@ -48,10 +50,13 @@ class MpvEngine(private val listener: Listener) {
         }
     }
 
-    fun load(url: String, startMs: Long) {
+    // paused 为真时载入后停在开头待命，用于淡入淡出的预载；
+    // recordPath 非空时把读到的流录成该文件（容器由扩展名决定），空串表示关闭录制
+    fun load(url: String, startMs: Long, paused: Boolean = false, recordPath: String? = null) {
+        setProperty("stream-record", recordPath.orEmpty())
         // start 为全局选项，对下一个载入的文件生效
         setProperty("start", if (startMs > 0) "+${startMs / 1000.0}" else "none")
-        setProperty("pause", "no")
+        setProperty("pause", if (paused) "yes" else "no")
         command("loadfile", url, "replace")
     }
 
@@ -59,7 +64,13 @@ class MpvEngine(private val listener: Listener) {
 
     fun seekTo(positionMs: Long) = command("seek", (positionMs.coerceAtLeast(0) / 1000.0).toString(), "absolute")
 
-    fun setVolume(percent: Int) = setProperty("volume", percent.coerceIn(0, 100).toString())
+    fun setVolume(percent: Int) = setVolume(percent.toDouble())
+
+    // 淡入淡出按小数步进，整数档位在低音量下会有台阶感
+    fun setVolume(percent: Double) = setProperty("volume", "%.3f".format(java.util.Locale.ROOT, percent.coerceIn(0.0, 100.0)))
+
+    // 供测试核对淡化期间的实际音量
+    internal fun volume(): Double? = getProperty("volume")?.toDoubleOrNull()
 
     // node 类型属性按字符串读取得到 JSON；读不到返回 null
     fun audioDevices(): List<AudioDevice> = getProperty("audio-device-list")?.let(::parseAudioDevices).orEmpty()

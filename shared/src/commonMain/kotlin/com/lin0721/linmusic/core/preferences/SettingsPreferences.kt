@@ -15,7 +15,11 @@ import kotlinx.coroutines.flow.map
 
 private const val TAG = "SettingsPreferences"
 
-class SettingsPreferences(private val dataStore: DataStore<Preferences>) {
+// streamCacheDefault：边听边存在用户未设置时的默认值，各平台自行决定
+class SettingsPreferences(
+    private val dataStore: DataStore<Preferences>,
+    private val streamCacheDefault: Boolean = false
+) {
 
     companion object {
         // Wi-Fi 播放音质 KEY，默认 "lossless"
@@ -164,7 +168,7 @@ class SettingsPreferences(private val dataStore: DataStore<Preferences>) {
 
     // 缓存开关设置 Flow
     val streamCacheEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_STREAM_CACHE_ENABLED] ?: false
+        prefs[KEY_STREAM_CACHE_ENABLED] ?: streamCacheDefault
     }
 
     suspend fun saveStreamCacheEnabled(enabled: Boolean) {

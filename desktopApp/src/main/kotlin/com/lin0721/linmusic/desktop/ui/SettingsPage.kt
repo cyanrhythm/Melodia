@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.preferences.FullPlayerCardLayout
+import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.AutoStart
 import com.lin0721.linmusic.desktop.platform.CloseAction
@@ -75,6 +76,7 @@ import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
 import com.lin0721.linmusic.desktop.platform.HotkeyCombo
 import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
+import com.lin0721.linmusic.desktop.player.cache.AudioCache
 import com.lin0721.linmusic.desktop.platform.win.User32
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +88,11 @@ import java.io.File
 import javax.swing.JFileChooser
 
 // 与 Android 音质设置保持同一组选项
+// 与 CrossfadePolicy 的 0.5 秒步进对齐的常用档位
+private val CacheSizeOptions = listOf(500L, 1024L, 2048L, 5120L, 10240L).map { it * 1024 * 1024 }
+
+private val CrossfadeDurationOptionsMs = listOf(1_000, 2_000, 3_000, 4_000, 6_000, 8_000, 10_000, 12_000)
+
 private val QualityOptions = listOf(
     "standard" to "标准音质",
     "exhigh" to "极高音质",
@@ -105,6 +112,7 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val sourcePreferences = remember { koin.get<SourcePreferences>() }
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val hotkeys = remember { koin.get<GlobalHotkeys>() }
+    val audioCache = remember { koin.get<AudioCache>() }
     val smtc = remember { koin.get<SmtcSession>() }
     val scope = rememberCoroutineScope()
 
@@ -117,6 +125,12 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val unmEnabledModules by sourcePreferences.unmEnabledModules.collectAsState(initial = UnmModule.ALL_KEYS.toSet())
     val unmModuleOrder by sourcePreferences.unmModuleOrder.collectAsState(initial = UnmModule.ALL_KEYS)
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
+    val streamCacheEnabled by settingsPreferences.streamCacheEnabled.collectAsState(initial = true)
+    val cacheMaxSize by settingsPreferences.audioCacheMaxSize.collectAsState(initial = CacheSizeOptions.first())
+    var cacheUsedBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() } }
+    val crossfadeEnabled by settingsPreferences.crossfadeEnabled.collectAsState(initial = false)
+    val crossfadeDurationMs by settingsPreferences.crossfadeDurationMs.collectAsState(initial = CrossfadePolicy.DEFAULT_DURATION_MS)
     val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
     val downloadLyrics by settingsPreferences.downloadLyricsEnabled.collectAsState(initial = true)
     val cardLayout by settingsPreferences.fullPlayerCardLayout.collectAsState(initial = FullPlayerCardLayout.DEFAULT)
@@ -137,6 +151,14 @@ fun SettingsPage(modifier: Modifier = Modifier) {
             SettingsCard("播放") {
                 SettingRow("在线播放音质") {
                     QualitySelector(quality) { scope.launch { settingsPreferences.saveWifiQuality(it) } }
+                }
+                SettingRow("歌曲淡入淡出", subtitle = "自动切歌时前后两首交叉淡化，手动切歌不受影响") {
+                    SettingSwitch(crossfadeEnabled) { scope.launch { settingsPreferences.saveCrossfadeEnabled(it) } }
+                }
+                if (crossfadeEnabled) {
+                    SettingRow("淡化时长") {
+                        CrossfadeDurationSelector(crossfadeDurationMs) { scope.launch { settingsPreferences.saveCrossfadeDurationMs(it) } }
+                    }
                 }
             }
 
@@ -230,6 +252,31 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                         subtitle = "由服务端自动轮询最优源，关闭后按本地模块顺序向远程请求"
                     ) {
                         SettingSwitch(unmAutoMatch) { scope.launch { sourcePreferences.saveUnmAutoMatch(it) } }
+                    }
+                }
+            }
+
+            SettingsCard("缓存") {
+                SettingRow("边听边存", subtitle = "在线播放完整听完的歌曲保存到本地，下次直接播放，离线时也可播放") {
+                    SettingSwitch(streamCacheEnabled) { scope.launch { settingsPreferences.saveStreamCacheEnabled(it) } }
+                }
+                SettingRow("缓存容量上限") {
+                    CacheSizeSelector(cacheMaxSize) { size ->
+                        scope.launch {
+                            settingsPreferences.saveAudioCacheMaxSize(size)
+                            withContext(Dispatchers.IO) { audioCache.evict(size) }
+                            cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() }
+                        }
+                    }
+                }
+                SettingRow("已用空间", subtitle = formatBytes(cacheUsedBytes)) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { audioCache.clear() }
+                            cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() }
+                        }
+                    }) {
+                        Text("清除缓存", color = DesktopColors.Accent)
                     }
                 }
             }
@@ -351,6 +398,58 @@ internal fun SettingSwitch(checked: Boolean, enabled: Boolean = true, onChange: 
         )
     )
 }
+
+@Composable
+private fun CacheSizeSelector(currentBytes: Long, onSelect: (Long) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(formatBytes(currentBytes), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            CacheSizeOptions.forEach { value ->
+                DropdownMenuItem(
+                    text = { Text(formatBytes(value), color = if (value == currentBytes) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    val mb = bytes / (1024.0 * 1024.0)
+    return if (mb >= 1024) "%.1f GB".format(java.util.Locale.ROOT, mb / 1024) else "%.0f MB".format(java.util.Locale.ROOT, mb)
+}
+
+@Composable
+private fun CrossfadeDurationSelector(currentMs: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = CrossfadePolicy.normalizeDurationMs(currentMs)
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(formatSeconds(current), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            CrossfadeDurationOptionsMs.forEach { value ->
+                DropdownMenuItem(
+                    text = { Text(formatSeconds(value), color = if (value == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun formatSeconds(ms: Int): String = if (ms % 1000 == 0) "${ms / 1000} 秒" else "${ms / 1000.0} 秒"
 
 @Composable
 private fun QualitySelector(current: String, onSelect: (String) -> Unit) {
