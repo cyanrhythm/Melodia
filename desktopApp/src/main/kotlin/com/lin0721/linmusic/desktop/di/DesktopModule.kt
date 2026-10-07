@@ -14,6 +14,8 @@ import com.lin0721.linmusic.core.network.crypto.XeapiKeyStoreImpl
 import com.lin0721.linmusic.core.player.LyricsResolver
 import com.lin0721.linmusic.core.player.PlaybackPreferences
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.core.player.data.AmllLyricsClient
+import com.lin0721.linmusic.core.player.data.LyricsCache
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
@@ -105,8 +107,19 @@ val desktopPlatformModule = module {
     single<LibraryPreferences> { DesktopLibraryPreferences() }
     single<SongDownloader> { UnsupportedSongDownloader() }
     single<PlaybackController> { createPlaybackController(get(), get(), get(), get()) }
+    single { AmllLyricsClient(LyricsCache(File(DesktopPaths.dataDir, "cache"))) }
     // 桌面第一版没有本地音乐，只取在线歌词
-    single { LyricsResolver(get(), readLocalLyrics = { null }, localUriOf = { null }) }
+    single {
+        val amllLyricsClient = get<AmllLyricsClient>()
+        val settingsPreferences = get<SettingsPreferences>()
+        LyricsResolver(
+            playbackRepository = get(),
+            readLocalLyrics = { null },
+            localUriOf = { null },
+            readAmllLyrics = { songId -> amllLyricsClient.fetch(songId) },
+            isAmllEnabled = { settingsPreferences.amllLyricsEnabled.first() }
+        )
+    }
 }
 
 // 单窗口应用，页面级 ViewModel 随窗口常驻
