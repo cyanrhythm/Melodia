@@ -38,6 +38,9 @@ class DesktopSongDownloaderTest {
     private val requests = CopyOnWriteArrayList<String>()
     private var trial = false
 
+    @Volatile private var slow = false
+    private var buildDownloader: () -> DesktopSongDownloader = { error("未初始化") }
+
     // 100 个 MPEG1 Layer3 128kbps 44.1kHz 静音帧，足够 jaudiotagger 识别并写标签
     private val audio: ByteArray = run {
         val frame = ByteArray(417).also {
@@ -57,14 +60,22 @@ class DesktopSongDownloaderTest {
             val range = ex.requestHeaders.getFirst("Range")
             requests += "${ex.requestURI.path} range=$range"
             ex.responseHeaders.add("Accept-Ranges", "bytes")
-            if (range != null && range.startsWith("bytes=")) {
-                val start = range.removePrefix("bytes=").substringBefore('-').toInt()
+            val start = if (range != null && range.startsWith("bytes=")) range.removePrefix("bytes=").substringBefore('-').toInt() else 0
+            if (start > 0) {
                 ex.responseHeaders.add("Content-Range", "bytes $start-${audio.size - 1}/${audio.size}")
                 ex.sendResponseHeaders(206, (audio.size - start).toLong())
-                ex.responseBody.use { it.write(audio, start, audio.size - start) }
             } else {
                 ex.sendResponseHeaders(200, audio.size.toLong())
-                ex.responseBody.use { it.write(audio) }
+            }
+            ex.responseBody.use { out ->
+                var offset = start
+                while (offset < audio.size) {
+                    val length = if (slow) minOf(2_000, audio.size - offset) else audio.size - offset
+                    out.write(audio, offset, length)
+                    out.flush()
+                    offset += length
+                    if (slow) Thread.sleep(100)
+                }
             }
         }
         server.start()
@@ -101,8 +112,8 @@ class DesktopSongDownloaderTest {
         val records = DesktopDownloadPreferences(com.lin0721.linmusic.core.preferences.PreferencesStores.get(File(root, "download.preferences_pb")))
         val folder = File(root, "out")
         runBlocking { settings.saveDownloadFolderUri(folder.absolutePath) }
-        val downloader = DesktopSongDownloader(downloadApi, repository, settings, records, File(root, "tmp"), File(root, "default"))
-        return Triple(downloader, records, folder)
+        buildDownloader = { DesktopSongDownloader(downloadApi, repository, settings, records, File(root, "tmp"), File(root, "default")) }
+        return Triple(buildDownloader(), records, folder)
     }
 
     private fun track(id: Long) = DownloadTrackInfo(id, "歌名$id", "歌手", "专辑", null, 2020)
@@ -175,6 +186,105 @@ class DesktopSongDownloaderTest {
         assertEquals("「我的/歌单」下载完成", message)
         assertTrue(File(folder, "我的_歌单/歌手 - 歌名5.mp3").isFile)
         assertTrue(File(folder, "我的_歌单/歌手 - 歌名6.mp3").isFile)
+    }
+
+    private fun awaitCondition(timeoutMs: Long = 10_000, condition: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return true
+            Thread.sleep(20)
+        }
+        return condition()
+    }
+
+    @Test
+    fun taskGoesQueuedToSucceededWithFullProgress() {
+        val (downloader, _, _) = downloader()
+        downloader.await { downloader.enqueueSingle(track(20), "standard") }
+
+        val task = downloader.tasks.value.single()
+        assertEquals(DownloadTaskStatus.SUCCEEDED, task.status)
+        assertEquals(100, task.progress)
+        assertEquals("歌名20", task.songName)
+    }
+
+    @Test
+    fun pauseKeepsPartialAndResumeCompletesWithRange() {
+        slow = true
+        val (downloader, _, folder) = downloader()
+        val id = downloader.enqueueSingle(track(21), "standard").toString()
+        assertTrue(awaitCondition { downloader.tasks.value.firstOrNull()?.let { it.status == DownloadTaskStatus.DOWNLOADING && it.progress > 5 } == true })
+
+        downloader.pause(id)
+        assertEquals(DownloadTaskStatus.PAUSED, downloader.tasks.value.single().status)
+        Thread.sleep(300)
+        val partial = File(root, "tmp").listFiles().orEmpty().single { it.name.endsWith(".part") }
+        assertTrue(partial.length() in 1 until audio.size.toLong())
+        assertEquals("暂停后不应继续排队或下载", DownloadTaskStatus.PAUSED, downloader.tasks.value.single().status)
+
+        slow = false
+        val message = downloader.await { downloader.resume(id) }
+        assertEquals("《歌名21》下载完成", message)
+        assertTrue(requests.any { it.contains("range=bytes=") && !it.endsWith("range=null") })
+        assertTrue(File(folder, "歌手 - 歌名21.mp3").isFile)
+        assertEquals(DownloadTaskStatus.SUCCEEDED, downloader.tasks.value.single().status)
+    }
+
+    @Test
+    fun cancelRemovesTaskAndPartial() {
+        slow = true
+        val (downloader, _, folder) = downloader()
+        val id = downloader.enqueueSingle(track(22), "standard").toString()
+        assertTrue(awaitCondition { (downloader.tasks.value.firstOrNull()?.progress ?: 0) > 5 })
+
+        downloader.cancel(id)
+        assertTrue(downloader.tasks.value.isEmpty())
+        assertTrue("断点文件应被清理", awaitCondition { File(root, "tmp").listFiles().orEmpty().none { it.name.endsWith(".part") } })
+        Thread.sleep(500)
+        assertFalse(File(folder, "歌手 - 歌名22.mp3").exists())
+    }
+
+    @Test
+    fun failedTaskKeepsReasonAndCanBeRetried() {
+        trial = true
+        val (downloader, _, _) = downloader()
+        val id = downloader.enqueueSingle(track(23), "standard").toString()
+        assertTrue(awaitCondition { downloader.tasks.value.firstOrNull()?.status == DownloadTaskStatus.FAILED })
+        assertTrue(downloader.tasks.value.single().failureReason!!.startsWith("该音质仅支持试听"))
+
+        trial = false
+        val message = downloader.await { downloader.resume(id) }
+        assertEquals("《歌名23》下载完成", message)
+        assertNull(downloader.tasks.value.single().failureReason)
+    }
+
+    @Test
+    fun unfinishedAndFailedTasksSurviveRestartAsPausedOrFailed() {
+        slow = true
+        val (first, records, _) = downloader()
+        first.enqueueSingle(track(24), "standard")
+        assertTrue(awaitCondition { (first.tasks.value.firstOrNull()?.progress ?: 0) > 5 })
+        assertTrue(awaitCondition { runBlocking { records.loadTasks() }.isNotEmpty() })
+
+        val second = buildDownloader()
+        assertTrue(awaitCondition { second.tasks.value.isNotEmpty() })
+        val restored = second.tasks.value.single()
+        assertEquals(24L, restored.songId)
+        assertEquals("重启后未完成的任务应为暂停", DownloadTaskStatus.PAUSED, restored.status)
+        first.pause(first.tasks.value.single().id)
+    }
+
+    @Test
+    fun clearFinishedAndClearFailedOnlyRemoveTheirOwn() {
+        val (downloader, _, _) = downloader()
+        downloader.await { downloader.enqueueSingle(track(25), "standard") }
+        trial = true
+        downloader.await { downloader.enqueueSingle(track(26), "standard") }
+
+        downloader.clearFinished()
+        assertEquals(listOf(26L), downloader.tasks.value.map { it.songId })
+        downloader.clearFailed()
+        assertTrue(downloader.tasks.value.isEmpty())
     }
 
     @Test

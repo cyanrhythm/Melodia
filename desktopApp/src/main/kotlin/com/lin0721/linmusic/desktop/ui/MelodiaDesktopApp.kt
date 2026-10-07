@@ -109,6 +109,8 @@ fun WindowScope.MelodiaDesktopApp(
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val settingsPreferences = remember { koin.get<SettingsPreferences>() }
     val songDownloader = remember { koin.get<SongDownloader>() }
+    val downloader = songDownloader as? DesktopSongDownloader
+    val downloadTasks = downloader?.tasks?.collectAsState()?.value.orEmpty()
     val downloadLevel by settingsPreferences.wifiQuality.collectAsState(initial = "standard")
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
     val mpvController = playbackController as? MpvPlaybackController
@@ -214,7 +216,7 @@ fun WindowScope.MelodiaDesktopApp(
 
     LaunchedEffect(Unit) {
         val playbackMessages = mpvController?.messages ?: emptyFlow()
-        val downloadMessages = (songDownloader as? DesktopSongDownloader)?.messages ?: emptyFlow()
+        val downloadMessages = downloader?.messages ?: emptyFlow()
         merge(
             homeViewModel.toastEvent,
             libraryViewModel.toastEvent,
@@ -269,6 +271,9 @@ fun WindowScope.MelodiaDesktopApp(
                     },
                     isBrowseActive = backStack.current == DesktopRoute.Browse,
                     onBrowseClick = { backStack.navigate(DesktopRoute.Browse) },
+                    downloadTasks = downloadTasks,
+                    downloadsOpen = dockOpen && dockOverlay == DockOverlay.Downloads,
+                    onDownloadsClick = downloader?.let { { toggleOverlay(DockOverlay.Downloads) } },
                     onLoginClick = { showLogin = true },
                     onSettingsClick = { backStack.navigate(DesktopRoute.Settings) },
                     onLogoutClick = homeViewModel::logout,
@@ -280,7 +285,8 @@ fun WindowScope.MelodiaDesktopApp(
                 ) }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
-                    val hasTrack = nowPlaying != null
+                    // 下载管理在无曲目时也要能打开，此时右侧栏只承载这个面板
+                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads
                     // 侧栏最宽不超过固定上限，且尽量给中间内容区留出 CenterMinWidth；
                     // 两侧互相让位时，音乐库按正在播放栏的记忆宽度算，正在播放栏按音乐库的实际占用算
                     val dockStaticOccupied = when {
@@ -432,10 +438,11 @@ fun WindowScope.MelodiaDesktopApp(
                             }
                             NowPlayingDock(
                                 state = dockState,
-                                hasTrack = nowPlaying != null,
+                                hasTrack = hasTrack,
                                 open = dockOpen,
                                 overlay = dockOverlay,
                                 audioOutput = mpvController,
+                                downloader = downloader,
                                 onCloseOverlay = { dockOverlay = null },
                                 onOpenComments = { toggleOverlay(DockOverlay.Comments) },
                                 onOpenLyricsView = lyricsView::open,

@@ -38,6 +38,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.desktop.platform.download.DesktopSongDownloader
 import com.lin0721.linmusic.desktop.player.AudioOutputControl
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
@@ -51,7 +52,8 @@ private const val OVERLAY_FADE_MS = 150
 enum class DockOverlay {
     Queue,
     Devices,
-    Comments
+    Comments,
+    Downloads
 }
 
 // 侧栏宽度状态：width 随动画变化；稳定宽度不含悬停预览，内容区据此排版
@@ -120,6 +122,7 @@ fun NowPlayingDock(
     open: Boolean,
     overlay: DockOverlay?,
     audioOutput: AudioOutputControl?,
+    downloader: DesktopSongDownloader?,
     onCloseOverlay: () -> Unit,
     onOpenComments: () -> Unit,
     onOpenLyricsView: () -> Unit,
@@ -199,6 +202,11 @@ fun NowPlayingDock(
                     if (audioOutput != null) {
                         OverlayLayer(visible = open && overlay == DockOverlay.Devices) { modifier ->
                             AudioDevicePanel(control = audioOutput, onClose = onCloseOverlay, modifier = modifier)
+                        }
+                    }
+                    if (downloader != null) {
+                        OverlayLayer(visible = open && overlay == DockOverlay.Downloads) { modifier ->
+                            DownloadsPanel(downloader = downloader, onClose = onCloseOverlay, modifier = modifier)
                         }
                     }
                 }

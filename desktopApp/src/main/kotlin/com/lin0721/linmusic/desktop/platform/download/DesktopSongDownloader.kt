@@ -23,12 +23,21 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
@@ -88,23 +97,30 @@ class DesktopSongDownloader(
         workIds.associateWith { queueOrder[it] ?: Long.MAX_VALUE }
     }
 
-    // 排队与进行中的歌曲，避免同一首歌重复入队
-    private val inFlight = ConcurrentHashMap<Long, UUID>()
+    private val lock = Any()
+    private val persistMutex = Mutex()
+
+    private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
+    val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
+
+    private val jobs = ConcurrentHashMap<String, Job>()
+    private val batches = ConcurrentHashMap<String, BatchProgress>()
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
     init {
         java.util.logging.Logger.getLogger("org.jaudiotagger").level = java.util.logging.Level.OFF
-        scope.launch { deleteStalePartials() }
+        scope.launch {
+            restoreTasks()
+            deleteStalePartials()
+        }
     }
 
     override fun enqueueSingle(track: DownloadTrackInfo, level: String): UUID {
-        val id = UUID.randomUUID()
-        val existing = inFlight.putIfAbsent(track.songId, id)
-        if (existing != null) return existing
-        launchTask(id, track, level, batch = null, batchLabel = null)
-        return id
+        val (task, isNew) = register(track, level, batchLabel = null)
+        if (isNew) start(task.id, batch = null) else if (task.status == DownloadTaskStatus.PAUSED) resume(task.id)
+        return UUID.fromString(task.id)
     }
 
     override suspend fun enqueueBatch(
@@ -117,15 +133,15 @@ class DesktopSongDownloader(
         val downloadedIds = downloadPreferences.findVerifiedRecords(distinctTracks.map { it.songId })
             .filter { it.satisfies(level) }
             .mapTo(HashSet()) { it.songId }
-        val queuedIds = distinctTracks.mapNotNullTo(HashSet()) { it.songId.takeIf(inFlight::containsKey) }
+        val liveIds = _tasks.value.filter { it.isLive }.mapTo(HashSet()) { it.songId }
+        val queuedIds = distinctTracks.mapNotNullTo(HashSet()) { it.songId.takeIf(liveIds::contains) }
         val pending = distinctTracks.filterNot { it.songId in downloadedIds || it.songId in queuedIds }
 
         val batch = BatchProgress(batchLabel, pending.size)
         pending.forEach { track ->
-            val id = UUID.randomUUID()
+            val (task, isNew) = register(track, level, batchLabel)
             // 并发入队时以先到者为准，落败的不计入本批
-            if (inFlight.putIfAbsent(track.songId, id) == null) launchTask(id, track, level, batch, batchLabel)
-            else batch.settled.incrementAndGet()
+            if (isNew) start(task.id, batch) else batch.settled.incrementAndGet()
         }
         return BatchEnqueueResult(
             enqueuedCount = pending.size,
@@ -134,22 +150,165 @@ class DesktopSongDownloader(
         )
     }
 
-    private fun launchTask(id: UUID, track: DownloadTrackInfo, level: String, batch: BatchProgress?, batchLabel: String?) {
-        queueOrder[id.toString()] = sequence.incrementAndGet()
+    // 暂停排队或下载中的任务，断点文件保留
+    fun pause(taskId: String) {
+        var paused = false
+        _tasks.update { list ->
+            list.map {
+                if (it.id == taskId && it.isActive) it.copy(status = DownloadTaskStatus.PAUSED).also { paused = true } else it
+            }
+        }
+        if (!paused) return
+        jobs.remove(taskId)?.cancel()
+        persistSoon()
+    }
+
+    // 继续已暂停的任务，或重试失败的任务；已下载的部分由断点续传接上
+    fun resume(taskId: String) {
+        var resumed = false
+        _tasks.update { list ->
+            list.map {
+                if (it.id == taskId && (it.status == DownloadTaskStatus.PAUSED || it.status == DownloadTaskStatus.FAILED)) {
+                    it.copy(status = DownloadTaskStatus.QUEUED, failureReason = null).also { resumed = true }
+                } else {
+                    it
+                }
+            }
+        }
+        if (!resumed) return
+        persistSoon()
+        start(taskId, batch = null)
+    }
+
+    // 取消任务并从列表移除；未完成的任务同时清掉断点文件
+    fun cancel(taskId: String) {
+        val task = _tasks.value.firstOrNull { it.id == taskId } ?: return
+        _tasks.update { list -> list.filterNot { it.id == taskId } }
+        queueOrder.remove(taskId)
+        batches.remove(taskId)
+        persistSoon()
+        if (task.status == DownloadTaskStatus.SUCCEEDED) return
+        val job = jobs.remove(taskId)
         scope.launch {
-            val outcome = try {
-                gate.withPermit(id.toString()) { runWithRetry(track, level, batchLabel) }
+            job?.cancelAndJoin()
+            deletePartials(task.songId)
+        }
+    }
+
+    fun clearFinished() = removeWhere { it.status == DownloadTaskStatus.SUCCEEDED }
+
+    fun clearFailed() {
+        val failed = _tasks.value.filter { it.status == DownloadTaskStatus.FAILED }
+        removeWhere { it.status == DownloadTaskStatus.FAILED }
+        scope.launch { failed.forEach { deletePartials(it.songId) } }
+    }
+
+    private fun removeWhere(predicate: (DownloadTask) -> Boolean) {
+        _tasks.update { list -> list.filterNot(predicate) }
+        persistSoon()
+    }
+
+    // 同一首歌已有排队、下载中或暂停的任务时不重复创建
+    private fun register(track: DownloadTrackInfo, level: String, batchLabel: String?): Pair<DownloadTask, Boolean> {
+        synchronized(lock) {
+            _tasks.value.firstOrNull { it.songId == track.songId && it.isLive }?.let { return it to false }
+            val task = DownloadTask(
+                id = UUID.randomUUID().toString(),
+                songId = track.songId,
+                songName = track.songName,
+                artistName = track.artistName,
+                albumName = track.albumName,
+                coverUrl = track.coverUrl,
+                albumYear = track.albumYear,
+                level = level,
+                batchLabel = batchLabel,
+                status = DownloadTaskStatus.QUEUED,
+                createdAt = System.currentTimeMillis()
+            )
+            _tasks.update { list -> list.filterNot { it.songId == track.songId } + task }
+            persistSoon()
+            return task to true
+        }
+    }
+
+    private fun start(taskId: String, batch: BatchProgress?) {
+        queueOrder[taskId] = sequence.incrementAndGet()
+        if (batch != null) batches[taskId] = batch
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val task = _tasks.value.firstOrNull { it.id == taskId } ?: return@launch
+            try {
+                val outcome = gate.withPermit(taskId) {
+                    markDownloading(taskId)
+                    runWithRetry(task.toTrackInfo(), task.level, task.batchLabel) { percent -> updateProgress(taskId, percent) }
+                }
+                settle(taskId, outcome)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLogger.e(TAG, "下载任务异常 songId=${track.songId}", e)
-                Outcome.Failed("下载异常")
+                AppLogger.e(TAG, "下载任务异常 songId=${task.songId}", e)
+                settle(taskId, Outcome.Failed("下载异常"))
             } finally {
-                inFlight.remove(track.songId)
-                queueOrder.remove(id.toString())
+                jobs.remove(taskId, currentCoroutineContext()[Job])
             }
-            report(outcome, track, batch)
         }
+        jobs[taskId] = job
+        job.start()
+    }
+
+    private fun markDownloading(taskId: String) = updateTask(taskId) {
+        if (it.status == DownloadTaskStatus.QUEUED) it.copy(status = DownloadTaskStatus.DOWNLOADING, progress = 0) else it
+    }
+
+    private fun updateProgress(taskId: String, percent: Int) = updateTask(taskId) {
+        if (it.status == DownloadTaskStatus.DOWNLOADING && it.progress != percent) it.copy(progress = percent) else it
+    }
+
+    private fun updateTask(taskId: String, transform: (DownloadTask) -> DownloadTask) {
+        _tasks.update { list -> list.map { if (it.id == taskId) transform(it) else it } }
+    }
+
+    // 任务已被暂停或取消时忽略迟到的结果
+    private fun settle(taskId: String, outcome: Outcome) {
+        val task = _tasks.value.firstOrNull { it.id == taskId } ?: return
+        if (task.status != DownloadTaskStatus.DOWNLOADING && task.status != DownloadTaskStatus.QUEUED) return
+        val now = System.currentTimeMillis()
+        updateTask(taskId) {
+            when (outcome) {
+                Outcome.Success -> it.copy(status = DownloadTaskStatus.SUCCEEDED, progress = 100, finishedAt = now)
+                Outcome.Skipped -> it.copy(status = DownloadTaskStatus.SUCCEEDED, progress = 100, skipped = true, finishedAt = now)
+                is Outcome.Failed -> it.copy(status = DownloadTaskStatus.FAILED, failureReason = outcome.reason, finishedAt = now)
+            }
+        }
+        queueOrder.remove(taskId)
+        persistSoon()
+        report(outcome, task.toTrackInfo(), batches.remove(taskId))
+    }
+
+    // 保存除已完成外的任务；串行写入，后到的写入读到的一定是最新状态
+    private fun persistSoon() {
+        scope.launch {
+            persistMutex.withLock {
+                downloadPreferences.saveTasks(_tasks.value.filter { it.status != DownloadTaskStatus.SUCCEEDED })
+            }
+        }
+    }
+
+    // 上次退出时未完成的任务恢复为暂停，由用户决定是否继续
+    private suspend fun restoreTasks() {
+        val saved = downloadPreferences.loadTasks().map {
+            if (it.isActive) it.copy(status = DownloadTaskStatus.PAUSED, progress = 0) else it
+        }
+        synchronized(lock) {
+            _tasks.update { current ->
+                val liveSongIds = current.mapTo(HashSet()) { it.songId }
+                current + saved.filter { it.songId !in liveSongIds }
+            }
+        }
+    }
+
+    private fun deletePartials(songId: Long) {
+        tempDir.listFiles { file -> file.name.startsWith("dl_${songId}_") && file.name.endsWith(".part") }
+            ?.forEach { it.delete() }
     }
 
     private fun report(outcome: Outcome, track: DownloadTrackInfo, batch: BatchProgress?) {
@@ -169,12 +328,17 @@ class DesktopSongDownloader(
         }
     }
 
-    private suspend fun runWithRetry(track: DownloadTrackInfo, level: String, batchLabel: String?): Outcome {
+    private suspend fun runWithRetry(
+        track: DownloadTrackInfo,
+        level: String,
+        batchLabel: String?,
+        onProgress: (Int) -> Unit
+    ): Outcome {
         var attempt = 0
         while (true) {
             attempt++
             try {
-                return download(track, level, batchLabel)
+                return download(track, level, batchLabel, onProgress)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NonRetryableException) {
@@ -189,7 +353,7 @@ class DesktopSongDownloader(
         }
     }
 
-    private suspend fun download(track: DownloadTrackInfo, level: String, batchLabel: String?): Outcome {
+    private suspend fun download(track: DownloadTrackInfo, level: String, batchLabel: String?, onProgress: (Int) -> Unit): Outcome {
         val songId = track.songId
         val existing = downloadPreferences.findVerifiedRecord(songId)
         if (existing != null && existing.satisfies(level)) return Outcome.Skipped
@@ -211,7 +375,7 @@ class DesktopSongDownloader(
         val partial = File(tempDir, "dl_${songId}_${level}_${item.size}.part")
         val staged = File(tempDir, "dl_${songId}_${System.currentTimeMillis()}.$extension")
         try {
-            downloadToFile(partial, url, item.size)
+            downloadToFile(partial, url, item.size, onProgress)
             moveFile(partial, staged)
             runCatching { writeTags(staged, track) }
                 .onFailure { AppLogger.w(TAG, "写入标签失败，跳过 songId=$songId", it) }
@@ -264,7 +428,7 @@ class DesktopSongDownloader(
     }
 
     // 已有部分数据且服务端支持 Range 时从断点续传，写满预期大小才算完成
-    private suspend fun downloadToFile(file: File, url: String, expectedSize: Long) = withContext(Dispatchers.IO) {
+    private suspend fun downloadToFile(file: File, url: String, expectedSize: Long, onProgress: (Int) -> Unit) = withContext(Dispatchers.IO) {
         val existing = if (file.exists()) file.length() else 0L
         if (expectedSize > 0 && existing == expectedSize) return@withContext
         val resumeFrom = if (expectedSize > 0 && existing in 1 until expectedSize) existing else 0L
@@ -281,6 +445,7 @@ class DesktopSongDownloader(
             val bodyLength = body.contentLength()
             val total = if (bodyLength > 0) start + bodyLength else expectedSize
             var written = start
+            var lastPercent = -1
             FileOutputStream(file, append).use { out ->
                 body.byteStream().use { input ->
                     val buffer = ByteArray(BUFFER_SIZE)
@@ -290,6 +455,13 @@ class DesktopSongDownloader(
                         if (read == -1) break
                         out.write(buffer, 0, read)
                         written += read
+                        if (total > 0) {
+                            val percent = (written * 100 / total).toInt().coerceIn(0, 100)
+                            if (percent != lastPercent) {
+                                lastPercent = percent
+                                onProgress(percent)
+                            }
+                        }
                     }
                 }
             }

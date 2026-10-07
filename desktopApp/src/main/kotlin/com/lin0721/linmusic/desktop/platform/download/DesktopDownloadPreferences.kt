@@ -24,6 +24,7 @@ class DesktopDownloadPreferences(private val dataStore: DataStore<Preferences>) 
         const val STORE_NAME = "download_prefs"
 
         private val KEY_RECORDS = stringPreferencesKey("download_records")
+        private val KEY_TASKS = stringPreferencesKey("download_tasks")
         private val json = Json { ignoreUnknownKeys = true }
     }
 
@@ -51,6 +52,19 @@ class DesktopDownloadPreferences(private val dataStore: DataStore<Preferences>) 
             val updated = decodeRecords(prefs[KEY_RECORDS]).filterNot { it.songId == record.songId } + record
             prefs[KEY_RECORDS] = json.encodeToString(updated)
         }
+    }
+
+    // 面板里未完成与失败的任务，重启后恢复
+    suspend fun loadTasks(): List<DownloadTask> {
+        val raw = dataStore.data.first()[KEY_TASKS]
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<DownloadTask>>(raw) }
+            .onFailure { AppLogger.w(TAG, "下载任务反序列化失败", it) }
+            .getOrDefault(emptyList())
+    }
+
+    suspend fun saveTasks(tasks: List<DownloadTask>) {
+        dataStore.edit { prefs -> prefs[KEY_TASKS] = json.encodeToString(tasks) }
     }
 
     private suspend fun removeRecords(songIds: Set<Long>) {
