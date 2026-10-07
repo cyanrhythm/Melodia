@@ -71,7 +71,7 @@ private const val EXIT_ANIMATION_MS = 250L
 fun main() {
     DesktopLogging.install()
     DesktopImageLoader.install()
-    // 已有实例时只通知它显示窗口，本进程不再启动，避免两个进程争用数据文件与播放设备
+    // 已有实例则唤起它并退出
     val activationRequests = Channel<Unit>(Channel.CONFLATED)
     if (!SingleInstance(DesktopPaths.dataDir).acquire { activationRequests.trySend(Unit) }) {
         exitProcess(0)
@@ -131,7 +131,6 @@ fun main() {
             if (closeAction == CloseAction.EXIT || !isTraySupported) exit() else isMainVisible = false
         }
 
-        // 其他实例要求激活：从托盘恢复并置前
         LaunchedEffect(Unit) {
             for (request in activationRequests) showMainWindow()
         }

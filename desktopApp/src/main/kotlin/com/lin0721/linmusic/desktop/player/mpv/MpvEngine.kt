@@ -14,7 +14,7 @@ private const val OBSERVE_DURATION = 2L
 private const val OBSERVE_PAUSE = 3L
 
 // 纯音频播放内核：只负责“播这个地址/暂停/跳转/音量”，队列与取地址由上层决定
-// extraOptions 在初始化前写入，供测试指定无声输出等
+// 仅测试用：初始化前写入的额外选项
 class MpvEngine(private val listener: Listener, extraOptions: Map<String, String> = emptyMap()) {
 
     interface Listener {
@@ -50,8 +50,8 @@ class MpvEngine(private val listener: Listener, extraOptions: Map<String, String
         }
     }
 
-    // paused 为真时载入后停在开头待命，用于淡入淡出的预载；
-    // recordPath 非空时把读到的流录成该文件（容器由扩展名决定），空串表示关闭录制
+    // paused 为真时载入后停在开头，用于预载
+    // recordPath 非空时把读到的流录成该文件（容器由扩展名决定），空串关闭录制
     fun load(url: String, startMs: Long, paused: Boolean = false, recordPath: String? = null) {
         setProperty("stream-record", recordPath.orEmpty())
         // start 为全局选项，对下一个载入的文件生效
@@ -66,10 +66,10 @@ class MpvEngine(private val listener: Listener, extraOptions: Map<String, String
 
     fun setVolume(percent: Int) = setVolume(percent.toDouble())
 
-    // 淡入淡出按小数步进，整数档位在低音量下会有台阶感
+    // 淡入淡出需要小数步进，整数档位在低音量下有台阶感
     fun setVolume(percent: Double) = setProperty("volume", "%.3f".format(java.util.Locale.ROOT, percent.coerceIn(0.0, 100.0)))
 
-    // 供测试核对淡化期间的实际音量
+    // 仅测试用
     internal fun volume(): Double? = getProperty("volume")?.toDoubleOrNull()
 
     // node 类型属性按字符串读取得到 JSON；读不到返回 null

@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 // 下载按钮自绘图标，规格同 PlayerBarIcons：24 格、2px 圆角描边
 object DownloadIcons {
-    // 下载：箭头落进开口托盘
     val Download: ImageVector by lazy {
         lineIcon(
             "Download",
@@ -14,7 +13,6 @@ object DownloadIcons {
         )
     }
 
-    // 全部完成
     val Check: ImageVector by lazy {
         lineIcon("Check", "M5.5 12.5l4.5 4.5L18.5 7.5")
     }

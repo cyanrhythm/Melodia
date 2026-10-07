@@ -113,7 +113,6 @@ val desktopPlatformModule = module {
     }
     single { DesktopDownloadPreferences(store(DesktopDownloadPreferences.STORE_NAME)) }
     single { AudioCache(DesktopPaths.audioCacheDir) }
-    // 离线时只有已下载或已缓存的歌曲可播放
     single<CachedAudioIndex> {
         val downloadPreferences = get<DesktopDownloadPreferences>()
         val audioCache = get<AudioCache>()

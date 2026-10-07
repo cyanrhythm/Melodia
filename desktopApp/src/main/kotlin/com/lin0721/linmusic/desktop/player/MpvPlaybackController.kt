@@ -56,14 +56,13 @@ private const val PERIODIC_STATE_SAVE_INTERVAL_MS = 5_000L
 // 退出时同步落盘的最长等待
 private const val EXIT_SAVE_TIMEOUT_MS = 1_500L
 
-// 备用引擎预载下一首的最长等待
 private const val CROSSFADE_PREPARE_TIMEOUT_MS = 8_000L
 private const val CROSSFADE_PREPARE_POLL_MS = 100L
 
-// 已就绪的交叉淡化计划：到点时若下一首仍是它才执行
+// 到点时下一首仍是它才执行
 private class CrossfadePlan(val index: Int, val songId: Long, val fadeMs: Long)
 
-// 实际载入的地址：本地文件或缓存命中时 record 为空，联网播放且开启缓存时带录制请求
+// record 为空表示本地文件或缓存命中，非空表示联网播放时录制缓存
 private class Playback(val url: String, val record: RecordRequest?)
 
 class MpvPlaybackController(
@@ -71,10 +70,9 @@ class MpvPlaybackController(
     private val settingsPreferences: SettingsPreferences,
     private val preferences: PlaybackPreferences,
     private val desktopPreferences: DesktopPreferences,
-    // 已下载歌曲的本地文件路径，没有则返回 null
     private val localAudioOf: suspend (songId: Long) -> String?,
     private val scope: CoroutineScope,
-    // 测试用，指定无声输出等 mpv 选项
+    // 仅测试用
     engineOptions: Map<String, String> = emptyMap(),
     private val audioCache: AudioCache? = null
 ) : PlaybackController, AudioOutputControl, MpvEngine.Listener {
@@ -152,7 +150,7 @@ class MpvPlaybackController(
     private var crossfadePrepareJob: Job? = null
     @Volatile private var crossfadeTriggerMs = Long.MAX_VALUE
 
-    // 每首歌只尝试预载一次，失败后不在每个 tick 重复取地址
+    // 每首歌只尝试预载一次，避免失败后每个 tick 重复取地址
     private var crossfadeAttemptedSongId: Long? = null
 
     // 必须最后创建：mpv 事件线程一启动就可能回调，此前所有状态字段须已初始化
@@ -544,8 +542,8 @@ class MpvPlaybackController(
         }
     }
 
-    // 优先级：已下载文件、缓存命中、联网地址；联网失败时退回任意音质的缓存。
-    // 缓存命中不受开关影响，开关只决定是否继续录制新的缓存
+    // 已下载 > 缓存命中 > 联网；联网失败退回任意音质缓存
+    // 缓存命中不受开关影响，开关只管是否录制
     private suspend fun resolvePlayback(songId: Long): Result<Playback> {
         localAudioOf(songId)?.let { return Result.success(Playback(it, null)) }
         val level = settingsPreferences.wifiQuality.first()
@@ -563,7 +561,7 @@ class MpvPlaybackController(
         )
     }
 
-    // mpv 事件线程回调，改名可能要等 mpv 释放文件，放到 IO 线程重试
+    // 来自 mpv 事件线程；改名要等 mpv 释放文件，放 IO 线程重试
     private fun commitRecording(songId: Long, path: String) {
         val cache = audioCache ?: return
         scope.launch(Dispatchers.IO) {
@@ -573,7 +571,6 @@ class MpvPlaybackController(
         }
     }
 
-    // 距结尾进入预载窗口后，把下一首载入备用引擎待命
     private fun maybePrepareCrossfade(songId: Long) {
         if (!crossfadeEnabled || !_playWhenReady.value || crossfadePlan != null) return
         if (crossfadePrepareJob?.isActive == true || engine.isFading || crossfadeAttemptedSongId == songId) return
@@ -605,7 +602,7 @@ class MpvPlaybackController(
         }
     }
 
-    // 到达触发位置：下一首仍是计划中的那首才交接，否则走自然播完的常规切歌
+    // 到点时下一首仍是计划中的才交接，否则走常规切歌
     private fun startCrossfade() {
         val plan = crossfadePlan ?: return
         crossfadePlan = null

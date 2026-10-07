@@ -13,11 +13,11 @@ data class DownloadRecord(
     val fileSize: Long,
     val songName: String = "",
     val artistName: String = "",
-    // 发起下载时请求的音质；服务端按歌曲上限降级下发时，据此判断无需再次下载
+    // 发起下载时请求的音质，服务端降级下发时据此判断无需重下
     val requestedLevel: String = ""
 )
 
-// 已下载文件是否满足目标音质：实际下发或当初请求的档位不低于目标即视为满足
+// 实际下发或当初请求的档位不低于目标即满足
 fun DownloadRecord.satisfies(level: String): Boolean {
     val target = qualityRank(level)
     if (target < 0) return quality == level || requestedLevel == level

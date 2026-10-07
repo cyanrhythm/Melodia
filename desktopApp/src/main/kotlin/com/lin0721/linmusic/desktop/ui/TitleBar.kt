@@ -86,7 +86,6 @@ import kotlinx.coroutines.delay
 
 private val CloseHover = Color(0xFFE81123)
 
-// 下载完成后对勾停留的时长，以及进度染色与图标切换的动画时长
 private const val CHECK_SHOW_MS = 1_500L
 private const val FILL_ANIMATION_MS = 200
 
@@ -171,8 +170,8 @@ fun WindowScope.TitleBar(
     }
 }
 
-// 头像左侧的下载管理入口，样式与底栏图标按钮一致（灰色，悬停变亮并放大）。
-// 下载中图标按整轮进度自下而上染成强调色，一轮全部成功后短暂变为对勾；有暂停或失败的任务时右上角亮红点
+// 头像左侧的下载入口，样式同底栏图标按钮
+// 图标按整轮进度染色，全部成功短暂变对勾；有暂停或失败的任务时亮红点
 @Composable
 private fun DownloadsButton(tasks: List<DownloadTask>, open: Boolean, onClick: () -> Unit) {
     val tracker = remember { DownloadRoundTracker() }

@@ -98,7 +98,6 @@ val prepareNativeResources by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("appResources/windows"))
 }
 
-// 运行时读取的版本信息，与打包版本同源
 val generateAppInfo by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/appinfo")
     val version = desktopVersion
@@ -162,7 +161,7 @@ afterEvaluate {
             task.name.startsWith("createDistributable") || task.name.startsWith("createReleaseDistributable") ||
             (task.name.startsWith("package") && task.name != "packageReleaseZip")
     }.configureEach { dependsOn(prepareNativeResources) }
-    // 开发运行视为调试环境，默认日志级别更详细
+    // gradle run 视为调试环境
     tasks.named<JavaExec>("run") { jvmArgs("-Dmelodia.debug=true") }
 }
 

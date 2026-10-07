@@ -22,8 +22,8 @@ private const val BACKLOG = 5
 private const val CONNECT_TIMEOUT_MS = 500
 private const val READ_TIMEOUT_MS = 1_000
 
-// 单实例守卫：首个实例持有文件锁并在本机回环监听临时端口，后来的实例连上去要求激活窗口后自行退出。
-// 锁随进程结束由系统释放，崩溃后不会残留；端口号单独存文件，因为 Windows 上被锁区域其他进程无法读取
+// 首个实例持有文件锁并监听本机临时端口，后来的实例连上去要求激活后退出
+// 端口号单独存文件：Windows 上被锁区域其他进程读不了
 class SingleInstance(
     private val dir: File,
     private val retries: Int = 20,
@@ -34,8 +34,8 @@ class SingleInstance(
     private var lock: FileLock? = null
     private var server: ServerSocket? = null
 
-    // 返回 true 表示本进程是首个实例，onActivate 在其他实例要求激活时回调（非主线程）；
-    // 返回 false 表示已有实例在运行且已通知它，调用方应直接退出
+    // true 为首个实例，onActivate 在其他实例要求激活时回调（非主线程）
+    // false 表示已通知已有实例，调用方应直接退出
     fun acquire(onActivate: () -> Unit): Boolean {
         if (tryBecomePrimary(onActivate)) return true
         notifyPrimary()
@@ -63,13 +63,13 @@ class SingleInstance(
             thread(isDaemon = true, name = "single-instance") { serve(listener, onActivate) }
             true
         } catch (e: IOException) {
-            // 无法建立守卫时放行启动，不能因此让用户打不开应用
+            // 守卫失败时放行启动
             AppLogger.w(TAG, "单实例守卫初始化失败，按首个实例继续", e)
             true
         }
     }
 
-    // 首个实例可能刚拿到锁还没写好端口，重试几次
+    // 首个实例可能还没写好端口，重试
     private fun notifyPrimary() {
         repeat(retries) {
             val port = runCatching { File(dir, PORT_NAME).readText().trim().toInt() }.getOrNull()

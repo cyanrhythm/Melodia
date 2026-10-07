@@ -59,23 +59,21 @@ private const val BUFFER_SIZE = 64 * 1024
 private val LOSSLESS_AND_ABOVE = setOf("lossless", "hires", "jyeffect", "sky", "jymaster")
 private val COMPRESSED_ENCODE_TYPES = setOf("mp3", "aac", "m4a")
 
-// 单个任务的终态
 private sealed interface Outcome {
     data object Success : Outcome
     data object Skipped : Outcome
     data class Failed(val reason: String) : Outcome
 }
 
-// 失败原因明确、重试也不会改变结果
+// 重试不会改变结果
 private class NonRetryableException(message: String) : Exception(message)
 
-// 批量任务的收尾统计，全部结束时汇总提示一次
+// 批量收尾统计，全部结束时汇总提示一次
 private class BatchProgress(val label: String, val total: Int) {
     val settled = AtomicInteger(0)
     val failed = AtomicInteger(0)
 }
 
-// 桌面端歌曲下载：协程队列 + OkHttp 断点续传，写入标签后落到用户目录
 class DesktopSongDownloader(
     private val downloadApi: DownloadApi,
     private val playbackRepository: PlaybackRepository,
@@ -140,7 +138,7 @@ class DesktopSongDownloader(
         val batch = BatchProgress(batchLabel, pending.size)
         pending.forEach { track ->
             val (task, isNew) = register(track, level, batchLabel)
-            // 并发入队时以先到者为准，落败的不计入本批
+            // 并发入队以先到者为准
             if (isNew) start(task.id, batch) else batch.settled.incrementAndGet()
         }
         return BatchEnqueueResult(
@@ -150,7 +148,6 @@ class DesktopSongDownloader(
         )
     }
 
-    // 暂停排队或下载中的任务，断点文件保留
     fun pause(taskId: String) {
         var paused = false
         _tasks.update { list ->
@@ -163,7 +160,7 @@ class DesktopSongDownloader(
         persistSoon()
     }
 
-    // 继续已暂停的任务，或重试失败的任务；已下载的部分由断点续传接上
+    // 继续暂停的任务或重试失败的任务
     fun resume(taskId: String) {
         var resumed = false
         _tasks.update { list ->
@@ -180,7 +177,7 @@ class DesktopSongDownloader(
         start(taskId, batch = null)
     }
 
-    // 取消任务并从列表移除；未完成的任务同时清掉断点文件
+    // 取消并移除任务，未完成的同时清掉断点文件
     fun cancel(taskId: String) {
         val task = _tasks.value.firstOrNull { it.id == taskId } ?: return
         _tasks.update { list -> list.filterNot { it.id == taskId } }
@@ -208,7 +205,7 @@ class DesktopSongDownloader(
         persistSoon()
     }
 
-    // 同一首歌已有排队、下载中或暂停的任务时不重复创建
+    // 同一首歌已有未结束任务时不重复创建
     private fun register(track: DownloadTrackInfo, level: String, batchLabel: String?): Pair<DownloadTask, Boolean> {
         synchronized(lock) {
             _tasks.value.firstOrNull { it.songId == track.songId && it.isLive }?.let { return it to false }
@@ -284,7 +281,7 @@ class DesktopSongDownloader(
         report(outcome, task.toTrackInfo(), batches.remove(taskId))
     }
 
-    // 保存除已完成外的任务；串行写入，后到的写入读到的一定是最新状态
+    // 串行保存，保证最后写入的是最新状态
     private fun persistSoon() {
         scope.launch {
             persistMutex.withLock {
@@ -293,7 +290,7 @@ class DesktopSongDownloader(
         }
     }
 
-    // 上次退出时未完成的任务恢复为暂停，由用户决定是否继续
+    // 未完成的任务恢复为暂停
     private suspend fun restoreTasks() {
         val saved = downloadPreferences.loadTasks().map {
             if (it.isActive) it.copy(status = DownloadTaskStatus.PAUSED, progress = 0) else it
@@ -396,7 +393,6 @@ class DesktopSongDownloader(
                     requestedLevel = level
                 )
             )
-            // 升级音质后旧文件已被新记录取代
             existing?.mediaStoreUri?.takeIf { it != target.absolutePath }?.let { File(it).delete() }
             return Outcome.Success
         } finally {
@@ -427,7 +423,7 @@ class DesktopSongDownloader(
         return File(directory, unique)
     }
 
-    // 已有部分数据且服务端支持 Range 时从断点续传，写满预期大小才算完成
+    // 有断点且服务端支持 Range 时续传，写满预期大小才算完成
     private suspend fun downloadToFile(file: File, url: String, expectedSize: Long, onProgress: (Int) -> Unit) = withContext(Dispatchers.IO) {
         val existing = if (file.exists()) file.length() else 0L
         if (expectedSize > 0 && existing == expectedSize) return@withContext

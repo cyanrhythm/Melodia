@@ -57,7 +57,6 @@ private enum class DownloadFilter(val label: String) {
     }
 }
 
-// 下载中、排队、暂停、失败、完成依次排列，同组内先入队的在前
 private fun List<DownloadTask>.ordered(): List<DownloadTask> = sortedWith(
     compareBy<DownloadTask> {
         when (it.status) {
@@ -70,7 +69,6 @@ private fun List<DownloadTask>.ordered(): List<DownloadTask> = sortedWith(
     }.thenBy { it.createdAt }
 )
 
-// 右侧栏的下载管理：任务按状态分组展示，行内可暂停、继续、重试或移除
 @Composable
 fun DownloadsPanel(
     downloader: DesktopSongDownloader,

@@ -16,8 +16,8 @@ private const val TEMP_MARK = ".rec."
 private const val COMMIT_ATTEMPTS = 16
 private const val COMMIT_RETRY_MS = 250L
 
-// 边播边存的音频缓存：mpv 把整首播完的流录成 mka，文件名为 歌曲id_音质.mka。
-// 录制中的临时文件为 歌曲id_音质.rec.序号.mka，播完且 mpv 释放文件后才改名生效
+// mpv 把整首播完的流录成 mka，文件名 歌曲id_音质.mka
+// 录制中为 歌曲id_音质.rec.序号.mka，播完且 mpv 释放文件后才改名生效
 class AudioCache(private val dir: File) {
 
     private val tempCounter = AtomicLong(System.currentTimeMillis())
@@ -27,15 +27,15 @@ class AudioCache(private val dir: File) {
         deleteTemps()
     }
 
-    // 命中时刷新修改时间，淘汰按最近使用排序
+    // 命中时刷新修改时间，淘汰按它排序
     fun completeFile(songId: Long, level: String): File? =
         File(dir, "${songId}_$level.$EXTENSION").takeIf { it.isFile && it.length() > 0 }?.also { it.setLastModified(System.currentTimeMillis()) }
 
-    // 任意音质的完整缓存，取最近使用的；联网取地址失败时兜底
+    // 任意音质的完整缓存，联网取地址失败时兜底
     fun anyCompleteFile(songId: Long): File? =
         completeFiles().filter { it.name.startsWith("${songId}_") }.maxByOrNull { it.lastModified() }
 
-    // 每次录制用独立文件名，上一次未释放的残留不会和新录制冲突
+    // 每次录制独立文件名，避免和上次未释放的残留冲突
     fun tempFile(songId: Long, level: String): File =
         File(dir, "${songId}_$level$TEMP_MARK${tempCounter.incrementAndGet()}.$EXTENSION")
 
@@ -66,7 +66,7 @@ class AudioCache(private val dir: File) {
         false
     }
 
-    // 超出上限时从最久未使用的开始删除，正在播放而无法删除的跳过
+    // 按最近使用从旧到新淘汰，删不掉的（正在播放）跳过
     fun evict(maxBytes: Long) {
         var total = totalSize()
         for (file in completeFiles().sortedBy { it.lastModified() }) {
@@ -83,7 +83,6 @@ class AudioCache(private val dir: File) {
     private fun completeFiles(): List<File> =
         dir.listFiles { file -> file.isFile && file.name.endsWith(".$EXTENSION") && !file.name.contains(TEMP_MARK) }.orEmpty().toList()
 
-    // 上次异常退出遗留的录制中文件
     private fun deleteTemps() {
         dir.listFiles { file -> file.isFile && file.name.contains(TEMP_MARK) }?.forEach { it.delete() }
     }

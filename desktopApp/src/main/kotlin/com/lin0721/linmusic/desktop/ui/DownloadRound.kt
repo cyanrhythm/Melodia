@@ -10,8 +10,8 @@ data class DownloadRoundSummary(
     val allSucceeded: Boolean = false
 )
 
-// 把同一时段内开始的任务算作一轮，用整轮的平均进度驱动标题栏的进度环。
-// 已完成或失败的任务按 100% 计入，避免个别任务结束时整体进度回退
+// 同一时段内开始的任务算一轮，用整轮平均进度驱动进度环
+// 已完成或失败的按 100% 计入，避免整体进度回退
 class DownloadRoundTracker {
     private val roundIds = LinkedHashSet<String>()
 

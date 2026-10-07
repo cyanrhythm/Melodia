@@ -285,7 +285,7 @@ fun WindowScope.MelodiaDesktopApp(
                 ) }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
-                    // 下载管理在无曲目时也要能打开，此时右侧栏只承载这个面板
+                    // 无曲目时下载面板也要能打开，右侧栏只承载它
                     val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads
                     // 侧栏最宽不超过固定上限，且尽量给中间内容区留出 CenterMinWidth；
                     // 两侧互相让位时，音乐库按正在播放栏的记忆宽度算，正在播放栏按音乐库的实际占用算

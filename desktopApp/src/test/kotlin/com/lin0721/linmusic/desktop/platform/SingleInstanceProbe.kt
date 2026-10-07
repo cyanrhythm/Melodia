@@ -3,7 +3,7 @@ package com.lin0721.linmusic.desktop.platform
 import java.io.File
 import kotlin.system.exitProcess
 
-// 供 SingleInstanceTest 以独立进程启动：打印自己是首个还是后来的实例，首个实例按参数持有一段时间再退出
+// 由 SingleInstanceTest 以独立进程启动，打印自己是首个还是后来者
 object SingleInstanceProbe {
     @JvmStatic
     fun main(args: Array<String>) {

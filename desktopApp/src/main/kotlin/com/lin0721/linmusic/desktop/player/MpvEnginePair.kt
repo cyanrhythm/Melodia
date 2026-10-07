@@ -14,19 +14,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val TAG = "MpvEnginePair"
 private const val RAMP_STEP_MS = 20L
 
-// 渐出引擎淡化结束后等它自然读完的最长时间，读完录制的缓存才完整
+// 等渐出引擎读完的最长时间，录制读完才完整
 private const val OUTGOING_DRAIN_TIMEOUT_MS = 2_500L
 private const val OUTGOING_DRAIN_POLL_MS = 50L
 
 private const val DELETE_ATTEMPTS = 30
 private const val DELETE_RETRY_MS = 100L
 
-// 边播边录请求：tag 为歌曲 id，path 为录制用的临时文件
+// tag 为歌曲 id
 internal class RecordRequest(val tag: Long, val path: String)
 
-// 主引擎与备用引擎：备用引擎预载下一首，交叉淡化时角色互换。
-// 对外提供与单个 MpvEngine 相同的操作，事件只转发主引擎的。
-// onRecordingFinished 在某首歌无拖动地自然播完后回调，此时临时文件可能仍被 mpv 占用
+// 备用引擎预载下一首，交叉淡化时与主引擎换角色，事件只转发主引擎的
+// onRecordingFinished 在无拖动自然播完后回调，临时文件此时可能仍被 mpv 占用
 internal class MpvEnginePair(
     private val listener: MpvEngine.Listener,
     private val scope: CoroutineScope,
@@ -34,7 +33,6 @@ internal class MpvEnginePair(
     private val onRecordingFinished: (tag: Long, path: String) -> Unit = { _, _ -> }
 ) {
 
-    // 每台引擎一个事件适配器，记录自身进度，仅主引擎的事件转发给上层
     private inner class Slot : MpvEngine.Listener {
         lateinit var engine: MpvEngine
 
@@ -43,7 +41,7 @@ internal class MpvEnginePair(
         @Volatile var loaded = false
         @Volatile var ended = false
 
-        // 拖动过进度的录制不完整，不能作为缓存
+        // 拖动过的录制不完整
         @Volatile var record: RecordRequest? = null
         @Volatile var seeked = false
 
@@ -98,7 +96,7 @@ internal class MpvEnginePair(
         }
     }
 
-    // 初始化期间事件线程可能先于赋值回调，此时视为非主引擎直接丢弃
+    // 初始化期间事件线程可能先于赋值回调，视为非主引擎丢弃
     @Volatile private var active: Slot? = null
     private var spare: Slot? = null
     private var spareArmed = false
@@ -113,13 +111,11 @@ internal class MpvEnginePair(
         active = newSlot()
     }
 
-    // 淡化进行中，备用引擎正在渐出
     val isFading: Boolean get() = rampJob != null
 
-    // 供测试核对主引擎与备用引擎的实际音量
+    // 仅测试用
     internal fun volumes(): Pair<Double?, Double?> = activeSlot.engine.volume() to spare?.engine?.volume()
 
-    // 备用引擎已载入下一首并可立即接管
     val spareReady: Boolean get() = spareArmed && spare?.let { it.loaded && it.duration > 0L } == true
 
     private fun newSlot(): Slot {
@@ -128,7 +124,7 @@ internal class MpvEnginePair(
         return slot
     }
 
-    // 从中途起播的录制必然不完整，调用方不应传入 record
+    // 从中途起播的录制必然不完整，不应传 record
     fun load(url: String, startMs: Long, record: RecordRequest? = null) {
         reset()
         val slot = activeSlot
@@ -172,7 +168,7 @@ internal class MpvEnginePair(
         return ok
     }
 
-    // 预载下一首到备用引擎：静音并停在开头，失败返回 false
+    // 静音预载并停在开头，失败返回 false
     fun prepareSpare(url: String, record: RecordRequest? = null): Boolean {
         if (spareUnavailable || rampJob != null) return false
         val slot = spare ?: try {
@@ -216,7 +212,7 @@ internal class MpvEnginePair(
         spare?.engine?.stop()
     }
 
-    // 备用引擎升为主引擎并开始交叉淡化，返回新主引擎的当前进度与时长；未就绪返回 null
+    // 备用引擎升为主引擎并开始交叉，返回新主引擎的进度与时长；未就绪返回 null
     fun promote(fadeMs: Long): Pair<Long, Long>? {
         val incoming = spare?.takeIf { spareArmed && it.loaded } ?: return null
         val outgoing = activeSlot
@@ -228,7 +224,7 @@ internal class MpvEnginePair(
         return incoming.position to incoming.duration
     }
 
-    // 等功率交叉；渐出引擎在录制缓存时多等它自然读完，再停止并回到备用位
+    // 等功率交叉；录制缓存时渐出引擎多等它读完再停止
     private suspend fun ramp(outgoing: Slot, incoming: Slot, fadeMs: Long) {
         val startedAt = System.nanoTime()
         while (true) {
@@ -250,7 +246,6 @@ internal class MpvEnginePair(
         rampJob = null
     }
 
-    // 取消淡化与预载，主引擎音量恢复为用户音量
     private fun reset() {
         rampJob?.cancel()
         rampJob = null

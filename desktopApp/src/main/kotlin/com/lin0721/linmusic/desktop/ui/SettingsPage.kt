@@ -91,7 +91,6 @@ import java.io.File
 import javax.swing.JFileChooser
 
 // 与 Android 音质设置保持同一组选项
-// 与 CrossfadePolicy 的 0.5 秒步进对齐的常用档位
 private val CacheSizeOptions = listOf(500L, 1024L, 2048L, 5120L, 10240L).map { it * 1024 * 1024 }
 
 private val CrossfadeDurationOptionsMs = listOf(1_000, 2_000, 3_000, 4_000, 6_000, 8_000, 10_000, 12_000)
@@ -395,7 +394,6 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     }
 }
 
-// 系统目录选择框；取消返回 null
 private fun chooseDirectory(initial: File): File? {
     val chooser = JFileChooser(initial.takeIf { it.isDirectory }).apply {
         fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
@@ -469,7 +467,6 @@ private fun LogLevelSelector(currentName: String, onSelect: (AppLogger.LogLevel)
     }
 }
 
-// 与移动端的叫法保持一致
 private fun logLevelLabel(level: AppLogger.LogLevel): String = when (level) {
     AppLogger.LogLevel.DEBUG -> "详细"
     AppLogger.LogLevel.INFO -> "标准"

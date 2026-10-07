@@ -10,10 +10,10 @@ import kotlinx.coroutines.runBlocking
 
 private const val TAG = "DesktopLogging"
 
-// 桌面端日志与崩溃记录的启动入口，须先于 Koin 与其余任何 AppLogger 调用
+// 须先于 Koin 调用
 object DesktopLogging {
 
-    // gradle run 时由构建脚本传入，安装包不带此参数即为发布环境
+    // gradle run 传入，安装包没有
     const val DEBUG_PROPERTY = "melodia.debug"
 
     fun install(

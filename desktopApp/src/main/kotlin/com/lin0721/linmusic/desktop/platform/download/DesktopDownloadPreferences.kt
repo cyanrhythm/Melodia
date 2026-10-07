@@ -33,7 +33,7 @@ class DesktopDownloadPreferences(private val dataStore: DataStore<Preferences>) 
     suspend fun findVerifiedRecord(songId: Long): DownloadRecord? =
         findVerifiedRecords(listOf(songId)).firstOrNull()
 
-    // 文件已被用户删除的记录一并清理
+    // 文件被删除的记录一并清理
     suspend fun findVerifiedRecords(songIds: Collection<Long>): List<DownloadRecord> {
         val idSet = songIds.toHashSet()
         val candidates = records.first().filter { it.songId in idSet }
@@ -43,7 +43,6 @@ class DesktopDownloadPreferences(private val dataStore: DataStore<Preferences>) 
         return alive
     }
 
-    // 该路径已被另一首歌占用时不能覆盖
     suspend fun isPathClaimedByOtherSong(path: String, songId: Long): Boolean =
         records.first().any { it.mediaStoreUri == path && it.songId != songId }
 
@@ -54,7 +53,6 @@ class DesktopDownloadPreferences(private val dataStore: DataStore<Preferences>) 
         }
     }
 
-    // 面板里未完成与失败的任务，重启后恢复
     suspend fun loadTasks(): List<DownloadTask> {
         val raw = dataStore.data.first()[KEY_TASKS]
         if (raw.isNullOrBlank()) return emptyList()
