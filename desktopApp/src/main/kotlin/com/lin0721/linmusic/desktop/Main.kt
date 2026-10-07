@@ -51,12 +51,16 @@ import com.lin0721.linmusic.feature.podcast.data.PodcastProgressTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import com.lin0721.linmusic.desktop.platform.DesktopLogging
+import com.lin0721.linmusic.desktop.platform.DesktopPaths
+import com.lin0721.linmusic.desktop.platform.SingleInstance
 import org.jetbrains.skia.Image
 import org.koin.core.context.startKoin
+import kotlin.system.exitProcess
 import java.awt.Dimension
 
 private const val VOLUME_STEP = 5
@@ -64,6 +68,11 @@ private const val EXIT_ANIMATION_MS = 250L
 
 fun main() {
     DesktopLogging.install()
+    // 已有实例时只通知它显示窗口，本进程不再启动，避免两个进程争用数据文件与播放设备
+    val activationRequests = Channel<Unit>(Channel.CONFLATED)
+    if (!SingleInstance(DesktopPaths.dataDir).acquire { activationRequests.trySend(Unit) }) {
+        exitProcess(0)
+    }
     val koin = startKoin {
         modules(desktopPlatformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
     }.koin
@@ -115,6 +124,11 @@ fun main() {
         // 主窗口关闭按钮与 Alt+F4 统一按设置处理；系统不支持托盘时隐藏后无法找回，只能退出
         val closeMainWindow = {
             if (closeAction == CloseAction.EXIT || !isTraySupported) exit() else isMainVisible = false
+        }
+
+        // 其他实例要求激活：从托盘恢复并置前
+        LaunchedEffect(Unit) {
+            for (request in activationRequests) showMainWindow()
         }
 
         hotkeys.onAction = { action ->
