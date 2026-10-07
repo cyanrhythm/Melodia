@@ -163,6 +163,9 @@ class PlayerManager(
     // 断点续播暂存位置，用于在底层触发切歌转场时防止进度被重置为 0
     private var pendingStartPosition: Long = 0L
 
+    // 取新歌播放地址期间已暂停旧歌：此时底层 playWhenReady=false 是自己造成的，不能当作用户暂停同步出去
+    private var pausedForPendingPlay = false
+
     // 已对该曲目做过一次"换新链接原地续播"的错误恢复，恢复后真正播起来才清空，防止同一首反复重试
     private var streamErrorRecoverySongId: Long? = null
 
@@ -652,6 +655,11 @@ class PlayerManager(
                 return@launch
             }
 
+            // 弱网下取播放地址可能耗时很久，界面已切到新歌，旧歌不能继续出声
+            if (playWhenReady && !autoTransition && _currentTrack.value?.mediaId?.toLongOrNull() != item.songId) {
+                pauseOutgoingWhilePending()
+            }
+
             repository.getSongUrl(item.songId).collect { result ->
                 result.onSuccess { url ->
                     val mediaItem = item.toMediaItem(url, playbackQueue.playContext.value)
@@ -709,8 +717,14 @@ class PlayerManager(
         Toast.makeText(context, "离线状态下没有可播放的已缓存歌曲", Toast.LENGTH_SHORT).show()
     }
 
+    private fun pauseOutgoingWhilePending() {
+        if (!controllerHolder.playWhenReady) return
+        pausedForPendingPlay = true
+        controllerHolder.pause()
+    }
+
     // 滑动切歌手势专用：目标歌曲的播放地址还没请求回来、还没真正调用播放前可以整个撤销，
-    // 当前歌曲播放不受影响；已经来不及（播放已经切过去）就返回 false
+    // 旧歌曲回到撤销前的播放状态；已经来不及（播放已经切过去）就返回 false
     override fun cancelPendingSkip(): Boolean {
         val fromIndex = pendingSkipFromIndex ?: return false
         activePlayJob?.cancel()
@@ -718,6 +732,10 @@ class PlayerManager(
         playbackQueue.setCurrentIndex(fromIndex)
         saveQueueState()
         clearPendingTrack(restorePlayWhenReady = true)
+        if (pausedForPendingPlay) {
+            pausedForPendingPlay = false
+            controllerHolder.play()
+        }
         // resetTo() 已经把进度条乐观置零/清空时长，撤销后按播放器的真实位置纠正回来
         progress.setPosition(controllerHolder.currentPosition)
         progress.updateDurationFromController()
@@ -999,6 +1017,7 @@ class PlayerManager(
         if (consecutiveErrors >= 3 || playbackQueue.size <= 1) {
             AppLogger.e(TAG, "连续 $consecutiveErrors 次播放失败，放弃自动切歌 failedIndex=$failedIndex queueSize=${playbackQueue.size}")
             _playWhenReady.value = false
+            pausedForPendingPlay = false
             clearPendingTrack(restorePlayWhenReady = false)
             scope.launch {
                 Toast.makeText(context, "无法获取该歌曲的播放链接", Toast.LENGTH_SHORT).show()
@@ -1031,6 +1050,7 @@ class PlayerManager(
 
     // 镜像 ExoPlayer 真实的 playWhenReady：覆盖手动置位覆盖不到的场景（音频焦点丢失、耳机拔出等系统触发的暂停）
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        if (playWhenReady) pausedForPendingPlay = false else if (pausedForPendingPlay) return
         _playWhenReady.value = playWhenReady
     }
 
