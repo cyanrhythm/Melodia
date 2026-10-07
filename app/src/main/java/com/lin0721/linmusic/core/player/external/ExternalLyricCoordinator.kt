@@ -364,10 +364,14 @@ class ExternalLyricCoordinator(
             val bundle = if (existingExtras != null) Bundle(existingExtras) else Bundle()
             bundle.putString("lyricInfo", currentLyricInfoJson)
             builder.setExtras(bundle)
-        } else if (existingExtras != null && existingExtras.containsKey("lyricInfo")) {
-            val bundle = Bundle(existingExtras)
-            bundle.remove("lyricInfo")
-            builder.setExtras(bundle)
+            builder.setDiscSubtitle("lyric_${sessionGeneration}_${currentLyricInfoJson.hashCode()}")
+        } else {
+            if (existingExtras != null && existingExtras.containsKey("lyricInfo")) {
+                val bundle = Bundle(existingExtras)
+                bundle.remove("lyricInfo")
+                builder.setExtras(bundle)
+            }
+            builder.setDiscSubtitle(null)
         }
 
         return builder.build()

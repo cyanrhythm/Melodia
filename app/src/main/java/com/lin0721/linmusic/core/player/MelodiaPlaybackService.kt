@@ -532,6 +532,10 @@ class MelodiaPlaybackService : MediaSessionService() {
                 .addAction(playPauseAction)
                 .addAction(nextAction)
                 .addAction(likeAction)
+                val lyricInfo = metadata?.extras?.getString("lyricInfo")
+            if (!lyricInfo.isNullOrBlank()) {
+                builder.addExtras(Bundle().apply { putString("lyricInfo", lyricInfo) })
+            }
 
             currentCoverBitmap?.let { bitmap ->
                 builder.setLargeIcon(bitmap)
