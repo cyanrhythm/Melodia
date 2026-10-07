@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.desktop.ui
 
+import com.lin0721.linmusic.feature.profile.ui.FollowListMode
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import com.lin0721.linmusic.core.model.Track
@@ -12,6 +13,8 @@ class DesktopNavigator(
     val openPlaylist: (id: Long, name: String) -> Unit,
     val openAlbum: (id: Long, name: String) -> Unit,
     val openRadio: (id: Long) -> Unit,
+    val openProfile: (uid: Long) -> Unit,
+    val openFollowList: (uid: Long, mode: FollowListMode) -> Unit,
     val openPodcastSubscribed: () -> Unit,
     val openPodcastToplist: () -> Unit,
     val openPodcastCategory: (id: Long, name: String) -> Unit,

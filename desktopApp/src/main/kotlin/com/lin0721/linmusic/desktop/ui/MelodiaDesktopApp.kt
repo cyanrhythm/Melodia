@@ -68,6 +68,8 @@ import com.lin0721.linmusic.feature.music.ui.StyleDetailViewModel
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
+import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
+import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastCategoryViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
@@ -197,6 +199,8 @@ fun WindowScope.MelodiaDesktopApp(
         openPlaylist = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name)) },
         openAlbum = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name, isAlbum = true)) },
         openRadio = { id -> backStack.navigate(DesktopRoute.Radio(id)) },
+        openProfile = { uid -> backStack.navigate(DesktopRoute.Profile(uid)) },
+        openFollowList = { uid, mode -> backStack.navigate(DesktopRoute.FollowList(uid, mode)) },
         openPodcastSubscribed = { backStack.navigate(DesktopRoute.PodcastSubscribed) },
         openPodcastToplist = { backStack.navigate(DesktopRoute.PodcastToplist) },
         openPodcastCategory = { id, name -> backStack.navigate(DesktopRoute.PodcastCategory(id, name)) },
@@ -292,6 +296,7 @@ fun WindowScope.MelodiaDesktopApp(
                     downloadsOpen = dockOpen && dockOverlay == DockOverlay.Downloads,
                     onDownloadsClick = downloader?.let { { toggleOverlay(DockOverlay.Downloads) } },
                     onLoginClick = { showLogin = true },
+                    onProfileClick = { userProfile?.let { backStack.navigate(DesktopRoute.Profile(it.uid)) } },
                     onSettingsClick = { backStack.navigate(DesktopRoute.Settings) },
                     onLogoutClick = homeViewModel::logout,
                     onMinimize = { windowState.isMinimized = true },
@@ -441,6 +446,16 @@ fun WindowScope.MelodiaDesktopApp(
                                                 categoryId = route.id,
                                                 name = route.name,
                                                 viewModel = frameHost.viewModelFor(entry.id, PodcastCategoryViewModel::class, { emptyFlow() }) { koin.get() }
+                                            )
+                                            is DesktopRoute.Profile -> ProfilePage(
+                                                uid = route.uid,
+                                                viewModel = frameHost.viewModelFor(entry.id, ProfileViewModel::class, { it.toastEvent }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            is DesktopRoute.FollowList -> FollowListPage(
+                                                uid = route.uid,
+                                                mode = route.mode,
+                                                viewModel = frameHost.viewModelFor(entry.id, FollowListViewModel::class, { it.toastEvent }) { koin.get() }
                                             )
                                             DesktopRoute.Settings -> SettingsPage()
                                             DesktopRoute.Search -> SearchPage(

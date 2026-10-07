@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.CommentItem
 import com.lin0721.linmusic.desktop.ui.Cover
 import com.lin0721.linmusic.desktop.ui.HoverReveal
+import com.lin0721.linmusic.desktop.ui.LocalDesktopNavigator
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 
 private val AvatarSize = 36.dp
@@ -75,6 +76,13 @@ fun CommentRow(
     var menuOpen by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val revealed = interactive && (hovered || menuOpen)
+    val navigator = if (interactive) LocalDesktopNavigator.current else null
+    val userId = comment.user.userId
+    val userClick = if (navigator != null && userId > 0) {
+        Modifier.pointerHoverIcon(PointerIcon.Hand).clickable { navigator.openProfile(userId) }
+    } else {
+        Modifier
+    }
 
     Row(
         modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
@@ -91,7 +99,7 @@ fun CommentRow(
             .padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Cover(comment.user.avatarUrl, AvatarSize, shape = CircleShape)
+        Cover(comment.user.avatarUrl, AvatarSize, modifier = userClick, shape = CircleShape)
         Column(Modifier.weight(1f)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
@@ -101,7 +109,8 @@ fun CommentRow(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = userClick
                     )
                     Text(comment.timeStr.orEmpty(), color = SubtleText, fontSize = 11.sp)
                 }

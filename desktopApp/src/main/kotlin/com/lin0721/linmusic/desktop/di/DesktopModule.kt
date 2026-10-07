@@ -50,6 +50,7 @@ import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastToplistViewModel
 import com.lin0721.linmusic.feature.podcast.ui.RadioDetailViewModel
+import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
 import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
 import com.lin0721.linmusic.core.source.AudioSourceProvider
 import com.lin0721.linmusic.core.source.SourcePreferences
@@ -161,7 +162,8 @@ val desktopViewModelModule = module {
     factoryOf(::RadioDetailViewModel)
     singleOf(::NewWorksViewModel)
     singleOf(::LibraryViewModel)
-    singleOf(::ProfileViewModel)
+    factoryOf(::ProfileViewModel)
+    factoryOf(::FollowListViewModel)
     single {
         SearchViewModel(
             repository = get(),

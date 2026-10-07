@@ -111,6 +111,7 @@ fun WindowScope.TitleBar(
     downloadsOpen: Boolean,
     onDownloadsClick: (() -> Unit)?,
     onLoginClick: () -> Unit,
+    onProfileClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onMinimize: () -> Unit,
@@ -158,7 +159,7 @@ fun WindowScope.TitleBar(
         }
         Row(Modifier.align(Alignment.CenterEnd).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
             if (onDownloadsClick != null) DownloadsButton(downloadTasks, downloadsOpen, onDownloadsClick)
-            AvatarMenu(userProfile, onLoginClick, onSettingsClick, onLogoutClick)
+            AvatarMenu(userProfile, onLoginClick, onProfileClick, onSettingsClick, onLogoutClick)
             WindowButton(Icons.Rounded.Remove, "最小化", onClick = onMinimize)
             WindowButton(
                 if (isMaximized) Icons.Rounded.FilterNone else Icons.Rounded.CropSquare,
@@ -239,6 +240,7 @@ private fun DownloadsButton(tasks: List<DownloadTask>, open: Boolean, onClick: (
 private fun AvatarMenu(
     userProfile: UserProfile?,
     onLoginClick: () -> Unit,
+    onProfileClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
@@ -266,6 +268,12 @@ private fun AvatarMenu(
                 AvatarMenuItem(Icons.AutoMirrored.Rounded.Login, "登录") {
                     expanded = false
                     onLoginClick()
+                }
+            }
+            if (userProfile != null) {
+                AvatarMenuItem(Icons.Rounded.Person, "个人主页") {
+                    expanded = false
+                    onProfileClick()
                 }
             }
             AvatarMenuItem(Icons.Rounded.Settings, "设置") {

@@ -506,8 +506,10 @@ private fun PlaylistHero(playlist: PlaylistDetail, isAlbum: Boolean, count: Int,
         playlist.privacy == PRIVATE_PLAYLIST -> "隐私歌单"
         else -> "公开歌单"
     }
+    val navigator = LocalDesktopNavigator.current
     val owner = if (isAlbum) playlist.artists.joinToString(" / ") { it.name } else playlist.creator?.nickname.orEmpty()
     val avatarUrl = if (isAlbum) null else playlist.creator?.avatarUrl
+    val creatorId = playlist.creator?.userId?.takeIf { !isAlbum && it > 0 }
     val summary = buildString {
         append("$count 首歌曲")
         if (totalMs != null) append("，${formatTotalDuration(totalMs)}")
@@ -526,13 +528,24 @@ private fun PlaylistHero(playlist: PlaylistDetail, isAlbum: Boolean, count: Int,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!avatarUrl.isNullOrBlank()) {
-                    Cover(avatarUrl, 24.dp, shape = CircleShape, modifier = Modifier.padding(end = 8.dp))
+                Row(
+                    Modifier.clip(RoundedCornerShape(4.dp)).then(
+                        if (creatorId != null) {
+                            Modifier.pointerHoverIcon(PointerIcon.Hand).clickable { navigator.openProfile(creatorId) }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!avatarUrl.isNullOrBlank()) {
+                        Cover(avatarUrl, 24.dp, shape = CircleShape, modifier = Modifier.padding(end = 8.dp))
+                    }
+                    if (owner.isNotBlank()) {
+                        Text(owner, color = DesktopColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-                if (owner.isNotBlank()) {
-                    Text(owner, color = DesktopColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(" · ", color = DesktopColors.TextGray, fontSize = 14.sp)
-                }
+                if (owner.isNotBlank()) Text(" · ", color = DesktopColors.TextGray, fontSize = 14.sp)
                 Text(summary, color = DesktopColors.TextGray, fontSize = 14.sp)
             }
         }
