@@ -109,10 +109,10 @@ val desktopPlatformModule = module {
     single<OnlineStateProvider> { DesktopOnlineStateProvider() }
     single {
         val userPreferences = get<UserPreferences>()
-        MetadataCache(File(DesktopPaths.dataDir, "meta_cache")) { userPreferences.userProfile.first()?.uid ?: 0L }
+        MetadataCache(DesktopPaths.metadataCacheDir) { userPreferences.userProfile.first()?.uid ?: 0L }
     }
     single { DesktopDownloadPreferences(store(DesktopDownloadPreferences.STORE_NAME)) }
-    single { AudioCache(File(DesktopPaths.dataDir, "audio_cache")) }
+    single { AudioCache(DesktopPaths.audioCacheDir) }
     // 离线时只有已下载或已缓存的歌曲可播放
     single<CachedAudioIndex> {
         val downloadPreferences = get<DesktopDownloadPreferences>()
@@ -128,13 +128,13 @@ val desktopPlatformModule = module {
             playbackRepository = get(),
             settingsPreferences = get(),
             downloadPreferences = get(),
-            tempDir = File(DesktopPaths.dataDir, "download_tmp"),
+            tempDir = DesktopPaths.downloadTempDir,
             defaultDir = DesktopPaths.defaultDownloadDir
         )
     }
     single<SongDownloader> { get<DesktopSongDownloader>() }
     single<PlaybackController> { createPlaybackController(get(), get(), get(), get(), get(), get()) }
-    single { AmllLyricsClient(LyricsCache(File(DesktopPaths.dataDir, "cache"))) }
+    single { AmllLyricsClient(LyricsCache(DesktopPaths.localCacheDir)) }
     // 桌面第一版没有本地音乐，只取在线歌词
     single {
         val amllLyricsClient = get<AmllLyricsClient>()

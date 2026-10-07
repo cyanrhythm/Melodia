@@ -55,6 +55,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import com.lin0721.linmusic.desktop.platform.DesktopCacheMigration
+import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
 import com.lin0721.linmusic.desktop.platform.DesktopLogging
 import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.SingleInstance
@@ -68,11 +70,14 @@ private const val EXIT_ANIMATION_MS = 250L
 
 fun main() {
     DesktopLogging.install()
+    DesktopImageLoader.install()
     // 已有实例时只通知它显示窗口，本进程不再启动，避免两个进程争用数据文件与播放设备
     val activationRequests = Channel<Unit>(Channel.CONFLATED)
     if (!SingleInstance(DesktopPaths.dataDir).acquire { activationRequests.trySend(Unit) }) {
         exitProcess(0)
     }
+    // 须先于缓存对象创建
+    DesktopCacheMigration.migrateAll()
     val koin = startKoin {
         modules(desktopPlatformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
     }.koin

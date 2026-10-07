@@ -71,6 +71,7 @@ import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.AutoStart
 import com.lin0721.linmusic.desktop.platform.CloseAction
+import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
 import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
@@ -135,6 +136,8 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val cacheMaxSize by settingsPreferences.audioCacheMaxSize.collectAsState(initial = CacheSizeOptions.first())
     var cacheUsedBytes by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) { cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() } }
+    var imageCacheBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { imageCacheBytes = withContext(Dispatchers.IO) { DesktopImageLoader.diskCacheSize() } }
     val crossfadeEnabled by settingsPreferences.crossfadeEnabled.collectAsState(initial = false)
     val crossfadeDurationMs by settingsPreferences.crossfadeDurationMs.collectAsState(initial = CrossfadePolicy.DEFAULT_DURATION_MS)
     val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
@@ -273,6 +276,16 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                             withContext(Dispatchers.IO) { audioCache.evict(size) }
                             cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() }
                         }
+                    }
+                }
+                SettingRow("图片缓存", subtitle = "${formatBytes(imageCacheBytes)} / ${formatBytes(DesktopImageLoader.DISK_CACHE_MAX_BYTES)}") {
+                    TextButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { DesktopImageLoader.clear() }
+                            imageCacheBytes = withContext(Dispatchers.IO) { DesktopImageLoader.diskCacheSize() }
+                        }
+                    }) {
+                        Text("清除图片缓存", color = DesktopColors.Accent)
                     }
                 }
                 SettingRow("已用空间", subtitle = formatBytes(cacheUsedBytes)) {
