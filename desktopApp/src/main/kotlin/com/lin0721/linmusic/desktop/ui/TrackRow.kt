@@ -14,7 +14,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.DragIndicator
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -25,7 +25,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.rememberUpdatedState
@@ -77,7 +79,7 @@ internal val ADDED_COLUMN_WIDTH = 120.dp
 
 internal val DangerColor = Color(0xFFFF6B6B)
 
-// 行内拖动排序：偏移与手势回调由列表页的 QueueReorderState 驱动
+// 行内长按拖动排序：偏移与手势回调由列表页的 QueueReorderState 驱动
 @Immutable
 class TrackReorder(
     val dragging: Boolean,
@@ -99,7 +101,7 @@ fun TrackRow(
     enabled: Boolean = true,
     // 非 null 时在专辑后多一列“添加日期”（歌单页专用）
     addedAtText: String? = null,
-    // 非 null 时悬停行首显示拖动把手
+    // 非 null 时整行可长按拖动
     reorder: TrackReorder? = null
 ) {
     val navigator = LocalDesktopNavigator.current
@@ -151,17 +153,10 @@ fun TrackRow(
                         onPlay()
                     }
                 }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (reorder != null && (hovered || dragging)) {
-                Box(Modifier.width(32.dp), contentAlignment = Alignment.CenterEnd) {
-                    Icon(
-                        Icons.Rounded.DragIndicator,
-                        "拖动排序",
-                        tint = DesktopColors.TextGray,
-                        modifier = Modifier.size(20.dp).pointerHoverIcon(PointerIcon.Hand).pointerInput(Unit) {
-                            detectDragGestures(
+                .then(
+                    if (reorder != null) {
+                        Modifier.pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
                                 onDragStart = { currentDragStart?.invoke() },
                                 onDrag = { change, amount ->
                                     change.consume()
@@ -171,6 +166,23 @@ fun TrackRow(
                                 onDragCancel = { currentDragEnd?.invoke() }
                             )
                         }
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (enabled && hovered && !dragging) {
+                Box(
+                    Modifier.width(32.dp).height(32.dp).pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onPlay),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        "播放${track.name}",
+                        tint = DesktopColors.TextPrimary,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             } else {
