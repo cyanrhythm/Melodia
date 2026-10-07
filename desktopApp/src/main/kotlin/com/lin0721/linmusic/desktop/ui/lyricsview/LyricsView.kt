@@ -2,7 +2,7 @@ package com.lin0721.linmusic.desktop.ui.lyricsview
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,21 +48,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.lin0721.linmusic.core.model.Album
+import com.lin0721.linmusic.core.model.Artist
 import com.lin0721.linmusic.core.player.NowPlaying
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.domain.LyricLine
@@ -69,10 +78,13 @@ import com.lin0721.linmusic.core.player.domain.lyricLineKey
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.ui.DesktopTooltip
+import com.lin0721.linmusic.desktop.ui.LocalDesktopNavigator
+import com.lin0721.linmusic.desktop.ui.artistLinks
 import com.lin0721.linmusic.desktop.ui.nowplaying.rememberCoverBase
 import com.lin0721.linmusic.desktop.ui.nowplaying.verticalEdgeFade
 import com.lin0721.linmusic.desktop.ui.palette.darken
 import com.lin0721.linmusic.desktop.ui.palette.saturateIfChromatic
+import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import kotlinx.coroutines.delay
@@ -81,6 +93,8 @@ private const val FADE_MS = 150
 private const val RESUME_FOLLOW_MS = 3_000L
 private const val AUTO_HIDE_MS = 5_000L
 private const val HEADER_FADE_MS = 200
+internal const val CHROME_ANIM_MS = 250
+private const val MOVE_THRESHOLD_PX = 2f
 
 // 当前行落在视口自上而下的这个比例处
 private const val ANCHOR_FRACTION = 0.38f
@@ -89,6 +103,9 @@ private const val ANCHOR_FRACTION = 0.38f
 private const val COLUMN_WIDTH_FRACTION = 0.72f
 private val EdgeFade = 48.dp
 private val HeaderButtonSize = 32.dp
+private val HeaderTopPadding = 16.dp
+// 歌名行底边：阴影到此为止，歌词区也从这里起算（与顶栏下半部分重叠）
+private val HeaderTitleRowBottom = HeaderTopPadding + HeaderButtonSize
 private val InactiveColor = Color.White.copy(alpha = 0.55f)
 
 // 覆盖在标题栏与播放栏之间整个工作区的全屏歌词界面；不透明底并吞掉点击，收起后原样露出下层
@@ -115,6 +132,10 @@ fun LyricsViewOverlay(
         val activeIndices by playerViewModel.activeLyricIndices.collectAsState()
         val isPlaying by controller.isPlaying.collectAsState()
         val clock = rememberLyricClock(controller)
+        // 详情属于当前曲目时才可跳转，切歌瞬间的旧详情不能指向上一首的专辑
+        val ownDetail = detail.songDetail?.takeIf { it.id == track.songId }
+        val album = ownDetail?.al?.takeIf { it.id > 0 && it.name.isNotBlank() }
+        val artists = if (ownDetail != null) detail.artists.map { Artist(id = it.artistId, name = it.artistName) } else emptyList()
         val (settings, actions) = rememberLyricsViewSettings(settingsPreferences, desktopPreferences)
         LyricsViewContent(
             track = track,
@@ -127,6 +148,11 @@ fun LyricsViewOverlay(
             isPlaying = isPlaying,
             clock = clock,
             isFullscreen = isFullscreen,
+            controlsHidden = state.controlsHidden,
+            onControlsHiddenChange = { state.controlsHidden = it },
+            pointerInWindow = state.pointerInWindow,
+            album = album,
+            artists = artists,
             onSeek = playerViewModel::seekToTime,
             onToggleFullscreen = state::toggleFullscreen,
             onClose = state::close
@@ -147,6 +173,11 @@ private fun LyricsViewContent(
     isPlaying: Boolean,
     clock: () -> Long,
     isFullscreen: Boolean,
+    controlsHidden: Boolean,
+    onControlsHiddenChange: (Boolean) -> Unit,
+    pointerInWindow: Boolean,
+    album: Album?,
+    artists: List<Artist>,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
     onClose: () -> Unit
@@ -158,48 +189,98 @@ private fun LyricsViewContent(
     val hasRoma = remember(lines) { lines.any { it.roma != null } }
 
     var settingsOpen by remember { mutableStateOf(false) }
-    var headerShown by remember { mutableStateOf(true) }
     var moveTick by remember { mutableIntStateOf(0) }
-    // 开启自动隐藏后，鼠标 5 秒没有动作就收起顶栏；设置面板打开期间保持显示
-    LaunchedEffect(settings.autoHideControls, settingsOpen, moveTick) {
-        headerShown = true
+    // 点击空白处手动收起后，鼠标移动不再唤出，只能再点一次
+    var manuallyHidden by remember { mutableStateOf(false) }
+    // 鼠标移回窗口时无条件恢复
+    LaunchedEffect(pointerInWindow) { if (pointerInWindow) manuallyHidden = false }
+    // 开启自动隐藏后，鼠标 5 秒没有动作或移出窗口就收起全部控件；设置面板打开期间保持显示
+    LaunchedEffect(settings.autoHideControls, settingsOpen, moveTick, manuallyHidden, pointerInWindow) {
+        if (!settings.autoHideControls) manuallyHidden = false
+        if (settings.autoHideControls && !settingsOpen && (!pointerInWindow || manuallyHidden)) {
+            onControlsHiddenChange(true)
+            return@LaunchedEffect
+        }
+        onControlsHiddenChange(false)
         if (settings.autoHideControls && !settingsOpen) {
             delay(AUTO_HIDE_MS)
-            headerShown = false
+            onControlsHiddenChange(true)
         }
     }
-    val headerAlpha by animateFloatAsState(if (headerShown) 1f else 0f, tween(HEADER_FADE_MS), label = "lyricsHeaderAlpha")
+    // 沉浸态没有标题栏与播放栏的间隙，上下补一圈与左右一致的边
+    val verticalGap by animateDpAsState(if (controlsHidden) DesktopDimens.PaneGap else 0.dp, tween(CHROME_ANIM_MS), label = "lyricsVerticalGap")
+    val headerInset by animateDpAsState(if (controlsHidden) 0.dp else HeaderTitleRowBottom, tween(CHROME_ANIM_MS), label = "lyricsHeaderInset")
+    // 布局变化会合成同位置的移动事件，按窗口坐标过滤掉没有真实位移的移动
+    var boxOrigin by remember { mutableStateOf(Offset.Zero) }
+    var lastPointer by remember { mutableStateOf(Offset.Unspecified) }
 
     Box(
-        Modifier.fillMaxSize().padding(horizontal = DesktopDimens.PaneGap)
+        // 先铺窗口底色再留边，边里不会露出下层的侧栏和面板
+        Modifier.fillMaxSize().background(DesktopColors.WindowBackground)
+            .padding(horizontal = DesktopDimens.PaneGap, vertical = verticalGap)
             .clip(RoundedCornerShape(DesktopDimens.PaneRadius))
             .background(fill)
-            .onPointerEvent(PointerEventType.Move) { moveTick++ }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .onGloballyPositioned { boxOrigin = it.positionInWindow() }
+            .onPointerEvent(PointerEventType.Scroll) { if (!manuallyHidden) moveTick++ }
+            .onPointerEvent(PointerEventType.Move) { event ->
+                val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                val position = boxOrigin + change.position
+                if (lastPointer == Offset.Unspecified || (position - lastPointer).getDistance() > MOVE_THRESHOLD_PX) {
+                    lastPointer = position
+                    if (!manuallyHidden) moveTick++
+                }
+            }
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                if (settings.autoHideControls) {
+                    manuallyHidden = !controlsHidden
+                    moveTick++
+                }
+            }
     ) {
-        Column(Modifier.fillMaxSize()) {
+        // 让位高度与自动隐藏开关无关，切换开关不会让歌词移位
+        Box(Modifier.fillMaxSize().padding(top = headerInset)) {
+            when (lyricsPlaceholder(lines, isLoading)) {
+                LyricsPlaceholder.Loading -> CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.align(Alignment.Center).size(28.dp),
+                    strokeWidth = 2.dp
+                )
+                LyricsPlaceholder.Empty -> Placeholder("暂无歌词")
+                LyricsPlaceholder.PureMusic -> Placeholder("纯音乐，请欣赏")
+                null -> LyricsList(lines, primaryIndex, activeIndices, settings, isPlaying, clock, onSeek)
+            }
+        }
+        // 退出组合后不再拦截点击
+        AnimatedVisibility(
+            visible = !controlsHidden,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = fadeIn(tween(HEADER_FADE_MS)),
+            exit = fadeOut(tween(HEADER_FADE_MS))
+        ) {
             Header(
                 track = track,
                 isFullscreen = isFullscreen,
                 settingsOpen = settingsOpen,
                 onSettingsOpenChange = { settingsOpen = it },
                 settingsContent = { LyricsSettingsPanel(settings, actions, hasTranslation, hasRoma) },
+                album = album,
+                artists = artists,
                 onToggleFullscreen = onToggleFullscreen,
                 onClose = onClose,
-                modifier = Modifier.graphicsLayer { alpha = headerAlpha }
+                modifier = Modifier
+                    .drawBehind {
+                        // 阴影从顶边压到歌名行底部，越靠近顶边越深
+                        drawRect(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.75f),
+                                0.5f to Color.Black.copy(alpha = 0.32f),
+                                1f to Color.Transparent,
+                                endY = HeaderTitleRowBottom.toPx()
+                            ),
+                            size = Size(size.width, HeaderTitleRowBottom.toPx())
+                        )
+                    }
             )
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (lyricsPlaceholder(lines, isLoading)) {
-                    LyricsPlaceholder.Loading -> CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.align(Alignment.Center).size(28.dp),
-                        strokeWidth = 2.dp
-                    )
-                    LyricsPlaceholder.Empty -> Placeholder("暂无歌词")
-                    LyricsPlaceholder.PureMusic -> Placeholder("纯音乐，请欣赏")
-                    null -> LyricsList(lines, primaryIndex, activeIndices, settings, isPlaying, clock, onSeek)
-                }
-            }
         }
     }
 }
@@ -211,26 +292,41 @@ private fun Header(
     settingsOpen: Boolean,
     onSettingsOpenChange: (Boolean) -> Unit,
     settingsContent: @Composable () -> Unit,
+    album: Album?,
+    artists: List<Artist>,
     onToggleFullscreen: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
     val popupOffset = IntOffset(0, with(density) { (HeaderButtonSize + 8.dp).roundToPx() })
     Row(
-        modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = HeaderTopPadding, bottom = 8.dp),
+        verticalAlignment = Alignment.Top
     ) {
+        // 按钮顶对齐，与首行歌名垂直居中对齐；跳转后歌词界面收起，露出目标页
         Column(Modifier.weight(1f).padding(end = 16.dp)) {
-            Text(
-                track.title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(track.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.height(HeaderButtonSize), contentAlignment = Alignment.CenterStart) {
+                TitleLink(track.title, album) {
+                    navigator.openAlbum(it.id, it.name)
+                    onClose()
+                }
+            }
+            if (artists.isEmpty()) {
+                Text(track.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else {
+                Text(
+                    artistLinks(artists) { id, name ->
+                        navigator.openArtist(id, name)
+                        onClose()
+                    },
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Box {
             HeaderButton(Icons.Rounded.Tune, "歌词设置") { onSettingsOpenChange(!settingsOpen) }
@@ -250,6 +346,28 @@ private fun Header(
         )
         HeaderButton(Icons.Rounded.CloseFullscreen, "收起", onClose)
     }
+}
+
+// 歌名：有所属专辑时可点跳转，悬停加下划线
+@Composable
+private fun TitleLink(title: String, album: Album?, onOpenAlbum: (Album) -> Unit) {
+    val hoverSource = remember { MutableInteractionSource() }
+    val hovered by hoverSource.collectIsHoveredAsState()
+    Text(
+        title,
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textDecoration = if (album != null && hovered) TextDecoration.Underline else TextDecoration.None,
+        modifier = if (album != null) {
+            Modifier.clip(RoundedCornerShape(4.dp)).hoverable(hoverSource).pointerHoverIcon(PointerIcon.Hand)
+                .clickable { onOpenAlbum(album) }
+        } else {
+            Modifier
+        }
+    )
 }
 
 @Composable

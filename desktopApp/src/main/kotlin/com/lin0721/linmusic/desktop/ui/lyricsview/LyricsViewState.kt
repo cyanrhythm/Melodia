@@ -14,10 +14,19 @@ class LyricsViewState internal constructor(private val fullscreen: FullscreenSta
     var isOpen by mutableStateOf(false)
         private set
 
+    // 沉浸态：标题栏、播放栏与歌词顶栏一并收起，歌词铺满整个窗口
+    var controlsHidden by mutableStateOf(false)
+
+    // 鼠标是否在窗口内，由窗口根节点的进出事件维护
+    var pointerInWindow by mutableStateOf(true)
+
+    val isImmersive: Boolean get() = isOpen && controlsHidden
+
     private var enteredFullscreenWithView = false
 
     fun open() {
         enteredFullscreenWithView = false
+        controlsHidden = false
         isOpen = true
     }
 
@@ -25,12 +34,14 @@ class LyricsViewState internal constructor(private val fullscreen: FullscreenSta
     fun openWithFullscreen() {
         enteredFullscreenWithView = !fullscreen.isFullscreen
         if (enteredFullscreenWithView) fullscreen.toggle()
+        controlsHidden = false
         isOpen = true
     }
 
     fun close() {
         if (!isOpen) return
         isOpen = false
+        controlsHidden = false
         if (enteredFullscreenWithView) fullscreen.exit()
         enteredFullscreenWithView = false
     }

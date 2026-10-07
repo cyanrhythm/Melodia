@@ -1,5 +1,11 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,8 +31,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowScope
@@ -37,6 +46,7 @@ import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryMode
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
+import com.lin0721.linmusic.desktop.ui.lyricsview.CHROME_ANIM_MS
 import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewOverlay
 import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewState
 import com.lin0721.linmusic.desktop.ui.navigation.BackStack
@@ -71,6 +81,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.core.context.GlobalContext
 
+private val ChromeEnter = fadeIn(tween(CHROME_ANIM_MS)) + expandVertically(tween(CHROME_ANIM_MS))
+private val ChromeExit = fadeOut(tween(CHROME_ANIM_MS)) + shrinkVertically(tween(CHROME_ANIM_MS))
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun WindowScope.MelodiaDesktopApp(
     windowState: WindowState,
@@ -205,10 +219,18 @@ fun WindowScope.MelodiaDesktopApp(
     }
 
     CompositionLocalProvider(LocalDesktopNavigator provides navigator) {
-        Box(Modifier.fillMaxSize().background(DesktopColors.WindowBackground)) {
+        Box(
+            Modifier.fillMaxSize().background(DesktopColors.WindowBackground)
+                .onPointerEvent(PointerEventType.Enter) { lyricsView.pointerInWindow = true }
+                .onPointerEvent(PointerEventType.Exit) { lyricsView.pointerInWindow = false }
+        ) {
             Column(Modifier.fillMaxSize()) {
-                // 全屏时收起自绘标题栏，Esc 或底栏按钮退出
-                if (!isFullscreen) TitleBar(
+                // 全屏或歌词沉浸态时收起自绘标题栏，Esc 或底栏按钮退出
+                AnimatedVisibility(
+                    visible = !isFullscreen && !lyricsView.isImmersive,
+                    enter = ChromeEnter,
+                    exit = ChromeExit
+                ) { TitleBar(
                     backStack = backStack,
                     isMaximized = isMaximized,
                     userProfile = userProfile,
@@ -235,7 +257,7 @@ fun WindowScope.MelodiaDesktopApp(
                         windowState.placement = if (isMaximized) WindowPlacement.Floating else WindowPlacement.Maximized
                     },
                     onClose = onClose
-                )
+                ) }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
                     val hasTrack = nowPlaying != null
@@ -433,7 +455,11 @@ fun WindowScope.MelodiaDesktopApp(
                     )
                 }
                 val volume = mpvController?.volume?.collectAsState()?.value
-                PlayerBar(
+                AnimatedVisibility(
+                    visible = !lyricsView.isImmersive,
+                    enter = ChromeEnter,
+                    exit = ChromeExit
+                ) { PlayerBar(
                     controller = playbackController,
                     playerViewModel = playerViewModel,
                     volume = volume,
@@ -451,8 +477,10 @@ fun WindowScope.MelodiaDesktopApp(
                     isFullscreen = isFullscreen,
                     onToggleFullscreen = fullscreen::toggle,
                     lyricVisible = showDesktopLyric,
-                    onToggleLyric = { scope.launch { settingsPreferences.saveShowDesktopLrc(!showDesktopLyric) } }
-                )
+                    onToggleLyric = { scope.launch { settingsPreferences.saveShowDesktopLrc(!showDesktopLyric) } },
+                    lyricsViewOpen = lyricsView.isOpen,
+                    onToggleLyricsView = { if (lyricsView.isOpen) lyricsView.close() else lyricsView.open() }
+                ) }
             }
             SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)) { data ->
                 Snackbar(data, containerColor = DesktopColors.PopupSurface, contentColor = DesktopColors.TextPrimary)

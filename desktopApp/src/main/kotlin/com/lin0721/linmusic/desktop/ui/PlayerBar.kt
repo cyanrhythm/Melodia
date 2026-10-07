@@ -92,6 +92,8 @@ fun PlayerBar(
     onToggleFullscreen: () -> Unit,
     lyricVisible: Boolean,
     onToggleLyric: () -> Unit,
+    lyricsViewOpen: Boolean,
+    onToggleLyricsView: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navigator = LocalDesktopNavigator.current
@@ -220,6 +222,15 @@ fun PlayerBar(
                 showDot = true,
                 size = SideButtonSize, iconSize = SideIconSize,
                 onClick = onToggleLyric
+            )
+            if (!podcast.isPodcast) BarIconButton(
+                PlayerBarIcons.Lyrics,
+                if (lyricsViewOpen) "收起全屏歌词" else "全屏歌词",
+                enabled = hasTrack,
+                active = lyricsViewOpen,
+                showDot = true,
+                size = SideButtonSize, iconSize = SideIconSize,
+                onClick = onToggleLyricsView
             )
             BarIconButton(
                 PlayerBarIcons.Queue,

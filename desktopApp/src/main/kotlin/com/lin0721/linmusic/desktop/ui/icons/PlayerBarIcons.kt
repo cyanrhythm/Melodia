@@ -19,6 +19,15 @@ object PlayerBarIcons {
         )
     }
 
+    // 全屏歌词：竖向屏幕，中间一行最长表示当前行高亮
+    val Lyrics: ImageVector by lazy {
+        lineIcon(
+            "Lyrics",
+            "M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+            "M8 8h4M8 12h8M8 16h5"
+        )
+    }
+
     // 播放队列：带播放三角的列表
     val Queue: ImageVector by lazy {
         lineIcon(

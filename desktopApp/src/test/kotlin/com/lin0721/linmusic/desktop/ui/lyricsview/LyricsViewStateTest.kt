@@ -62,4 +62,33 @@ class LyricsViewStateTest {
         view.close()
         assertEquals(WindowPlacement.Fullscreen, window.placement)
     }
+
+    @Test
+    fun `沉浸态仅在界面打开且控件收起时成立`() {
+        val (_, _, view) = create()
+        view.controlsHidden = true
+        assertFalse(view.isImmersive)
+        view.open()
+        assertFalse(view.isImmersive)
+        view.controlsHidden = true
+        assertTrue(view.isImmersive)
+    }
+
+    @Test
+    fun `收起歌词界面后控件隐藏状态复位`() {
+        val (_, _, view) = create()
+        view.open()
+        view.controlsHidden = true
+        view.close()
+        view.open()
+        assertFalse(view.controlsHidden)
+    }
+
+    @Test
+    fun `鼠标进出窗口状态默认在窗口内`() {
+        val (_, _, view) = create()
+        assertTrue(view.pointerInWindow)
+        view.pointerInWindow = false
+        assertFalse(view.pointerInWindow)
+    }
 }
