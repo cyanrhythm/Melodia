@@ -53,6 +53,7 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,6 +82,8 @@ private const val ANCHOR_FRACTION = 0.38f
 private const val COLUMN_WIDTH_FRACTION = 0.72f
 private val LyricFontSize = 40.sp
 private val SecondaryFontSize = 22.sp
+private val BackgroundFontSize = 28.sp
+private val BackgroundSecondarySize = 18.sp
 private val LineSpacing = 24.dp
 private val SecondarySpacing = 6.dp
 private val EdgeFade = 48.dp
@@ -109,6 +112,8 @@ fun LyricsViewOverlay(
         val primaryIndex by playerViewModel.primaryLyricIndex.collectAsState()
         val activeIndices by playerViewModel.activeLyricIndices.collectAsState()
         val secondaryMode by settingsPreferences.fullScreenLyricSecondaryMode.collectAsState(initial = "translation")
+        val isPlaying by controller.isPlaying.collectAsState()
+        val clock = rememberLyricClock(controller)
         LyricsViewContent(
             track = track,
             lines = detail.lyrics,
@@ -116,6 +121,8 @@ fun LyricsViewOverlay(
             primaryIndex = primaryIndex,
             activeIndices = activeIndices,
             secondaryMode = secondaryMode,
+            isPlaying = isPlaying,
+            clock = clock,
             isFullscreen = isFullscreen,
             onSeek = playerViewModel::seekToTime,
             onToggleFullscreen = state::toggleFullscreen,
@@ -132,6 +139,8 @@ private fun LyricsViewContent(
     primaryIndex: Int,
     activeIndices: Set<Int>,
     secondaryMode: String,
+    isPlaying: Boolean,
+    clock: () -> Long,
     isFullscreen: Boolean,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -158,7 +167,7 @@ private fun LyricsViewContent(
                     )
                     LyricsPlaceholder.Empty -> Placeholder("暂无歌词")
                     LyricsPlaceholder.PureMusic -> Placeholder("纯音乐，请欣赏")
-                    null -> LyricsList(lines, primaryIndex, activeIndices, secondaryMode, onSeek)
+                    null -> LyricsList(lines, primaryIndex, activeIndices, secondaryMode, isPlaying, clock, onSeek)
                 }
             }
         }
@@ -206,6 +215,8 @@ private fun LyricsList(
     primaryIndex: Int,
     activeIndices: Set<Int>,
     secondaryMode: String,
+    isPlaying: Boolean,
+    clock: () -> Long,
     onSeek: (Long) -> Unit
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -246,6 +257,8 @@ private fun LyricsList(
                     line = line,
                     active = isActiveLine(index, primaryIndex, activeIndices),
                     secondary = secondaryText(line, secondaryMode),
+                    isPlaying = isPlaying,
+                    clock = clock,
                     onClick = {
                         following = true
                         onSeek(line.timeMs)
@@ -257,7 +270,14 @@ private fun LyricsList(
 }
 
 @Composable
-private fun LyricsRow(line: LyricLine, active: Boolean, secondary: String?, onClick: () -> Unit) {
+private fun LyricsRow(
+    line: LyricLine,
+    active: Boolean,
+    secondary: String?,
+    isPlaying: Boolean,
+    clock: () -> Long,
+    onClick: () -> Unit
+) {
     val hoverSource = remember { MutableInteractionSource() }
     val hovered by hoverSource.collectIsHoveredAsState()
     val color by animateColorAsState(
@@ -269,25 +289,97 @@ private fun LyricsRow(line: LyricLine, active: Boolean, secondary: String?, onCl
         tween(300),
         label = "lyricsRowColor"
     )
+    // 对唱行靠右，其余靠左
+    val end = isEndAligned(line)
+    val textAlign = if (end) TextAlign.End else TextAlign.Start
+    val horizontal = if (end) Alignment.End else Alignment.Start
+
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hoverable(hoverSource).pointerHoverIcon(PointerIcon.Hand)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = horizontal
     ) {
-        Text(
-            line.text,
-            color = color,
-            fontSize = LyricFontSize,
-            lineHeight = LyricFontSize * 1.3f,
-            fontWeight = FontWeight.ExtraBold
-        )
+        if (active && line.words.isNotEmpty()) {
+            KaraokeText(
+                line = line,
+                positionProvider = clock,
+                inactiveColor = InactiveColor,
+                activeColor = Color.White,
+                fontSize = LyricFontSize,
+                lineHeight = LyricFontSize * 1.3f,
+                textAlign = textAlign,
+                isPlaying = isPlaying
+            )
+        } else {
+            Text(
+                line.text,
+                color = color,
+                fontSize = LyricFontSize,
+                lineHeight = LyricFontSize * 1.3f,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = textAlign,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         if (secondary != null) {
             Text(
                 secondary,
                 color = color.copy(alpha = color.alpha * 0.8f),
                 fontSize = SecondaryFontSize,
                 lineHeight = SecondaryFontSize * 1.35f,
-                modifier = Modifier.padding(top = SecondarySpacing)
+                textAlign = textAlign,
+                modifier = Modifier.fillMaxWidth().padding(top = SecondarySpacing)
             )
+        }
+        line.backgroundLine?.let { background ->
+            BackgroundVocal(background, active, textAlign, horizontal, isPlaying, clock)
+        }
+    }
+}
+
+// AMLL 的背景和声：字号更小、颜色更淡，缩进到 90% 宽并随主声部对齐，避免和主声部抢视觉重心
+@Composable
+private fun BackgroundVocal(
+    line: LyricLine,
+    active: Boolean,
+    textAlign: TextAlign,
+    horizontal: Alignment.Horizontal,
+    isPlaying: Boolean,
+    clock: () -> Long
+) {
+    // 未激活与本行激活但和声尚未开唱时用同一底色，避免状态切换变色
+    val inactive = Color.White.copy(alpha = 0.22f)
+    val activeColor = Color.White.copy(alpha = 0.82f)
+    Column(Modifier.fillMaxWidth(0.9f).padding(top = 8.dp), horizontalAlignment = horizontal) {
+        if (active && line.words.isNotEmpty()) {
+            KaraokeText(
+                line = line,
+                positionProvider = clock,
+                inactiveColor = inactive,
+                activeColor = activeColor,
+                fontSize = BackgroundFontSize,
+                lineHeight = BackgroundFontSize * 1.4f,
+                textAlign = textAlign,
+                isPlaying = isPlaying,
+                fontWeight = FontWeight.Bold
+            )
+        } else {
+            Text(
+                line.text,
+                color = if (active) activeColor else inactive,
+                fontSize = BackgroundFontSize,
+                lineHeight = BackgroundFontSize * 1.4f,
+                fontWeight = FontWeight.Bold,
+                textAlign = textAlign,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        val tint = if (active) activeColor else inactive
+        line.translation?.let {
+            Text(it, color = tint, fontSize = BackgroundSecondarySize, textAlign = textAlign, modifier = Modifier.fillMaxWidth().padding(top = 3.dp))
+        }
+        line.roma?.let {
+            Text(it, color = tint, fontSize = BackgroundSecondarySize, textAlign = textAlign, modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
         }
     }
 }
