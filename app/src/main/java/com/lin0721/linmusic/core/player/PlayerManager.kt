@@ -964,7 +964,7 @@ class PlayerManager(
     // 关闭心动模式并还原进入前备份的队列数据
     override fun disableIntelligence() {
         if (playbackQueue.playContext.value != CONTEXT_INTELLIGENCE) return
-        playbackQueue.restoreSnapshot()
+        playbackQueue.exitSpecialContext()
         saveQueueState()
     }
 

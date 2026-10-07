@@ -389,7 +389,7 @@ class MpvPlaybackController(
 
     override fun disableIntelligence() {
         if (playbackQueue.playContext.value != CONTEXT_INTELLIGENCE) return
-        playbackQueue.restoreSnapshot()
+        playbackQueue.exitSpecialContext()
         saveQueueState()
     }
 
