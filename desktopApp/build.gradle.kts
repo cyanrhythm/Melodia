@@ -98,6 +98,22 @@ val prepareNativeResources by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("appResources/windows"))
 }
 
+// 运行时读取的版本信息，与打包版本同源
+val generateAppInfo by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/appinfo")
+    val version = desktopVersion
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val dir = outputDir.get().asFile.apply { mkdirs() }
+        dir.resolve("app-info.properties").writeText("version=$version" + System.lineSeparator())
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(generateAppInfo)
+}
+
 // jpackage 需要 JDK 17+ 完整版，由工具链自动下载，不影响日常编译所用 JDK
 val packagingJavaHome = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
@@ -146,6 +162,8 @@ afterEvaluate {
             task.name.startsWith("createDistributable") || task.name.startsWith("createReleaseDistributable") ||
             (task.name.startsWith("package") && task.name != "packageReleaseZip")
     }.configureEach { dependsOn(prepareNativeResources) }
+    // 开发运行视为调试环境，默认日志级别更详细
+    tasks.named<JavaExec>("run") { jvmArgs("-Dmelodia.debug=true") }
 }
 
 // 免安装版：把发布版程序目录打成 zip

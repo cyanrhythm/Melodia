@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.preferences.FullPlayerCardLayout
+import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.AutoStart
@@ -84,6 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
 import java.awt.event.KeyEvent as AwtKeyEvent
+import java.awt.Desktop
 import java.io.File
 import javax.swing.JFileChooser
 
@@ -113,6 +115,7 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val hotkeys = remember { koin.get<GlobalHotkeys>() }
     val audioCache = remember { koin.get<AudioCache>() }
+    val navigator = LocalDesktopNavigator.current
     val smtc = remember { koin.get<SmtcSession>() }
     val scope = rememberCoroutineScope()
 
@@ -125,6 +128,9 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val unmEnabledModules by sourcePreferences.unmEnabledModules.collectAsState(initial = UnmModule.ALL_KEYS.toSet())
     val unmModuleOrder by sourcePreferences.unmModuleOrder.collectAsState(initial = UnmModule.ALL_KEYS)
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
+    val logLevelName by settingsPreferences.logLevel.collectAsState(initial = AppLogger.LogLevel.WARN.name)
+    var logBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { logBytes = withContext(Dispatchers.IO) { AppLogger.getLogsSize() } }
     val streamCacheEnabled by settingsPreferences.streamCacheEnabled.collectAsState(initial = true)
     val cacheMaxSize by settingsPreferences.audioCacheMaxSize.collectAsState(initial = CacheSizeOptions.first())
     var cacheUsedBytes by remember { mutableStateOf(0L) }
@@ -330,6 +336,34 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                 AutoStartRow()
             }
 
+            SettingsCard("日志") {
+                SettingRow("日志级别", subtitle = "越详细越利于排查问题，立即生效") {
+                    LogLevelSelector(logLevelName) { level ->
+                        scope.launch {
+                            settingsPreferences.saveLogLevel(level.name)
+                            AppLogger.setLevel(level)
+                        }
+                    }
+                }
+                SettingRow("日志文件", subtitle = "${formatBytes(logBytes)} · ${DesktopPaths.logDir.absolutePath}") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {
+                            if (!openDirectory(DesktopPaths.logDir)) navigator.showMessage("无法打开日志目录")
+                        }) {
+                            Text("打开目录", color = DesktopColors.Accent)
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { AppLogger.clearLogs() }
+                                logBytes = withContext(Dispatchers.IO) { AppLogger.getLogsSize() }
+                            }
+                        }) {
+                            Text("清除", color = DesktopColors.TextGray)
+                        }
+                    }
+                }
+            }
+
             SettingsCard("快捷键") {
                 SettingRow(
                     title = "系统媒体控制（媒体键与系统播放卡片）",
@@ -400,6 +434,49 @@ internal fun SettingSwitch(checked: Boolean, enabled: Boolean = true, onChange: 
 }
 
 @Composable
+private fun LogLevelSelector(currentName: String, onSelect: (AppLogger.LogLevel) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = runCatching { AppLogger.LogLevel.valueOf(currentName) }.getOrDefault(AppLogger.LogLevel.WARN)
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(logLevelLabel(current), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            AppLogger.LogLevel.entries.forEach { level ->
+                DropdownMenuItem(
+                    text = { Text(logLevelLabel(level), color = if (level == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(level)
+                    }
+                )
+            }
+        }
+    }
+}
+
+// 与移动端的叫法保持一致
+private fun logLevelLabel(level: AppLogger.LogLevel): String = when (level) {
+    AppLogger.LogLevel.DEBUG -> "详细"
+    AppLogger.LogLevel.INFO -> "标准"
+    AppLogger.LogLevel.WARN -> "精简"
+    AppLogger.LogLevel.ERROR -> "仅错误"
+}
+
+private fun openDirectory(dir: File): Boolean = try {
+    dir.mkdirs()
+    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+        Desktop.getDesktop().open(dir)
+        true
+    } else {
+        false
+    }
+} catch (_: Exception) {
+    false
+}
+
+@Composable
 private fun CacheSizeSelector(currentBytes: Long, onSelect: (Long) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -423,7 +500,11 @@ private fun CacheSizeSelector(currentBytes: Long, onSelect: (Long) -> Unit) {
 
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1024) "%.1f GB".format(java.util.Locale.ROOT, mb / 1024) else "%.0f MB".format(java.util.Locale.ROOT, mb)
+    return when {
+        mb >= 1024 -> "%.1f GB".format(java.util.Locale.ROOT, mb / 1024)
+        mb >= 1 -> "%.0f MB".format(java.util.Locale.ROOT, mb)
+        else -> "%.0f KB".format(java.util.Locale.ROOT, bytes / 1024.0)
+    }
 }
 
 @Composable

@@ -9,6 +9,9 @@ object DesktopPaths {
         File(base, "Melodia").apply { mkdirs() }
     }
 
+    // 运行日志目录，AppLogger 在其中滚动写入 app_log_0/1.txt
+    val logDir: File by lazy { File(dataDir, "logs") }
+
     // 下载目录默认值：用户音乐目录下的 Melodia
     val defaultDownloadDir: File by lazy { File(File(System.getProperty("user.home"), "Music"), "Melodia") }
 

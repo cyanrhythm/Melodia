@@ -54,6 +54,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import com.lin0721.linmusic.desktop.platform.DesktopLogging
 import org.jetbrains.skia.Image
 import org.koin.core.context.startKoin
 import java.awt.Dimension
@@ -62,6 +63,7 @@ private const val VOLUME_STEP = 5
 private const val EXIT_ANIMATION_MS = 250L
 
 fun main() {
+    DesktopLogging.install()
     val koin = startKoin {
         modules(desktopPlatformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
     }.koin
