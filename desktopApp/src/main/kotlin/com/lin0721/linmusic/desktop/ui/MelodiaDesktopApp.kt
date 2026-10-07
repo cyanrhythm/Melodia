@@ -199,7 +199,8 @@ fun WindowScope.MelodiaDesktopApp(
             )
             navigatorMessages.tryEmit("已加入下载队列")
         },
-        showMessage = { navigatorMessages.tryEmit(it) }
+        showMessage = { navigatorMessages.tryEmit(it) },
+        goBack = backStack::back
     )
 
     val saveableStateHolder = rememberSaveableStateHolder()

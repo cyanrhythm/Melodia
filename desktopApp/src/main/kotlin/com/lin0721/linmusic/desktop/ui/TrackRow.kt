@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DragIndicator
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -24,7 +25,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -65,7 +75,17 @@ private const val DISABLED_ROW_ALPHA = 0.38f
 // 与歌单页表头的“添加日期”列同宽
 internal val ADDED_COLUMN_WIDTH = 120.dp
 
-private val DangerColor = Color(0xFFFF6B6B)
+internal val DangerColor = Color(0xFFFF6B6B)
+
+// 行内拖动排序：偏移与手势回调由列表页的 QueueReorderState 驱动
+@Immutable
+class TrackReorder(
+    val dragging: Boolean,
+    val offsetY: Float,
+    val onDragStart: () -> Unit,
+    val onDrag: (Float) -> Unit,
+    val onDragEnd: () -> Unit
+)
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -78,7 +98,9 @@ fun TrackRow(
     actions: TrackActions? = null,
     enabled: Boolean = true,
     // 非 null 时在专辑后多一列“添加日期”（歌单页专用）
-    addedAtText: String? = null
+    addedAtText: String? = null,
+    // 非 null 时悬停行首显示拖动把手
+    reorder: TrackReorder? = null
 ) {
     val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
@@ -88,11 +110,35 @@ fun TrackRow(
     var contextMenuOffset by remember { mutableStateOf<DpOffset?>(null) }
     var moreMenuOpen by remember { mutableStateOf(false) }
     val isLiked = actions != null && track.id in actions.likedSongIds
+    val currentDragStart by rememberUpdatedState(reorder?.onDragStart)
+    val currentDrag by rememberUpdatedState(reorder?.onDrag)
+    val currentDragEnd by rememberUpdatedState(reorder?.onDragEnd)
+    val dragging = reorder?.dragging == true
+    val lifted = reorder != null && (dragging || reorder.offsetY != 0f)
+    val rowShape = RoundedCornerShape(4.dp)
 
-    Box(modifier.fillMaxWidth().alpha(if (enabled) 1f else DISABLED_ROW_ALPHA).onSizeChanged { rowHeightPx = it.height }) {
+    Box(
+        modifier.fillMaxWidth()
+            .then(
+                if (lifted && reorder != null) {
+                    Modifier.zIndex(1f).graphicsLayer { translationY = reorder.offsetY }
+                        .then(if (dragging) Modifier.shadow(8.dp, rowShape) else Modifier)
+                } else {
+                    Modifier
+                }
+            )
+            .alpha(if (enabled) 1f else DISABLED_ROW_ALPHA)
+            .onSizeChanged { rowHeightPx = it.height }
+    ) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-                .background(if (hovered || contextMenuOffset != null || moreMenuOpen) DesktopColors.PaneHover else Color.Transparent)
+            Modifier.fillMaxWidth().clip(rowShape)
+                .background(
+                    when {
+                        dragging -> DesktopColors.Surface
+                        hovered || contextMenuOffset != null || moreMenuOpen -> DesktopColors.PaneHover
+                        else -> Color.Transparent
+                    }
+                )
                 .onPointerEvent(PointerEventType.Enter) { hovered = true }
                 .onPointerEvent(PointerEventType.Exit) { hovered = false }
                 .onPointerEvent(PointerEventType.Press) { event ->
@@ -108,13 +154,34 @@ fun TrackRow(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "${index + 1}",
-                color = if (isCurrent) DesktopColors.Accent else DesktopColors.TextGray,
-                fontSize = 14.sp,
-                textAlign = TextAlign.End,
-                modifier = Modifier.width(32.dp)
-            )
+            if (reorder != null && (hovered || dragging)) {
+                Box(Modifier.width(32.dp), contentAlignment = Alignment.CenterEnd) {
+                    Icon(
+                        Icons.Rounded.DragIndicator,
+                        "拖动排序",
+                        tint = DesktopColors.TextGray,
+                        modifier = Modifier.size(20.dp).pointerHoverIcon(PointerIcon.Hand).pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { currentDragStart?.invoke() },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    currentDrag?.invoke(amount.y)
+                                },
+                                onDragEnd = { currentDragEnd?.invoke() },
+                                onDragCancel = { currentDragEnd?.invoke() }
+                            )
+                        }
+                    )
+                }
+            } else {
+                Text(
+                    "${index + 1}",
+                    color = if (isCurrent) DesktopColors.Accent else DesktopColors.TextGray,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(32.dp)
+                )
+            }
             Cover(track.al.picUrl, 40.dp, modifier = Modifier.padding(start = 16.dp))
             Column(Modifier.weight(0.45f).padding(start = 12.dp)) {
                 Text(

@@ -19,7 +19,8 @@ class DesktopNavigator(
     // 下载音质跟随播放音质设置
     val downloadLevel: String,
     val downloadTrack: (Track) -> Unit,
-    val showMessage: (String) -> Unit
+    val showMessage: (String) -> Unit,
+    val goBack: () -> Unit
 )
 
 val LocalDesktopNavigator = compositionLocalOf<DesktopNavigator> {

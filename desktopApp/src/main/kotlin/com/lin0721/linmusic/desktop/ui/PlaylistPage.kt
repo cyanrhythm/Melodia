@@ -30,7 +30,10 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
@@ -38,6 +41,8 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -52,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,6 +68,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.onSizeChanged
@@ -82,11 +89,15 @@ import com.lin0721.linmusic.feature.playlist.ui.PlaylistUiState
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.util.Collections
 
 // 距离列表底部还剩几项时加载下一页曲目
 private const val TRACK_LOAD_MORE_THRESHOLD = 10
 private const val HERO_DARKEN_FRACTION = 0.35f
 private const val PRIVATE_PLAYLIST = 10
+
+// 表头项与吸顶列头占用的列表下标
+private const val LEADING_LIST_ITEMS = 2
 
 private val HeaderPadding = 24.dp
 private val ControlHeight = 36.dp
@@ -169,6 +180,10 @@ private fun PlaylistContent(
         onRemove = removeTrack
     )
 
+    val isSavingInfo by viewModel.isSavingInfo.collectAsState()
+    var showEdit by remember(playlist.id) { mutableStateOf(false) }
+    var showAddSongs by remember(playlist.id) { mutableStateOf(false) }
+    var showDelete by remember(playlist.id) { mutableStateOf(false) }
     var query by remember(playlist.id) { mutableStateOf("") }
     var order by remember(playlist.id) { mutableStateOf(PlaylistSortOrder()) }
     val addedAt = remember(playlist.trackIds) { playlist.trackIds.associate { it.id to it.at } }
@@ -178,9 +193,47 @@ private fun PlaylistContent(
         sortTracks(filterTracks(playlist.tracks, query), order, addedAt)
     }
 
-    // 排序与搜索针对全部曲目，离开默认视图时把没加载的补齐
-    LaunchedEffect(customView, playlist.id, state.hasMoreTracks) {
-        if (!customView && state.hasMoreTracks && !state.isLoadingMoreTracks) viewModel.ensureAllTracksLoaded { }
+    // 排序与搜索针对全部曲目，自建歌单的拖动调序按全量提交，都需要把没加载的补齐
+    LaunchedEffect(customView, isOwned, playlist.id, state.hasMoreTracks) {
+        if ((!customView || isOwned) && state.hasMoreTracks && !state.isLoadingMoreTracks) viewModel.ensureAllTracksLoaded { }
+    }
+
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var draft by remember(playlist.id) { mutableStateOf<List<Track>?>(null) }
+    var savingOrder by remember(playlist.id) { mutableStateOf(false) }
+    val canReorder = isOwned && customView && !state.hasMoreTracks && !state.isLoadingMoreTracks && !savingOrder
+    val shown = draft ?: displayed
+    val reorder = rememberQueueReorderState(
+        listState = listState,
+        upcomingStart = 0,
+        queueSize = shown.size,
+        upcomingFirstLazyIndex = LEADING_LIST_ITEMS,
+        onMove = { from, to -> draft = (draft ?: displayed).toMutableList().also { Collections.swap(it, from, to) } }
+    )
+    LaunchedEffect(reorder.isDragging) {
+        if (reorder.isDragging) reorder.runEdgeScroll()
+    }
+    val commitOrder = {
+        val reordered = draft
+        if (reordered != null && reordered != playlist.tracks) {
+            savingOrder = true
+            viewModel.updateTrackOrder(playlist.id, reordered) {
+                savingOrder = false
+                draft = null
+            }
+        } else {
+            draft = null
+        }
+    }
+    // 同一首歌不会重复入歌单，但按出现次数区分以防服务端数据异常
+    val rowKeys = remember(shown) {
+        val seen = HashMap<Long, Int>()
+        shown.map { track ->
+            val occurrence = seen.getOrElse(track.id) { 0 }
+            seen[track.id] = occurrence + 1
+            "track_${track.id}_$occurrence"
+        }
     }
 
     val viewOf = { all: List<Track> -> sortTracks(filterTracks(all, query), order, addedAt) }
@@ -215,7 +268,6 @@ private fun PlaylistContent(
     }
     val heroColor by animateColorAsState(lerp(heroBase, Color.Black, HERO_DARKEN_FRACTION), label = "playlistHero")
 
-    val listState = rememberLazyListState()
     val shouldLoadMore by remember(state) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -243,6 +295,8 @@ private fun PlaylistContent(
                         query = query,
                         order = order,
                         showAdded = hasDates,
+                        canDelete = isOwned,
+                        onDelete = { showDelete = true },
                         onPlay = { playDisplayed(false) },
                         onShuffle = { playDisplayed(true) },
                         onToggleSubscribe = {
@@ -256,12 +310,23 @@ private fun PlaylistContent(
                         onQueryChange = { query = it },
                         onOrderChange = { order = it }
                     )
+                    if (isOwned) {
+                        Row(
+                            Modifier.padding(start = HeaderPadding, end = HeaderPadding, bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PlaylistPill(Icons.Rounded.Add, "添加") { showAddSongs = true }
+                            PlaylistPill(Icons.Rounded.Edit, "名称和详情") { showEdit = true }
+                        }
+                    }
                 }
             }
             stickyHeader(key = "columns") {
                 TrackColumnHeader(order, hasDates) { order = order.toggled(it) }
             }
-            itemsIndexed(displayed, key = { index, track -> "${track.id}_$index" }) { index, track ->
+            itemsIndexed(shown, key = { index, _ -> rowKeys[index] }) { index, track ->
+                val dragging = reorder.draggedIndex == index
+                val settling = reorder.settlingIndex == index
                 TrackRow(
                     index = index,
                     track = track,
@@ -269,11 +334,27 @@ private fun PlaylistContent(
                     onPlay = { playFrom(track) },
                     actions = actions,
                     enabled = track.id !in unplayableIds,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    addedAtText = if (hasDates) formatAddedDate(addedAt[track.id] ?: 0L) else null
+                    // 抬起中的行自己负责位移，交给 animateItem 会和手动位移打架
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                        .then(if (dragging || settling) Modifier.zIndex(1f) else Modifier.animateItem()),
+                    addedAtText = if (hasDates) formatAddedDate(addedAt[track.id] ?: 0L) else null,
+                    reorder = if (canReorder || dragging) {
+                        TrackReorder(
+                            dragging = dragging,
+                            offsetY = reorder.offsetOf(index),
+                            onDragStart = { reorder.start(index) },
+                            onDrag = { delta -> reorder.drag(index, delta) },
+                            onDragEnd = {
+                                reorder.end(index, scope)
+                                commitOrder()
+                            }
+                        )
+                    } else {
+                        null
+                    }
                 )
             }
-            if (displayed.isEmpty() && query.isNotBlank() && !state.isLoadingMoreTracks) {
+            if (shown.isEmpty() && query.isNotBlank() && !state.isLoadingMoreTracks) {
                 item(key = "empty") {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text("未找到匹配的歌曲", color = DesktopColors.TextGray, fontSize = 14.sp)
@@ -288,6 +369,47 @@ private fun PlaylistContent(
                 }
             }
         }
+    }
+
+    if (showEdit) {
+        EditPlaylistDialog(
+            initialName = playlist.name,
+            initialDescription = playlist.description.orEmpty(),
+            coverUrl = playlist.coverImgUrl,
+            isSaving = isSavingInfo,
+            onDismiss = { showEdit = false },
+            onConfirm = { name, description, coverBytes ->
+                viewModel.updatePlaylistInfo(
+                    playlist.id, playlist.name, name, playlist.description, description, coverBytes
+                ) { success -> if (success) showEdit = false }
+            }
+        )
+    }
+    if (showAddSongs) {
+        AddSongsDialog(
+            playlistId = playlist.id,
+            existingIds = remember(playlist.tracks) { playlist.tracks.mapTo(HashSet()) { it.id } },
+            viewModel = viewModel,
+            onDismiss = { showAddSongs = false }
+        )
+    }
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            shape = AlertDialogDefaults.shape,
+            containerColor = DesktopColors.PopupSurface,
+            title = { Text("删除歌单", color = DesktopColors.TextPrimary) },
+            text = { Text("确定要删除歌单「${playlist.name}」吗？", color = DesktopColors.TextGray, fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDelete = false
+                    viewModel.deletePlaylist(playlist.id) { navigator.goBack() }
+                }) { Text("删除", color = DangerColor, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDelete = false }) { Text("取消", color = DesktopColors.TextGray) }
+            }
+        )
     }
 }
 
@@ -339,6 +461,8 @@ private fun PlaylistActionBar(
     query: String,
     order: PlaylistSortOrder,
     showAdded: Boolean,
+    canDelete: Boolean,
+    onDelete: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onToggleSubscribe: () -> Unit,
@@ -373,7 +497,7 @@ private fun PlaylistActionBar(
             )
         }
         ActionIcon(Icons.Rounded.Download, "下载$resourceLabel", onClick = onDownload)
-        PlaylistMoreMenu(resourceLabel, onPlayNextAll, onCopyLink)
+        PlaylistMoreMenu(resourceLabel, canDelete, onPlayNextAll, onCopyLink, onDelete)
         Spacer(Modifier.weight(1f))
         PlaylistSearchBox(query, onQueryChange)
         PlaylistSortMenu(order, showAdded) { key ->
@@ -397,7 +521,13 @@ private fun ActionIcon(
 }
 
 @Composable
-private fun PlaylistMoreMenu(resourceLabel: String, onPlayNextAll: () -> Unit, onCopyLink: () -> Unit) {
+private fun PlaylistMoreMenu(
+    resourceLabel: String,
+    canDelete: Boolean,
+    onPlayNextAll: () -> Unit,
+    onCopyLink: () -> Unit,
+    onDelete: () -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         ActionIcon(Icons.Rounded.MoreHoriz, "更多") { expanded = true }
@@ -422,7 +552,36 @@ private fun PlaylistMoreMenu(resourceLabel: String, onPlayNextAll: () -> Unit, o
                     onCopyLink()
                 }
             )
+            if (canDelete) {
+                DropdownMenuItem(
+                    text = { Text("删除歌单", fontSize = 14.sp, color = DangerColor) },
+                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = DangerColor, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        expanded = false
+                        onDelete()
+                    }
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun PlaylistPill(icon: ImageVector, text: String, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(16.dp)).background(DesktopColors.Surface)
+            .pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = DesktopColors.TextPrimary, modifier = Modifier.size(18.dp))
+        Text(
+            text,
+            color = DesktopColors.TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 6.dp)
+        )
     }
 }
 
