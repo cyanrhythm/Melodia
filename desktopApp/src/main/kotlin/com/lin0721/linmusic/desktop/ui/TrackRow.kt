@@ -26,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -156,14 +155,10 @@ fun TrackRow(
                 .then(
                     if (reorder != null) {
                         Modifier.pointerInput(Unit) {
-                            detectDragGesturesAfterLongPress(
+                            detectLongPressReorder(
                                 onDragStart = { currentDragStart?.invoke() },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    currentDrag?.invoke(amount.y)
-                                },
-                                onDragEnd = { currentDragEnd?.invoke() },
-                                onDragCancel = { currentDragEnd?.invoke() }
+                                onDrag = { delta -> currentDrag?.invoke(delta) },
+                                onDragEnd = { currentDragEnd?.invoke() }
                             )
                         }
                     } else {
