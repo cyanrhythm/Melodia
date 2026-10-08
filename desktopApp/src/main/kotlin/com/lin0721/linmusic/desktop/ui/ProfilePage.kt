@@ -1,6 +1,7 @@
 package com.lin0721.linmusic.desktop.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +62,10 @@ import com.lin0721.linmusic.feature.profile.ui.ProfileUiState
 import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
 
 private const val HERO_DARKEN_FRACTION = 0.35f
+
+// 与 ProfileViewModel.selectedTab 的下标一致
+private const val TAB_PLAYLISTS = 0
+private const val TAB_RANK = 1
 private val ContentPadding = 24.dp
 private val PlaylistCardWidth = 168.dp
 private val AvatarSize = 160.dp
@@ -90,6 +95,7 @@ fun ProfilePage(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfileContent(
     state: ProfileUiState.Success,
@@ -101,8 +107,6 @@ private fun ProfileContent(
     val info = state.userInfo
     val nowPlaying by controller.nowPlaying.collectAsState()
     val listState = rememberLazyListState()
-
-    LaunchedEffect(info.uid) { viewModel.loadListeningRankIfNeeded() }
 
     var heroBase by remember(info.uid) { mutableStateOf(FallbackCoverPalette.base) }
     LaunchedEffect(info.avatarUrl) {
@@ -143,29 +147,39 @@ private fun ProfileContent(
                     }
                 }
 
-                item(key = "playlists_title") { SectionHeading("歌单", info.playlistCount) }
-                val rows = state.playlists.chunked(columns)
-                items(rows.size, key = { "playlist_row_$it" }) { rowIndex ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = ContentPadding, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        rows[rowIndex].forEach { playlist ->
-                            PlaylistCard(playlist) { navigator.openPlaylist(playlist.id, playlist.name) }
-                        }
-                    }
-                    if (rowIndex == rows.lastIndex && state.playlistsHasMore) {
-                        LaunchedEffect(rows.size) { viewModel.loadMorePlaylists() }
-                    }
-                }
-                if (state.playlistsLoadingMore) item(key = "playlists_loading") { LoadingRow() }
-                if (state.playlistsLoaded && state.playlists.isEmpty()) {
-                    item(key = "playlists_empty") { EmptyRow("暂无歌单") }
+                // 标签吸顶，歌单再多也能随时切到听歌排行
+                stickyHeader(key = "tabs") {
+                    TabBar(
+                        tabs = listOf(TAB_PLAYLISTS, TAB_RANK),
+                        selected = state.selectedTab,
+                        label = { if (it == TAB_PLAYLISTS) "歌单" else "听歌排行" },
+                        onSelect = viewModel::selectTab,
+                        modifier = Modifier.fillMaxWidth().background(DesktopColors.Pane)
+                            .padding(horizontal = ContentPadding, vertical = 12.dp)
+                    )
                 }
 
-                item(key = "rank_title") {
-                    Column(Modifier.padding(top = 16.dp)) {
-                        SectionHeading("听歌排行", null)
+                if (state.selectedTab == TAB_PLAYLISTS) {
+                    val rows = state.playlists.chunked(columns)
+                    items(rows.size, key = { "playlist_row_$it" }) { rowIndex ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = ContentPadding, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            rows[rowIndex].forEach { playlist ->
+                                PlaylistCard(playlist) { navigator.openPlaylist(playlist.id, playlist.name) }
+                            }
+                        }
+                        if (rowIndex == rows.lastIndex && state.playlistsHasMore) {
+                            LaunchedEffect(rows.size) { viewModel.loadMorePlaylists() }
+                        }
+                    }
+                    if (state.playlistsLoadingMore) item(key = "playlists_loading") { LoadingRow() }
+                    if (state.playlistsLoaded && state.playlists.isEmpty()) {
+                        item(key = "playlists_empty") { EmptyRow("暂无歌单") }
+                    }
+                } else {
+                    item(key = "rank_range") {
                         TabBar(
                             tabs = listOf(0, 1),
                             selected = state.rankSubTab,
@@ -175,21 +189,21 @@ private fun ProfileContent(
                             small = true
                         )
                     }
-                }
-                if (state.rankLoading) {
-                    item(key = "rank_loading") { LoadingRow() }
-                } else if (state.rankLoaded && state.rankItems.isEmpty()) {
-                    item(key = "rank_empty") { EmptyRow("暂无听歌排行，对方可能没有公开") }
-                } else {
-                    items(state.rankItems.size, key = { "rank_${state.rankItems[it].songId}_$it" }) { index ->
-                        val item = state.rankItems[index]
-                        RankRow(
-                            index = index,
-                            item = item,
-                            isCurrent = nowPlaying?.songId == item.songId,
-                            onPlay = { playRank(index) },
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
+                    if (state.rankLoading) {
+                        item(key = "rank_loading") { LoadingRow() }
+                    } else if (state.rankLoaded && state.rankItems.isEmpty()) {
+                        item(key = "rank_empty") { EmptyRow("暂无听歌排行，对方可能没有公开") }
+                    } else {
+                        items(state.rankItems.size, key = { "rank_${state.rankItems[it].songId}_$it" }) { index ->
+                            val item = state.rankItems[index]
+                            RankRow(
+                                index = index,
+                                item = item,
+                                isCurrent = nowPlaying?.songId == item.songId,
+                                onPlay = { playRank(index) },
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -259,19 +273,6 @@ internal fun FollowButton(followed: Boolean, modifier: Modifier = Modifier, onCl
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
-    }
-}
-
-@Composable
-private fun SectionHeading(title: String, count: Int?) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = ContentPadding, vertical = 8.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Text(title, color = DesktopColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        if (count != null && count > 0) {
-            Text("  $count", color = DesktopColors.TextGray, fontSize = 14.sp, modifier = Modifier.padding(bottom = 2.dp))
-        }
     }
 }
 
