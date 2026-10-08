@@ -50,6 +50,7 @@ import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.PlaybackController.Companion.CONTEXT_INTELLIGENCE
 import com.lin0721.linmusic.core.player.SimilarRoamingController
+import com.lin0721.linmusic.core.player.formatSleepTimerRemaining
 import com.lin0721.linmusic.core.preferences.FullPlayerCard
 import com.lin0721.linmusic.desktop.ui.nowplaying.AboutArtistCard
 import com.lin0721.linmusic.desktop.ui.nowplaying.ArtistAlbumsCard
@@ -213,7 +214,7 @@ private fun PanelHeader(
         if (sleepActive) {
             Icon(Icons.Rounded.Bedtime, "睡眠定时", tint = DesktopColors.Accent, modifier = Modifier.size(16.dp))
             Text(
-                formatCountdown(sleepRemaining),
+                formatSleepTimerRemaining(sleepRemaining),
                 color = DesktopColors.TextGray,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = 4.dp)
@@ -257,7 +258,7 @@ private fun PanelHeader(
                     }
                     if (!podcast.isPodcast) HorizontalDivider(color = DesktopColors.SurfaceLight)
                     Text(
-                        if (sleepActive) "睡眠定时（剩余 ${formatCountdown(sleepRemaining)}）" else "睡眠定时",
+                        if (sleepActive) "睡眠定时（剩余 ${formatSleepTimerRemaining(sleepRemaining)}）" else "睡眠定时",
                         color = DesktopColors.TextGray,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -341,9 +342,4 @@ private fun MenuItem(
         enabled = enabled,
         onClick = onClick
     )
-}
-
-private fun formatCountdown(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }
