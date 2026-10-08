@@ -1,8 +1,6 @@
 package com.lin0721.linmusic.core.auth
 
 import com.lin0721.linmusic.core.api.AccountInfoResponse
-import com.lin0721.linmusic.core.api.CaptchaSentRequest
-import com.lin0721.linmusic.core.api.CellphoneLoginRequest
 import com.lin0721.linmusic.core.api.NeteaseApiService
 import com.lin0721.linmusic.core.api.QrCheckRequest
 import com.lin0721.linmusic.core.api.QrCheckResponse
@@ -47,35 +45,6 @@ class AuthRepositoryImpl(
     )
 
     // 800/801/802/803 都是正常的轮询状态，不当业务错误处理；只有网络/解析异常才走 failure
-    override fun sendCaptcha(phone: String): Flow<Result<Unit>> = apiFlow(
-        request = { apiService.sendCaptcha(CaptchaSentRequest(cellphone = phone)) },
-        isSuccess = { it.code == 200 },
-        code = { it.code },
-        msg = { it.message },
-        transform = { Unit }
-    )
-
-    override fun loginByCaptcha(phone: String, captcha: String): Flow<Result<String>> = flow {
-        val response = apiService.loginCellphone(CellphoneLoginRequest(phone = phone, captcha = captcha))
-        val body = response.body()
-        when {
-            body == null -> emit(Result.failure(AppError.NetworkError))
-            body.code != 200 -> emit(Result.failure(AppError.BizError(body.code, body.message)))
-            else -> {
-                val cookies = mergeCookies(null, response.headers().values("Set-Cookie"))
-                if (cookies.isEmpty()) {
-                    AppLogger.e(TAG, "手机验证码登录返回 200 但未解析到 Set-Cookie")
-                    emit(Result.failure(AppError.BizError(body.code, "登录成功但未获取到会话，请重试")))
-                } else {
-                    emit(Result.success(cookies))
-                }
-            }
-        }
-    }.catch { e ->
-        AppLogger.e(TAG, "手机验证码登录异常: ${e::class.simpleName}", e)
-        emit(Result.failure(mapToAppError(e)))
-    }
-
     override fun refreshLogin(): Flow<Result<List<String>>> = flow {
         val response = apiService.refreshLogin()
         val body = response.body()
