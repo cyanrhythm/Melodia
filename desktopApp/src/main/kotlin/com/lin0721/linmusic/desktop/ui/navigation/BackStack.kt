@@ -18,6 +18,7 @@ sealed interface DesktopRoute {
     data object PodcastSubscribed : DesktopRoute
     data object PodcastToplist : DesktopRoute
     data class PodcastCategory(val id: Long, val name: String) : DesktopRoute
+    data object RecentPlay : DesktopRoute
     data class Profile(val uid: Long) : DesktopRoute
     data class FollowList(val uid: Long, val mode: FollowListMode) : DesktopRoute
     data object Settings : DesktopRoute

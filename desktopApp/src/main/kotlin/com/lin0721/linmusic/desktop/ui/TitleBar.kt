@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FilterNone
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
@@ -112,6 +113,7 @@ fun WindowScope.TitleBar(
     onDownloadsClick: (() -> Unit)?,
     onLoginClick: () -> Unit,
     onProfileClick: () -> Unit,
+    onRecentClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onMinimize: () -> Unit,
@@ -159,7 +161,7 @@ fun WindowScope.TitleBar(
         }
         Row(Modifier.align(Alignment.CenterEnd).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
             if (onDownloadsClick != null) DownloadsButton(downloadTasks, downloadsOpen, onDownloadsClick)
-            AvatarMenu(userProfile, onLoginClick, onProfileClick, onSettingsClick, onLogoutClick)
+            AvatarMenu(userProfile, onLoginClick, onProfileClick, onRecentClick, onSettingsClick, onLogoutClick)
             WindowButton(Icons.Rounded.Remove, "最小化", onClick = onMinimize)
             WindowButton(
                 if (isMaximized) Icons.Rounded.FilterNone else Icons.Rounded.CropSquare,
@@ -241,6 +243,7 @@ private fun AvatarMenu(
     userProfile: UserProfile?,
     onLoginClick: () -> Unit,
     onProfileClick: () -> Unit,
+    onRecentClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
@@ -274,6 +277,10 @@ private fun AvatarMenu(
                 AvatarMenuItem(Icons.Rounded.Person, "个人主页") {
                     expanded = false
                     onProfileClick()
+                }
+                AvatarMenuItem(Icons.Rounded.History, "最近播放") {
+                    expanded = false
+                    onRecentClick()
                 }
             }
             AvatarMenuItem(Icons.Rounded.Settings, "设置") {

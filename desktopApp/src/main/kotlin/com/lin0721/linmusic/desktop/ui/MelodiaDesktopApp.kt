@@ -70,6 +70,7 @@ import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
 import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
 import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
+import com.lin0721.linmusic.feature.recent.ui.RecentPlayViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastCategoryViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
@@ -297,6 +298,7 @@ fun WindowScope.MelodiaDesktopApp(
                     onDownloadsClick = downloader?.let { { toggleOverlay(DockOverlay.Downloads) } },
                     onLoginClick = { showLogin = true },
                     onProfileClick = { userProfile?.let { backStack.navigate(DesktopRoute.Profile(it.uid)) } },
+                    onRecentClick = { backStack.navigate(DesktopRoute.RecentPlay) },
                     onSettingsClick = { backStack.navigate(DesktopRoute.Settings) },
                     onLogoutClick = homeViewModel::logout,
                     onMinimize = { windowState.isMinimized = true },
@@ -446,6 +448,10 @@ fun WindowScope.MelodiaDesktopApp(
                                                 categoryId = route.id,
                                                 name = route.name,
                                                 viewModel = frameHost.viewModelFor(entry.id, PodcastCategoryViewModel::class, { emptyFlow() }) { koin.get() }
+                                            )
+                                            DesktopRoute.RecentPlay -> RecentPlayPage(
+                                                viewModel = frameHost.viewModelFor(entry.id, RecentPlayViewModel::class, { emptyFlow() }) { koin.get() },
+                                                controller = playbackController
                                             )
                                             is DesktopRoute.Profile -> ProfilePage(
                                                 uid = route.uid,
