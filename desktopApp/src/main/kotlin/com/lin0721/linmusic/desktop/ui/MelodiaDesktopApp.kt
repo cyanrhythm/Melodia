@@ -49,6 +49,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.WindowState
 import com.lin0721.linmusic.core.auth.LoginViewModel
+import com.lin0721.linmusic.core.auth.SessionMonitor
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.download.DownloadTrackInfo
 import com.lin0721.linmusic.core.download.SongDownloader
@@ -252,6 +253,15 @@ fun WindowScope.MelodiaDesktopApp(
     }
     val liveEntryIds = backStack.liveEntryIds
     LaunchedEffect(liveEntryIds) { frameHost.reconcile() }
+
+    // 登录失效时本地登录态已被清掉，这里提示并直接打开登录框
+    val sessionMonitor = remember { koin.get<SessionMonitor>() }
+    LaunchedEffect(sessionMonitor) {
+        sessionMonitor.watch {
+            navigatorMessages.tryEmit("登录已过期，请重新登录")
+            showLogin = true
+        }
+    }
 
     // 播放组件加载失败时启动就提示一次，之后每次尝试播放再提示
     LaunchedEffect(silentController) {

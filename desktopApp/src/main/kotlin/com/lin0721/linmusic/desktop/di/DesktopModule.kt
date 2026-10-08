@@ -1,6 +1,7 @@
 package com.lin0721.linmusic.desktop.di
 
 import com.lin0721.linmusic.core.auth.LoginViewModel
+import com.lin0721.linmusic.core.auth.SessionMonitor
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
@@ -96,6 +97,7 @@ val desktopPlatformModule = module {
     single { UserPreferences(store(PreferencesStores.USER)) }
     single { SettingsPreferences(store(PreferencesStores.SETTINGS), streamCacheDefault = true) }
     single { SourcePreferences(store(PreferencesStores.SOURCE)) }
+    single { SessionMonitor(get(), get()) }
     single { SearchHistoryPreferences(store(PreferencesStores.SEARCH_HISTORY)) }
     single { PlaybackPreferences(store(PreferencesStores.PLAYBACK)) }
     single { PodcastProgressPreferences(store(PreferencesStores.PODCAST)) }
