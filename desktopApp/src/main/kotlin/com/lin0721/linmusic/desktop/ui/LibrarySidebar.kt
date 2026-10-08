@@ -328,6 +328,7 @@ internal fun LibrarySearchInput(
                 cursorBrush = SolidColor(DesktopColors.TextPrimary),
                 modifier = Modifier.fillMaxWidth()
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                    .trackTextInputFocus()
                     .onFocusChanged { onFocusChange(it.isFocused) }
                     .onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {

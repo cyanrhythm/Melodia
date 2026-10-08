@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FilterNone
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Remove
@@ -102,7 +103,12 @@ private const val DOWNLOAD_HOVER_SCALE = 1.1f
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun WindowScope.TitleBar(
-    backStack: BackStack,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    onBack: () -> Unit,
+    onForward: () -> Unit,
+    isHomeAll: Boolean,
+    onHomeClick: () -> Unit,
     isMaximized: Boolean,
     userProfile: UserProfile?,
     searchQuery: String,
@@ -139,8 +145,8 @@ fun WindowScope.TitleBar(
             Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            NavArrow(Icons.AutoMirrored.Rounded.ArrowBackIos, "后退", backStack.canGoBack) { backStack.back() }
-            NavArrow(Icons.AutoMirrored.Rounded.ArrowForwardIos, "前进", backStack.canGoForward) { backStack.forward() }
+            NavArrow(Icons.AutoMirrored.Rounded.ArrowBackIos, "后退", canGoBack, onBack)
+            NavArrow(Icons.AutoMirrored.Rounded.ArrowForwardIos, "前进", canGoForward, onForward)
         }
         Row(
             Modifier.align(Alignment.Center),
@@ -149,10 +155,11 @@ fun WindowScope.TitleBar(
         ) {
             Box(
                 Modifier.size(44.dp).clip(CircleShape).background(DesktopColors.Surface)
-                    .clickable { backStack.navigate(DesktopRoute.Home) },
+                    .clickable(onClick = onHomeClick),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Home, "首页", tint = DesktopColors.TextPrimary)
+                // 已在首页“全部”时是空心，其余位置是实心
+                Icon(if (isHomeAll) Icons.Outlined.Home else Icons.Rounded.Home, "首页", tint = DesktopColors.TextPrimary)
             }
             SearchBox(
                 query = searchQuery,
@@ -347,6 +354,7 @@ private fun SearchBox(
                 cursorBrush = SolidColor(DesktopColors.TextPrimary),
                 modifier = Modifier.fillMaxWidth()
                     .focusRequester(focusRequester)
+                    .trackTextInputFocus()
                     .onFocusChanged { if (it.isFocused) onFocused() }
                     .onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {

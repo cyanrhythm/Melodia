@@ -142,6 +142,8 @@ fun WindowScope.MelodiaDesktopApp(
     var homeTab by rememberSaveable { mutableStateOf(HOME_TAB_ALL) }
     var showNewWorks by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    // 歌词界面被“后退”收起后，“前进”可把它重新打开；有新的导航或歌词被重新打开后失效
+    var lyricsReopenable by remember { mutableStateOf(false) }
     val isMaximized = windowState.placement == WindowPlacement.Maximized
     val isFullscreen = fullscreen.isFullscreen
     val nowPlaying by playbackController.nowPlaying.collectAsState()
@@ -207,6 +209,28 @@ fun WindowScope.MelodiaDesktopApp(
     LaunchedEffect(backStack.currentEntry.id) {
         if (dockOverlay == DockOverlay.PlaylistComments) dockOverlay = null
     }
+    LaunchedEffect(backStack.currentEntry.id) { lyricsReopenable = false }
+    LaunchedEffect(lyricsView.isOpen) { if (lyricsView.isOpen) lyricsReopenable = false }
+    val canGoBack = lyricsView.isOpen || backStack.canGoBack
+    val canGoForward = lyricsReopenable || backStack.canGoForward
+    val navigateBack: () -> Unit = {
+        if (lyricsView.isOpen) {
+            lyricsView.close()
+            lyricsReopenable = true
+        } else {
+            backStack.back()
+        }
+    }
+    val navigateForward: () -> Unit = {
+        if (lyricsReopenable && !lyricsView.isOpen) lyricsView.open() else backStack.forward()
+    }
+    val goHomeAll: () -> Unit = {
+        lyricsView.close()
+        homeTab = HOME_TAB_ALL
+        showNewWorks = false
+        backStack.navigate(DesktopRoute.Home)
+    }
+    val isHomeAll = backStack.current == DesktopRoute.Home && homeTab == HOME_TAB_ALL && !showNewWorks && !lyricsView.isOpen
     val searchInput by searchViewModel.inputState.collectAsState()
     val discovery by searchViewModel.discoveryState.collectAsState()
     val defaultKeyword = (discovery as? DiscoveryUiState.Success)?.defaultKeyword.orEmpty()
@@ -302,8 +326,8 @@ fun WindowScope.MelodiaDesktopApp(
                 // 鼠标侧键与浏览器一致：后退键返回，前进键前进；不消费事件，子组件照常响应
                 .onPointerEvent(PointerEventType.Press, PointerEventPass.Initial) { event ->
                     when (event.awtEventOrNull?.button) {
-                        MOUSE_BUTTON_BACK -> backStack.back()
-                        MOUSE_BUTTON_FORWARD -> backStack.forward()
+                        MOUSE_BUTTON_BACK -> navigateBack()
+                        MOUSE_BUTTON_FORWARD -> navigateForward()
                     }
                 }
                 // Esc 先让输入框放弃焦点，窗口级快捷键随即恢复；不消费，输入框自己的 Esc 逻辑照常
@@ -319,7 +343,12 @@ fun WindowScope.MelodiaDesktopApp(
                     enter = ChromeEnter,
                     exit = ChromeExit
                 ) { TitleBar(
-                    backStack = backStack,
+                    canGoBack = canGoBack,
+                    canGoForward = canGoForward,
+                    onBack = navigateBack,
+                    onForward = navigateForward,
+                    isHomeAll = isHomeAll,
+                    onHomeClick = goHomeAll,
                     isMaximized = isMaximized,
                     userProfile = userProfile,
                     searchQuery = searchInput.query,

@@ -696,6 +696,7 @@ private fun HotkeyRecorder(
     onInvalid: (String) -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
+    HoldTextInputFocus(isRecording)
     LaunchedEffect(isRecording) {
         if (isRecording) focusRequester.requestFocus()
     }

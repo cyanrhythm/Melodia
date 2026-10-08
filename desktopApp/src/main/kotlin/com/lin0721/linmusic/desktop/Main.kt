@@ -22,6 +22,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
@@ -46,6 +47,7 @@ import com.lin0721.linmusic.desktop.platform.currentScreenBounds
 import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
 import com.lin0721.linmusic.desktop.ui.MelodiaDesktopApp
+import com.lin0721.linmusic.desktop.ui.TextInputFocus
 import com.lin0721.linmusic.desktop.ui.WindowChromeEffect
 import com.lin0721.linmusic.desktop.ui.lyrics.DesktopLyricWindow
 import com.lin0721.linmusic.desktop.ui.tray.TrayHost
@@ -209,6 +211,37 @@ fun main() {
             onOpenMain = showMainWindow
         )
 
+        // 预览阶段先于获得焦点的按钮处理，空格才不会再触发刚点过的按钮；输入框占用键盘时让给输入框
+        val handleShortcut: (KeyEvent) -> Boolean = { event ->
+            when {
+                event.type != KeyEventType.KeyDown -> false
+                event.isCtrlPressed && event.key == Key.F -> {
+                    searchFocusRequests.trySend(Unit)
+                    true
+                }
+                event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed -> false
+                else -> when (event.key) {
+                    Key.Spacebar -> {
+                        controller.togglePlayPause()
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        controller.seekTo((controller.currentPosition.value - SEEK_STEP_MS).coerceAtLeast(0L))
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        val target = controller.currentPosition.value + SEEK_STEP_MS
+                        val duration = controller.duration.value
+                        controller.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                        true
+                    }
+                    Key.DirectionUp -> mpvController?.let { it.setVolume(it.volume.value + VOLUME_STEP) } != null
+                    Key.DirectionDown -> mpvController?.let { it.setVolume(it.volume.value - VOLUME_STEP) } != null
+                    else -> false
+                }
+            }
+        }
+
         val windowState = rememberWindowState(
             placement = if (savedWindow.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
             size = restoredBounds?.let { DpSize(it.width.dp, it.height.dp) } ?: DEFAULT_WINDOW_SIZE,
@@ -223,36 +256,6 @@ fun main() {
             title = "Melodia",
             icon = appIcon,
             undecorated = true,
-            // 输入框等子组件处理过的按键不会走到这里，所以输入时空格、方向键不会误触发
-            onKeyEvent = { event ->
-                when {
-                    event.type != KeyEventType.KeyDown -> false
-                    event.isCtrlPressed && event.key == Key.F -> {
-                        searchFocusRequests.trySend(Unit)
-                        true
-                    }
-                    event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed -> false
-                    else -> when (event.key) {
-                        Key.Spacebar -> {
-                            controller.togglePlayPause()
-                            true
-                        }
-                        Key.DirectionLeft -> {
-                            controller.seekTo((controller.currentPosition.value - SEEK_STEP_MS).coerceAtLeast(0L))
-                            true
-                        }
-                        Key.DirectionRight -> {
-                            val target = controller.currentPosition.value + SEEK_STEP_MS
-                            val duration = controller.duration.value
-                            controller.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-                            true
-                        }
-                        Key.DirectionUp -> mpvController?.let { it.setVolume(it.volume.value + VOLUME_STEP) } != null
-                        Key.DirectionDown -> mpvController?.let { it.setVolume(it.volume.value - VOLUME_STEP) } != null
-                        else -> false
-                    }
-                }
-            },
             onPreviewKeyEvent = { event ->
                 if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
                     // 先收起全屏歌词；其后才轮到退出窗口全屏
@@ -267,8 +270,10 @@ fun main() {
                         }
                         else -> false
                     }
-                } else {
+                } else if (TextInputFocus.isActive) {
                     false
+                } else {
+                    handleShortcut(event)
                 }
             }
         ) {
