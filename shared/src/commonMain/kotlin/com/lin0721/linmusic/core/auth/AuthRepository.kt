@@ -19,4 +19,13 @@ interface AuthRepository {
 
     // 轮询二维码扫码状态，803 成功时 QrCheckResponse.cookies 携带解析好的登录 Cookie
     fun checkQrStatus(key: String): Flow<Result<QrCheckResponse>>
+
+    // 向手机号发送登录验证码（仅中国大陆号码）
+    fun sendCaptcha(phone: String): Flow<Result<Unit>>
+
+    // 手机号 + 验证码登录，成功时返回解析好的登录 Cookie
+    fun loginByCaptcha(phone: String, captcha: String): Flow<Result<String>>
+
+    // 刷新登录态，成功时返回响应里的原始 Set-Cookie，由调用方并入已存 Cookie
+    fun refreshLogin(): Flow<Result<List<String>>>
 }
