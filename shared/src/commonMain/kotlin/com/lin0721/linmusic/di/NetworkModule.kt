@@ -34,6 +34,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import com.lin0721.linmusic.core.AppEnvironment
+import com.lin0721.linmusic.core.log.AppLogger
 import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.dsl.module
 import retrofit2.Retrofit
@@ -112,8 +113,10 @@ val networkModule = module {
             .addInterceptor(get<HeaderInterceptor>())
             .addInterceptor(get<CryptoInterceptor>())
             .addInterceptor(
-                HttpLoggingInterceptor().apply {
-                    level = if (AppEnvironment.isDebug) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+                HttpLoggingInterceptor { message ->
+                    AppLogger.d("OkHttp", message)
+                }.apply {
+                    level = if (AppEnvironment.isDebug) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
                     redactHeader("Cookie")
                     redactHeader("Set-Cookie")
                 }

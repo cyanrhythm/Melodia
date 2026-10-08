@@ -47,14 +47,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.google.zxing.common.BitMatrix
 import com.lin0721.linmusic.core.auth.LoginViewModel
 import com.lin0721.linmusic.core.auth.QrLoginState
+import com.lin0721.linmusic.desktop.platform.DesktopWebViewLoginManager
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import java.awt.image.BufferedImage
 
 private enum class LoginTab(val label: String) {
     SCAN("扫码"),
+    WEB("网页"),
     COOKIE("Cookie")
 }
 
@@ -76,7 +79,10 @@ fun LoginDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = DesktopColors.PopupSurface
@@ -95,6 +101,7 @@ fun LoginDialog(
                     small = true
                 )
                 when (tab) {
+                    LoginTab.WEB -> WebLogin(onLoginSuccess)
                     LoginTab.SCAN -> ScanLogin(viewModel, onLoginSuccess)
                     LoginTab.COOKIE -> CookieLogin(viewModel, onLoginSuccess)
                 }
@@ -102,6 +109,80 @@ fun LoginDialog(
                 TextButton(onClick = onDismiss) {
                     Text("取消", color = DesktopColors.TextPrimary)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebLogin(onLoginSuccess: (String) -> Unit) {
+    var loginError by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableStateOf(0) }
+
+    DisposableEffect(retryTrigger) {
+        val manager = DesktopWebViewLoginManager(
+            onLoginSuccess = onLoginSuccess,
+            onError = { loginError = it }
+        )
+        manager.start()
+        onDispose {
+            manager.cancel()
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().height(268.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        if (loginError != null) {
+            Text(
+                loginError ?: "登录窗口启动失败",
+                color = DesktopColors.Accent,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = {
+                    loginError = null
+                    retryTrigger++
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = DesktopColors.TextPrimary)
+            ) {
+                Text("重试")
+            }
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(36.dp),
+                color = DesktopColors.Accent,
+                strokeWidth = 3.dp
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "已调起网易云官方网页登录窗口",
+                color = DesktopColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "请在弹出的官方页面中完成登录，完成后将自动同步并关闭窗口",
+                color = DesktopColors.TextGray,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(20.dp))
+            OutlinedButton(
+                onClick = {
+                    loginError = null
+                    retryTrigger++
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = DesktopColors.TextPrimary)
+            ) {
+                Text("重新打开登录窗口", fontSize = 12.sp)
             }
         }
     }
