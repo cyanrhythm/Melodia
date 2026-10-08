@@ -68,7 +68,7 @@ private const val MAX_DESC_LENGTH = 1000
 private const val SEARCH_RESULT_MAX_HEIGHT = 360
 
 @Composable
-private fun dialogFieldColors() = OutlinedTextFieldDefaults.colors(
+internal fun dialogFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = DesktopColors.TextPrimary,
     unfocusedBorderColor = DesktopColors.SurfaceLight,
     cursorColor = DesktopColors.TextPrimary,
