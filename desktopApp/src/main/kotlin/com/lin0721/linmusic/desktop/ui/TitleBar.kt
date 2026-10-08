@@ -23,7 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -106,6 +110,7 @@ fun WindowScope.TitleBar(
     onSearchQueryChange: (String) -> Unit,
     onSearchFocused: () -> Unit,
     onSearchSubmit: () -> Unit,
+    searchFocusRequests: Flow<Unit>,
     isBrowseActive: Boolean,
     onBrowseClick: () -> Unit,
     downloadTasks: List<DownloadTask>,
@@ -155,6 +160,7 @@ fun WindowScope.TitleBar(
                 onQueryChange = onSearchQueryChange,
                 onFocused = onSearchFocused,
                 onSubmit = onSearchSubmit,
+                focusRequests = searchFocusRequests,
                 isBrowseActive = isBrowseActive,
                 onBrowseClick = onBrowseClick
             )
@@ -313,9 +319,15 @@ private fun SearchBox(
     onQueryChange: (String) -> Unit,
     onFocused: () -> Unit,
     onSubmit: () -> Unit,
+    focusRequests: Flow<Unit>,
     isBrowseActive: Boolean,
     onBrowseClick: () -> Unit
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(focusRequests) {
+        focusRequests.collect { runCatching { focusRequester.requestFocus() } }
+    }
     Row(
         Modifier.width(420.dp).height(44.dp).clip(RoundedCornerShape(22.dp))
             .background(DesktopColors.Surface).padding(horizontal = 14.dp),
@@ -334,10 +346,13 @@ private fun SearchBox(
                 textStyle = TextStyle(color = DesktopColors.TextPrimary, fontSize = 14.sp),
                 cursorBrush = SolidColor(DesktopColors.TextPrimary),
                 modifier = Modifier.fillMaxWidth()
+                    .focusRequester(focusRequester)
                     .onFocusChanged { if (it.isFocused) onFocused() }
                     .onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
                             onSubmit()
+                            // 提交后释放焦点，空格等窗口快捷键才不会被输入框吃掉
+                            focusManager.clearFocus()
                             true
                         } else {
                             false

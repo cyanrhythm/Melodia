@@ -22,6 +22,10 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -61,6 +65,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import com.lin0721.linmusic.desktop.platform.DesktopCacheMigration
@@ -74,6 +79,7 @@ import kotlin.system.exitProcess
 import java.awt.Dimension
 
 private const val VOLUME_STEP = 5
+private const val SEEK_STEP_MS = 5_000L
 private const val EXIT_ANIMATION_MS = 250L
 private const val WINDOW_SAVE_DEBOUNCE_MS = 400L
 private val DEFAULT_WINDOW_SIZE = DpSize(1280.dp, 800.dp)
@@ -109,6 +115,7 @@ fun main() {
     val desktopPreferences = koin.get<DesktopPreferences>()
     val hotkeys = koin.get<GlobalHotkeys>()
     val smtc = koin.get<SmtcSession>()
+    val searchFocusRequests = Channel<Unit>(Channel.CONFLATED)
     // 系统媒体卡片可用时由它接管媒体键，否则回退全局热键
     val smtcActive = smtc.start()
     val savedWindow = runBlocking { desktopPreferences.loadWindow() }
@@ -216,6 +223,36 @@ fun main() {
             title = "Melodia",
             icon = appIcon,
             undecorated = true,
+            // 输入框等子组件处理过的按键不会走到这里，所以输入时空格、方向键不会误触发
+            onKeyEvent = { event ->
+                when {
+                    event.type != KeyEventType.KeyDown -> false
+                    event.isCtrlPressed && event.key == Key.F -> {
+                        searchFocusRequests.trySend(Unit)
+                        true
+                    }
+                    event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed -> false
+                    else -> when (event.key) {
+                        Key.Spacebar -> {
+                            controller.togglePlayPause()
+                            true
+                        }
+                        Key.DirectionLeft -> {
+                            controller.seekTo((controller.currentPosition.value - SEEK_STEP_MS).coerceAtLeast(0L))
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            val target = controller.currentPosition.value + SEEK_STEP_MS
+                            val duration = controller.duration.value
+                            controller.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+                            true
+                        }
+                        Key.DirectionUp -> mpvController?.let { it.setVolume(it.volume.value + VOLUME_STEP) } != null
+                        Key.DirectionDown -> mpvController?.let { it.setVolume(it.volume.value - VOLUME_STEP) } != null
+                        else -> false
+                    }
+                }
+            },
             onPreviewKeyEvent = { event ->
                 if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
                     // 先收起全屏歌词；其后才轮到退出窗口全屏
@@ -269,6 +306,7 @@ fun main() {
                     windowState = windowState,
                     fullscreen = fullscreen,
                     lyricsView = lyricsView,
+                    searchFocusRequests = searchFocusRequests.receiveAsFlow(),
                     onClose = closeMainWindow
                 )
             }
