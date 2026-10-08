@@ -24,6 +24,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
@@ -296,60 +297,62 @@ private fun TrackMenu(
     val navigator = LocalDesktopNavigator.current
     val isLiked = track.id in actions.likedSongIds
     val artists = track.ar.filter { it.id > 0 }
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        offset = offset,
-        containerColor = DesktopColors.PopupSurface
-    ) {
-        TrackMenuItem(Icons.AutoMirrored.Rounded.QueueMusic, "下一首播放") {
+    DesktopMenu(expanded = expanded, onDismiss = onDismiss, offset = offset) {
+        MenuItem("下一首播放", icon = Icons.AutoMirrored.Rounded.QueueMusic, onClick = {
             onDismiss()
             actions.onPlayNext(track)
-        }
-        TrackMenuItem(Icons.AutoMirrored.Rounded.PlaylistAdd, "收藏到歌单") {
-            onDismiss()
-            actions.onCollect(track)
-        }
-        TrackMenuItem(
-            if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-            if (isLiked) "取消喜欢" else "喜欢"
-        ) {
-            onDismiss()
-            actions.onToggleLike(track)
-        }
-        artists.forEach { artist ->
-            TrackMenuItem(Icons.Rounded.Person, if (artists.size > 1) "查看歌手：${artist.name}" else "查看歌手") {
-                onDismiss()
-                navigator.openArtist(artist.id, artist.name)
+        })
+        if (navigator.isLoggedIn) {
+            SubMenuItem("收藏到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onOpen = { actions.onPrepareCollect(track) }) {
+                CollectSubmenuContent(track, actions, onDismiss)
             }
+        } else {
+            MenuItem("收藏到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = {
+                onDismiss()
+                navigator.showMessage("请先登录账号")
+            })
         }
-        TrackMenuItem(Icons.Rounded.Download, "下载") {
-            onDismiss()
-            actions.onDownload(track)
+        MenuItem(
+            if (isLiked) "取消喜欢" else "喜欢",
+            icon = if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+            onClick = {
+                onDismiss()
+                actions.onToggleLike(track)
+            }
+        )
+        MenuDivider()
+        when {
+            artists.size > 1 -> SubMenuItem("查看歌手", icon = Icons.Rounded.Person) {
+                artists.forEach { artist ->
+                    SimpleMenuItem(artist.name, onClick = {
+                        onDismiss()
+                        navigator.openArtist(artist.id, artist.name)
+                    })
+                }
+            }
+            artists.size == 1 -> MenuItem("查看歌手", icon = Icons.Rounded.Person, onClick = {
+                onDismiss()
+                navigator.openArtist(artists[0].id, artists[0].name)
+            })
         }
         if (track.al.id > 0) {
-            TrackMenuItem(Icons.Rounded.Album, "查看专辑") {
+            MenuItem("查看专辑", icon = Icons.Rounded.Album, onClick = {
                 onDismiss()
                 navigator.openAlbum(track.al.id, track.al.name)
-            }
+            })
         }
+        MenuItem("下载", icon = Icons.Rounded.Download, onClick = {
+            onDismiss()
+            actions.onDownload(track)
+        })
         actions.onRemove?.let { remove ->
-            TrackMenuItem(Icons.Rounded.Delete, "从歌单中删除", danger = true) {
+            MenuDivider()
+            MenuItem("从歌单中删除", icon = Icons.Rounded.Delete, danger = true, onClick = {
                 onDismiss()
                 remove(track)
-            }
+            })
         }
     }
-}
-
-@Composable
-private fun TrackMenuItem(icon: ImageVector, text: String, danger: Boolean = false, onClick: () -> Unit) {
-    val color = if (danger) DangerColor else Color.Unspecified
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = color) },
-        leadingIcon = { Icon(icon, null, tint = color, modifier = Modifier.size(18.dp)) },
-        onClick = onClick
-    )
 }
 
 private val LinkStyles = TextLinkStyles(hoveredStyle = SpanStyle(color = DesktopColors.TextPrimary, textDecoration = TextDecoration.Underline))

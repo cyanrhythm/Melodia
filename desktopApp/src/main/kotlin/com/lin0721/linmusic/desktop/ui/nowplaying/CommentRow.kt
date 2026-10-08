@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.CommentItem
 import com.lin0721.linmusic.desktop.ui.Cover
+import com.lin0721.linmusic.desktop.ui.DesktopMenu
+import com.lin0721.linmusic.desktop.ui.SimpleMenuItem
 import com.lin0721.linmusic.desktop.ui.HoverReveal
 import com.lin0721.linmusic.desktop.ui.LocalDesktopNavigator
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
@@ -193,18 +195,9 @@ private fun CommentMenu(
     onReply: () -> Unit,
     onDelete: () -> Unit
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, containerColor = DesktopColors.PopupSurface) {
-        MenuEntry(Icons.Rounded.ContentCopy, "复制") { onDismiss(); onCopy() }
-        if (canReply) MenuEntry(Icons.AutoMirrored.Rounded.Reply, "回复") { onDismiss(); onReply() }
-        if (canDelete) MenuEntry(Icons.Rounded.Delete, "删除", DesktopColors.Accent) { onDismiss(); onDelete() }
+    DesktopMenu(expanded = expanded, onDismiss = onDismiss, width = 160.dp) {
+        SimpleMenuItem("复制", icon = Icons.Rounded.ContentCopy, onClick = { onDismiss(); onCopy() })
+        if (canReply) SimpleMenuItem("回复", icon = Icons.AutoMirrored.Rounded.Reply, onClick = { onDismiss(); onReply() })
+        if (canDelete) SimpleMenuItem("删除", icon = Icons.Rounded.Delete, danger = true, onClick = { onDismiss(); onDelete() })
     }
-}
-
-@Composable
-private fun MenuEntry(icon: ImageVector, text: String, tint: Color = Color.White, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp, color = tint) },
-        leadingIcon = { Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp)) },
-        onClick = onClick
-    )
 }

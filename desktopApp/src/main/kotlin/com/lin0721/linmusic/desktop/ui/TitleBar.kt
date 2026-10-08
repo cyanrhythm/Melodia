@@ -76,6 +76,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.WindowScope
@@ -272,14 +273,17 @@ private fun AvatarMenu(
                 Icon(Icons.Rounded.Person, "账户", tint = DesktopColors.TextGray, modifier = Modifier.size(20.dp))
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }) {
             if (userProfile != null) {
                 Text(
                     userProfile.nickname,
                     color = DesktopColors.TextGray,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
+                MenuDivider()
             } else {
                 AvatarMenuItem(Icons.AutoMirrored.Rounded.Login, "登录") {
                     expanded = false
@@ -311,12 +315,8 @@ private fun AvatarMenu(
 }
 
 @Composable
-private fun AvatarMenuItem(icon: ImageVector, text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
-        onClick = onClick
-    )
+private fun MenuScope.AvatarMenuItem(icon: ImageVector, text: String, onClick: () -> Unit) {
+    MenuItem(text, onClick, icon = icon)
 }
 
 @Composable

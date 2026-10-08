@@ -16,7 +16,11 @@ class TrackActions(
     val likedSongIds: Set<Long>,
     val onToggleLike: (Track) -> Unit,
     val onPlayNext: (Track) -> Unit,
-    val onCollect: (Track) -> Unit,
+    // 收藏到歌单的二级菜单：展开时准备列表，点选即提交，新建走对话框
+    val collectState: PlaylistCollectState,
+    val onPrepareCollect: (Track) -> Unit,
+    val onToggleCollect: (Track, PlaylistCollectItem) -> Unit,
+    val onCreateCollect: (Track) -> Unit,
     val onDownload: (Track) -> Unit,
     // 仅自建歌单传入，菜单才出现“从歌单中删除”
     val onRemove: ((Track) -> Unit)? = null
@@ -34,21 +38,17 @@ fun rememberTrackActions(
     onRemove: ((Track) -> Unit)? = null
 ): TrackActions {
     val navigator = LocalDesktopNavigator.current
-    var collectingSongId by remember { mutableStateOf<Long?>(null) }
+    var creatingFor by remember { mutableStateOf<Track?>(null) }
 
-    collectingSongId?.let { songId ->
-        CollectToPlaylistDialog(
-            songId = songId,
-            state = collectState,
-            onSave = { items ->
-                onSaveCollect(songId, items)
-                collectingSongId = null
+    creatingFor?.let { track ->
+        CreatePlaylistDialog(
+            onDismiss = { creatingFor = null },
+            onCreate = { name, _ ->
+                onCreateAndAdd(name, track.id)
+                creatingFor = null
             },
-            onCreate = { name ->
-                onCreateAndAdd(name, songId)
-                collectingSongId = null
-            },
-            onDismiss = { collectingSongId = null }
+            onEmptyName = { navigator.showMessage(EMPTY_NAME_MESSAGE) },
+            showPrivacy = false
         )
     }
 
@@ -59,12 +59,10 @@ fun rememberTrackActions(
         likedSongIds = likedSongIds,
         onToggleLike = { track -> requireLogin { onToggleLike(track.id, track.id !in likedSongIds) } },
         onPlayNext = onPlayNext,
-        onCollect = { track ->
-            requireLogin {
-                onPrepareCollect(track.id)
-                collectingSongId = track.id
-            }
-        },
+        collectState = collectState,
+        onPrepareCollect = { track -> onPrepareCollect(track.id) },
+        onToggleCollect = { track, item -> onSaveCollect(track.id, listOf(item)) },
+        onCreateCollect = { track -> requireLogin { creatingFor = track } },
         onDownload = navigator.downloadTrack,
         onRemove = onRemove
     )

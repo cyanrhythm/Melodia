@@ -365,9 +365,9 @@ private fun ReleaseMenu(
         // 子菜单展开时点击落在子菜单上也会触发父级的外部点击，此时不关闭
         onDismissRequest = { if (subMenu == SubMenu.None) onDismiss() },
         modifier = Modifier.width(MenuWidth),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(6.dp),
         containerColor = DesktopColors.PopupSurface,
-        shadowElevation = 16.dp
+        shadowElevation = 12.dp
     ) {
         MenuEntry(
             if (inLibrary) "从音乐库移除" else "添加到音乐库",
@@ -389,9 +389,9 @@ private fun ReleaseMenu(
                 onDismissRequest = { subMenu = SubMenu.None },
                 modifier = Modifier.width(MenuWidth),
                 offset = DpOffset(MenuWidth - 12.dp, 0.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(6.dp),
                 containerColor = DesktopColors.PopupSurface,
-                shadowElevation = 16.dp
+                shadowElevation = 12.dp
             ) {
                 MenuEntry("新建歌单", Icons.AutoMirrored.Rounded.PlaylistAdd) {
                     closeAll()
@@ -403,14 +403,13 @@ private fun ReleaseMenu(
                     }
                     importState.items.isEmpty() -> MenuEntry("暂无歌单", null, enabled = false) {}
                     else -> importState.items.forEach { playlist ->
-                        DropdownMenuItem(
-                            text = { Text(playlist.name, fontSize = 14.sp, color = DesktopColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        SimpleMenuItem(
+                            text = playlist.name,
+                            modifier = Modifier.padding(horizontal = 4.dp),
                             onClick = {
                                 closeAll()
                                 actions.onAddToPlaylist(release, playlist.id)
-                            },
-                            modifier = Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(8.dp)),
-                            contentPadding = PaddingValues(horizontal = 10.dp)
+                            }
                         )
                     }
                 }
@@ -424,9 +423,9 @@ private fun ReleaseMenu(
                 onDismissRequest = { subMenu = SubMenu.None },
                 modifier = Modifier.width(MenuWidth),
                 offset = DpOffset(MenuWidth - 12.dp, 0.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(6.dp),
                 containerColor = DesktopColors.PopupSurface,
-                shadowElevation = 16.dp
+                shadowElevation = 12.dp
             ) {
                 MenuEntry("复制链接", null) {
                     closeAll()
@@ -445,19 +444,17 @@ private fun MenuEntry(
     chevron: Boolean = false,
     onClick: () -> Unit
 ) {
-    val contentColor = if (enabled) DesktopColors.TextPrimary else DesktopColors.TextGray.copy(alpha = 0.5f)
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp, color = contentColor) },
-        leadingIcon = icon?.let { { Icon(it, null, tint = contentColor, modifier = Modifier.size(20.dp)) } },
-        trailingIcon = if (chevron) {
-            { Icon(Icons.Rounded.ChevronRight, null, tint = DesktopColors.TextGray, modifier = Modifier.size(20.dp)) }
+    SimpleMenuItem(
+        text = text,
+        icon = icon,
+        enabled = enabled,
+        modifier = Modifier.padding(horizontal = 4.dp),
+        trailing = if (chevron) {
+            { Icon(Icons.Rounded.ChevronRight, null, tint = DesktopColors.TextGray, modifier = Modifier.size(16.dp)) }
         } else {
             null
         },
-        enabled = enabled,
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(8.dp)),
-        contentPadding = PaddingValues(horizontal = 10.dp)
+        onClick = onClick
     )
 }
 

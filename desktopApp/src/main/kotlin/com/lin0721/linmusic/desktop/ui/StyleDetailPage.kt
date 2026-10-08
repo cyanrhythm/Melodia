@@ -355,27 +355,13 @@ private fun SortMenu(sort: StyleSort, onSelect: (StyleSort) -> Unit) {
             Text(sort.label(), color = DesktopColors.TextGray, fontSize = 13.sp)
             Icon(Icons.Rounded.KeyboardArrowDown, "排序方式", tint = DesktopColors.TextGray, modifier = Modifier.size(18.dp))
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            offset = DpOffset(0.dp, 4.dp),
-            shape = RoundedCornerShape(12.dp),
-            containerColor = DesktopColors.PopupSurface,
-            shadowElevation = 16.dp
-        ) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }, offset = DpOffset(0.dp, 4.dp)) {
             StyleSort.entries.forEach { option ->
-                val selected = option == sort
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            option.label(),
-                            fontSize = 14.sp,
-                            color = DesktopColors.TextPrimary,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    trailingIcon = if (selected) {
-                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(18.dp)) }
+                SimpleMenuItem(
+                    text = option.label(),
+                    selected = option == sort,
+                    trailing = if (option == sort) {
+                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
                     } else {
                         null
                     },

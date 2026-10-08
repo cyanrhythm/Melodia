@@ -225,11 +225,7 @@ private fun PanelHeader(
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(HeaderButtonSize)) {
                     Icon(Icons.Rounded.MoreHoriz, "更多有关《${track.title}》的选项", tint = DesktopColors.TextGray)
                 }
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
-                    containerColor = DesktopColors.PopupSurface
-                ) {
+                DesktopMenu(expanded = menuOpen, onDismiss = { menuOpen = false }) {
                     val songId = track.songId
                     // 播客没有心动模式与相似漫游
                     if (!podcast.isPodcast) MenuItem(
@@ -336,10 +332,5 @@ private fun MenuItem(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
-        enabled = enabled,
-        onClick = onClick
-    )
+    SimpleMenuItem(text, onClick, icon = icon, enabled = enabled)
 }

@@ -191,15 +191,17 @@ fun CommentsPanel(
 
 @Composable
 private fun DeleteCommentDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("删除评论", color = DesktopColors.TextPrimary) },
-        text = { Text("确定要删除这条评论吗？删除后无法恢复。", color = DesktopColors.TextGray, fontSize = 13.sp) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("删除", color = DesktopColors.Accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = DesktopColors.TextGray) } }
-    )
+    DesktopDialog(
+        title = "删除评论",
+        onDismiss = onDismiss,
+        width = 340.dp,
+        actions = {
+            DialogButton("取消", onDismiss)
+            DialogButton("删除", onConfirm, danger = true)
+        }
+    ) {
+        Text("确定要删除这条评论吗？删除后无法恢复。", color = DesktopColors.TextGray, fontSize = 13.sp)
+    }
 }
 
 @Composable

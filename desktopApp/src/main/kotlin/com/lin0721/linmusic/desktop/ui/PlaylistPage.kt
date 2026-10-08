@@ -87,6 +87,8 @@ import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.desktop.ui.palette.FallbackCoverPalette
 import com.lin0721.linmusic.desktop.ui.palette.extractCoverPaletteFromUrl
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
+import com.lin0721.linmusic.core.userplaylist.UserPlaylist
+import com.lin0721.linmusic.feature.playlist.ui.PlaylistImportState
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistUiState
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
 import java.awt.Toolkit
@@ -192,7 +194,6 @@ private fun PlaylistContent(
     var showEdit by remember(playlist.id) { mutableStateOf(false) }
     var showAddSongs by remember(playlist.id) { mutableStateOf(false) }
     var showDelete by remember(playlist.id) { mutableStateOf(false) }
-    var showImport by remember(playlist.id) { mutableStateOf(false) }
     var showCreateImport by remember(playlist.id) { mutableStateOf(false) }
     val importState by viewModel.importState.collectAsState()
     var query by remember(playlist.id) { mutableStateOf("") }
@@ -321,14 +322,10 @@ private fun PlaylistContent(
                         },
                         onDownload = { viewModel.downloadPlaylist(playlist.id, playlist.name, navigator.downloadLevel) },
                         onPlayNextAll = viewModel::addAllTracksToPlayNext,
-                        onImport = {
-                            if (navigator.isLoggedIn) {
-                                viewModel.prepareImportTargets(playlist.id)
-                                showImport = true
-                            } else {
-                                navigator.showMessage("请先登录账号")
-                            }
-                        },
+                        importState = importState,
+                        onPrepareImport = { viewModel.prepareImportTargets(playlist.id) },
+                        onImportTo = { target -> viewModel.importAllTracksTo(target.id) },
+                        onCreateImport = { showCreateImport = true },
                         canCopyLink = playlist.id > 0,
                         onCopyLink = {
                             navigator.showMessage(if (copyPlaylistLink(isAlbum, playlist.id)) "已复制链接" else "复制失败")
@@ -454,20 +451,6 @@ private fun PlaylistContent(
             onDismiss = { showAddSongs = false }
         )
     }
-    if (showImport) {
-        ImportToPlaylistDialog(
-            state = importState,
-            onPick = { target ->
-                showImport = false
-                viewModel.importAllTracksTo(target.id)
-            },
-            onCreate = {
-                showImport = false
-                showCreateImport = true
-            },
-            onDismiss = { showImport = false }
-        )
-    }
     if (showCreateImport) {
         CreatePlaylistDialog(
             onDismiss = { showCreateImport = false },
@@ -479,22 +462,20 @@ private fun PlaylistContent(
         )
     }
     if (showDelete) {
-        AlertDialog(
-            onDismissRequest = { showDelete = false },
-            shape = AlertDialogDefaults.shape,
-            containerColor = DesktopColors.PopupSurface,
-            title = { Text("删除歌单", color = DesktopColors.TextPrimary) },
-            text = { Text("确定要删除歌单「${playlist.name}」吗？", color = DesktopColors.TextGray, fontSize = 13.sp) },
-            confirmButton = {
-                TextButton(onClick = {
+        DesktopDialog(
+            title = "删除歌单",
+            onDismiss = { showDelete = false },
+            width = 340.dp,
+            actions = {
+                DialogButton("取消", { showDelete = false })
+                DialogButton("删除", {
                     showDelete = false
                     viewModel.deletePlaylist(playlist.id) { navigator.goBack() }
-                }) { Text("删除", color = DangerColor, fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDelete = false }) { Text("取消", color = DesktopColors.TextGray) }
+                }, danger = true)
             }
-        )
+        ) {
+            Text("确定要删除歌单「${playlist.name}」吗？", color = DesktopColors.TextGray, fontSize = 13.sp)
+        }
     }
 }
 
@@ -570,7 +551,10 @@ private fun PlaylistActionBar(
     onToggleSubscribe: () -> Unit,
     onDownload: () -> Unit,
     onPlayNextAll: () -> Unit,
-    onImport: () -> Unit,
+    importState: PlaylistImportState,
+    onPrepareImport: () -> Unit,
+    onImportTo: (UserPlaylist) -> Unit,
+    onCreateImport: () -> Unit,
     canCopyLink: Boolean,
     onCopyLink: () -> Unit,
     onQueryChange: (String) -> Unit,
@@ -609,7 +593,10 @@ private fun PlaylistActionBar(
             )
         }
         ActionIcon(Icons.Rounded.Download, "下载$resourceLabel", onClick = onDownload)
-        PlaylistMoreMenu(resourceLabel, canDelete, canCopyLink, onPlayNextAll, onImport, onCopyLink, onDelete)
+        PlaylistMoreMenu(
+            resourceLabel, canDelete, canCopyLink, onPlayNextAll,
+            importState, onPrepareImport, onImportTo, onCreateImport, onCopyLink, onDelete
+        )
         Spacer(Modifier.weight(1f))
         PlaylistSearchBox(query, onQueryChange)
         PlaylistSortMenu(order, showAdded) { key ->
@@ -638,53 +625,50 @@ private fun PlaylistMoreMenu(
     canDelete: Boolean,
     canCopyLink: Boolean,
     onPlayNextAll: () -> Unit,
-    onImport: () -> Unit,
+    importState: PlaylistImportState,
+    onPrepareImport: () -> Unit,
+    onImportTo: (UserPlaylist) -> Unit,
+    onCreateImport: () -> Unit,
     onCopyLink: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val navigator = LocalDesktopNavigator.current
     var expanded by remember { mutableStateOf(false) }
     Box {
         ActionIcon(Icons.Rounded.MoreHoriz, "更多") { expanded = true }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = DesktopColors.PopupSurface
-        ) {
-            DropdownMenuItem(
-                text = { Text("全部加入下一首播放", fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, modifier = Modifier.size(18.dp)) },
-                onClick = {
-                    expanded = false
-                    onPlayNextAll()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text("添加到歌单", fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, modifier = Modifier.size(18.dp)) },
-                onClick = {
-                    expanded = false
-                    onImport()
-                }
-            )
-            if (canCopyLink) {
-                DropdownMenuItem(
-                    text = { Text("复制${resourceLabel}链接", fontSize = 14.sp) },
-                    leadingIcon = { Icon(Icons.Rounded.Link, null, modifier = Modifier.size(18.dp)) },
-                    onClick = {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }) {
+            MenuItem("全部加入下一首播放", icon = Icons.AutoMirrored.Rounded.QueueMusic, onClick = {
+                expanded = false
+                onPlayNextAll()
+            })
+            if (navigator.isLoggedIn) {
+                SubMenuItem("添加到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onOpen = onPrepareImport) {
+                    ImportSubmenuContent(importState, onImportTo = {
                         expanded = false
-                        onCopyLink()
-                    }
-                )
+                        onImportTo(it)
+                    }, onCreate = {
+                        expanded = false
+                        onCreateImport()
+                    })
+                }
+            } else {
+                MenuItem("添加到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = {
+                    expanded = false
+                    navigator.showMessage("请先登录账号")
+                })
+            }
+            if (canCopyLink) {
+                MenuItem("复制${resourceLabel}链接", icon = Icons.Rounded.Link, onClick = {
+                    expanded = false
+                    onCopyLink()
+                })
             }
             if (canDelete) {
-                DropdownMenuItem(
-                    text = { Text("删除歌单", fontSize = 14.sp, color = DangerColor) },
-                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = DangerColor, modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        expanded = false
-                        onDelete()
-                    }
-                )
+                MenuDivider()
+                MenuItem("删除歌单", icon = Icons.Rounded.Delete, danger = true, onClick = {
+                    expanded = false
+                    onDelete()
+                })
             }
         }
     }

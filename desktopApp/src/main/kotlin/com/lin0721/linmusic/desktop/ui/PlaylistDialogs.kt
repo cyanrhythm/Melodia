@@ -108,68 +108,51 @@ internal fun EditPlaylistDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = { if (!isSaving) onDismiss() },
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("名称和详情", color = DesktopColors.TextPrimary) },
-        text = {
-            Row(Modifier.width(520.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(
-                    Modifier.size(144.dp).clip(RoundedCornerShape(6.dp)).pointerHoverIcon(PointerIcon.Hand)
-                        .clickable(enabled = !isSaving, onClick = pickCover)
-                ) {
-                    val preview = coverPreview
-                    if (preview != null) {
-                        Image(preview, "新封面", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    } else {
-                        Cover(coverUrl, 144.dp, shape = RoundedCornerShape(6.dp))
-                    }
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Edit, "更换封面", tint = DesktopColors.TextPrimary, modifier = Modifier.size(28.dp))
-                    }
-                }
-                Column(Modifier.weight(1f)) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it.take(MAX_NAME_LENGTH) },
-                        label = { Text("名称") },
-                        supportingText = { Text("${name.length}/$MAX_NAME_LENGTH", color = DesktopColors.TextGray, fontSize = 11.sp) },
-                        singleLine = true,
-                        enabled = !isSaving,
-                        colors = dialogFieldColors(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it.take(MAX_DESC_LENGTH) },
-                        label = { Text("简介") },
-                        minLines = 3,
-                        maxLines = 5,
-                        enabled = !isSaving,
-                        colors = dialogFieldColors(),
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(name.trim(), description.trim(), coverBytes) }, enabled = canSubmit) {
-                if (isSaving) {
-                    CircularProgressIndicator(Modifier.size(16.dp), color = DesktopColors.TextPrimary, strokeWidth = 2.dp)
-                } else {
-                    Text(
-                        "保存",
-                        color = if (canSubmit) DesktopColors.TextPrimary else DesktopColors.TextGray,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("取消", color = DesktopColors.TextGray) }
+    DesktopDialog(
+        title = "名称和详情",
+        onDismiss = { if (!isSaving) onDismiss() },
+        width = 480.dp,
+        actions = {
+            DialogButton("取消", onDismiss, enabled = !isSaving)
+            DialogButton(
+                "保存",
+                { onConfirm(name.trim(), description.trim(), coverBytes) },
+                primary = true,
+                enabled = canSubmit,
+                loading = isSaving
+            )
         }
-    )
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(
+                Modifier.size(120.dp).clip(RoundedCornerShape(6.dp)).pointerHoverIcon(PointerIcon.Hand)
+                    .clickable(enabled = !isSaving, onClick = pickCover)
+            ) {
+                val preview = coverPreview
+                if (preview != null) {
+                    Image(preview, "新封面", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else {
+                    Cover(coverUrl, 120.dp, shape = RoundedCornerShape(6.dp))
+                }
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Edit, "更换封面", tint = DesktopColors.TextPrimary, modifier = Modifier.size(24.dp))
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                DialogLabel("名称  ${name.length}/$MAX_NAME_LENGTH")
+                DialogTextField(value = name, onValueChange = { name = it.take(MAX_NAME_LENGTH) }, enabled = !isSaving)
+                DialogLabel("简介", Modifier.padding(top = 10.dp))
+                DialogTextField(
+                    value = description,
+                    onValueChange = { description = it.take(MAX_DESC_LENGTH) },
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 5,
+                    enabled = !isSaving
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -184,53 +167,44 @@ internal fun AddSongsDialog(
     var adding by remember { mutableStateOf(emptySet<Long>()) }
     DisposableEffect(Unit) { onDispose { viewModel.clearAddMusicSearch() } }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("添加歌曲", color = DesktopColors.TextPrimary) },
-        text = {
-            Column(Modifier.width(520.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = viewModel::updateAddMusicSearchQuery,
-                    placeholder = { Text("搜索歌曲、歌手", fontSize = 14.sp) },
-                    singleLine = true,
-                    colors = dialogFieldColors(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Box(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = SEARCH_RESULT_MAX_HEIGHT.dp).padding(top = 8.dp)) {
-                    when (val state = searchState) {
-                        AddMusicSearchState.Idle -> CenteredHint("输入关键词搜索要添加的歌曲")
-                        AddMusicSearchState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(28.dp), color = DesktopColors.Accent)
-                        }
-                        is AddMusicSearchState.Error -> CenteredHint(state.message)
-                        is AddMusicSearchState.Success -> if (state.tracks.isEmpty()) {
-                            CenteredHint("没有找到相关歌曲")
-                        } else {
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                items(state.tracks, key = { it.id }) { track ->
-                                    AddSongRow(
-                                        track = track,
-                                        added = track.id in existingIds,
-                                        busy = track.id in adding,
-                                        onAdd = {
-                                            adding = adding + track.id
-                                            viewModel.addTrackToPlaylist(playlistId, track) { adding = adding - track.id }
-                                        }
-                                    )
+    DesktopDialog(
+        title = "添加歌曲",
+        onDismiss = onDismiss,
+        width = 440.dp,
+        actions = { DialogButton("完成", onDismiss, primary = true) }
+    ) {
+        DialogTextField(
+            value = query,
+            onValueChange = viewModel::updateAddMusicSearchQuery,
+            placeholder = "搜索歌曲、歌手"
+        )
+        Box(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = SEARCH_RESULT_MAX_HEIGHT.dp).padding(top = 8.dp)) {
+            when (val state = searchState) {
+                AddMusicSearchState.Idle -> CenteredHint("输入关键词搜索要添加的歌曲")
+                AddMusicSearchState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(28.dp), color = DesktopColors.Accent)
+                }
+                is AddMusicSearchState.Error -> CenteredHint(state.message)
+                is AddMusicSearchState.Success -> if (state.tracks.isEmpty()) {
+                    CenteredHint("没有找到相关歌曲")
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(state.tracks, key = { it.id }) { track ->
+                            AddSongRow(
+                                track = track,
+                                added = track.id in existingIds,
+                                busy = track.id in adding,
+                                onAdd = {
+                                    adding = adding + track.id
+                                    viewModel.addTrackToPlaylist(playlistId, track) { adding = adding - track.id }
                                 }
-                            }
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("完成", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold) }
         }
-    )
+    }
 }
 
 @Composable
@@ -240,66 +214,62 @@ internal fun ImportToPlaylistDialog(
     onCreate: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("添加到歌单", color = DesktopColors.TextPrimary) },
-        text = {
-            Box(Modifier.width(420.dp).heightIn(min = 120.dp, max = SEARCH_RESULT_MAX_HEIGHT.dp)) {
-                if (state.isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(28.dp), color = DesktopColors.Accent)
+    DesktopDialog(
+        title = "添加到歌单",
+        onDismiss = onDismiss,
+        width = 380.dp,
+        actions = { DialogButton("取消", onDismiss) }
+    ) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = SEARCH_RESULT_MAX_HEIGHT.dp)) {
+            if (state.isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(28.dp), color = DesktopColors.Accent)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    item(key = "create") {
+                        ImportTargetRow(onClick = onCreate) {
+                            Box(
+                                Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(DesktopColors.Surface),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Add, null, tint = DesktopColors.TextPrimary, modifier = Modifier.size(22.dp))
+                            }
+                            Text(
+                                "新建歌单",
+                                color = DesktopColors.TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
                     }
-                } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        item(key = "create") {
-                            ImportTargetRow(onClick = onCreate) {
-                                Box(
-                                    Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(DesktopColors.Surface),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Rounded.Add, null, tint = DesktopColors.TextPrimary, modifier = Modifier.size(22.dp))
-                                }
+                    items(state.items, key = { it.id }) { playlist ->
+                        ImportTargetRow(onClick = { onPick(playlist) }) {
+                            Cover(playlist.coverImgUrl, 40.dp)
+                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(
-                                    "新建歌单",
+                                    playlist.name,
                                     color = DesktopColors.TextPrimary,
                                     fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(start = 12.dp)
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                Text("${playlist.trackCount} 首", color = DesktopColors.TextGray, fontSize = 12.sp)
                             }
                         }
-                        items(state.items, key = { it.id }) { playlist ->
-                            ImportTargetRow(onClick = { onPick(playlist) }) {
-                                Cover(playlist.coverImgUrl, 40.dp)
-                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(
-                                        playlist.name,
-                                        color = DesktopColors.TextPrimary,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text("${playlist.trackCount} 首", color = DesktopColors.TextGray, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                        if (state.items.isEmpty()) {
-                            item(key = "empty") {
-                                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                    Text("还没有自建歌单", color = DesktopColors.TextGray, fontSize = 13.sp)
-                                }
+                    }
+                    if (state.items.isEmpty()) {
+                        item(key = "empty") {
+                            Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                Text("还没有自建歌单", color = DesktopColors.TextGray, fontSize = 13.sp)
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = DesktopColors.TextGray) }
         }
-    )
+    }
 }
 
 @Composable
