@@ -320,7 +320,11 @@ class HomeViewModel(
 
     fun handleLoginSuccess(cookies: String) {
         viewModelScope.launch {
-            val profile = syncProfileAfterLoginUseCase(cookies) ?: return@launch
+            val profile = syncProfileAfterLoginUseCase(cookies)
+            if (profile == null) {
+                _toastEvent.emit("登录失败，会话无效或网络异常，请重试")
+                return@launch
+            }
             _toastEvent.emit("登录成功，欢迎回来，${profile.nickname}！")
             loadHomeData()
         }
