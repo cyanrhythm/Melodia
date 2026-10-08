@@ -1,12 +1,15 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -22,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.Track
@@ -29,7 +33,11 @@ import com.lin0721.linmusic.core.userplaylist.UserPlaylist
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistImportState
 
-private val ListMaxHeight = 264.dp
+private val ListMaxHeight = 272.dp
+private val ListMinHeight = 102.dp
+// 列表以外的固定高度
+private val ChromeHeight = 104.dp
+private val SearchHeight = 36.dp
 
 // “收藏到歌单”二级菜单内容：查找框、新建歌单、歌单列表（已包含的打勾，点选即加入或移出）
 @Composable
@@ -42,12 +50,7 @@ internal fun CollectSubmenuContent(track: Track, actions: TrackActions, onDismis
     val visible = items.filter { query.isBlank() || it.playlistName.contains(query.trim(), ignoreCase = true) }
 
     Column(Modifier.padding(vertical = 2.dp)) {
-        DialogTextField(
-            value = query,
-            onValueChange = { query = it },
-            placeholder = "查找歌单",
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
+        SubmenuSearchBox(query) { query = it }
         SimpleMenuItem("新建歌单", icon = Icons.Rounded.Add, onClick = {
             onDismissMenu()
             actions.onCreateCollect(track)
@@ -60,7 +63,7 @@ internal fun CollectSubmenuContent(track: Track, actions: TrackActions, onDismis
             visible.isEmpty() -> Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                 Text(if (items.isEmpty()) "还没有自建歌单" else "没有匹配的歌单", color = DesktopColors.TextGray, fontSize = 12.sp)
             }
-            else -> Column(Modifier.heightIn(max = ListMaxHeight).verticalScroll(rememberScrollState())) {
+            else -> SubmenuList {
                 visible.forEach { item ->
                     val contains = overrides[item.playlistId] ?: item.isContains
                     SimpleMenuItem(
@@ -87,7 +90,7 @@ internal fun ImportSubmenuContent(state: PlaylistImportState, onImportTo: (UserP
     var query by remember { mutableStateOf("") }
     val visible = state.items.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
     Column(Modifier.padding(vertical = 2.dp)) {
-        DialogTextField(value = query, onValueChange = { query = it }, placeholder = "查找歌单", modifier = Modifier.padding(bottom = 4.dp))
+        SubmenuSearchBox(query) { query = it }
         SimpleMenuItem("新建歌单", icon = Icons.Rounded.Add, onClick = onCreate)
         MenuDivider()
         when {
@@ -97,9 +100,35 @@ internal fun ImportSubmenuContent(state: PlaylistImportState, onImportTo: (UserP
             visible.isEmpty() -> Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                 Text(if (state.items.isEmpty()) "还没有自建歌单" else "没有匹配的歌单", color = DesktopColors.TextGray, fontSize = 12.sp)
             }
-            else -> Column(Modifier.heightIn(max = ListMaxHeight).verticalScroll(rememberScrollState())) {
+            else -> SubmenuList {
                 visible.forEach { playlist -> SimpleMenuItem(playlist.name, onClick = { onImportTo(playlist) }) }
             }
         }
+    }
+}
+
+@Composable
+private fun SubmenuSearchBox(query: String, onQueryChange: (String) -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().padding(bottom = 4.dp).height(SearchHeight).clip(RoundedCornerShape(6.dp))
+            .background(DesktopColors.SurfaceLight.copy(alpha = 0.6f))
+    ) {
+        LibrarySearchInput(
+            query = query,
+            startPadding = 10.dp,
+            showClear = query.isNotEmpty(),
+            onQueryChange = onQueryChange,
+            onClear = { onQueryChange("") },
+            placeholder = "查找歌单"
+        )
+    }
+}
+
+@Composable
+private fun SubmenuList(content: @Composable () -> Unit) {
+    val scrollState = rememberScrollState()
+    val maxHeight = (LocalSubMenuMaxHeight.current - ChromeHeight).coerceIn(ListMinHeight, ListMaxHeight)
+    HoverScrollbarBox(scrollState, Modifier.heightIn(max = maxHeight)) {
+        Column(Modifier.verticalScroll(scrollState)) { content() }
     }
 }

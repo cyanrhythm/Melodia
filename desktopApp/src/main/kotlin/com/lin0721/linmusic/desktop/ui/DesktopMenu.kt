@@ -1,10 +1,13 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,14 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -33,19 +38,42 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 
 private val MenuItemHeight = 34.dp
 private val MenuShape = RoundedCornerShape(6.dp)
 private val ItemShape = RoundedCornerShape(4.dp)
 private const val DISABLED_ALPHA = 0.4f
+
+private const val FADE_IN_MS = 100
+
+private val PanelGap = 4.dp
+private val PanelElevation = 8.dp
+private val PanelShadowMargin = 12.dp
+private val PanelVerticalPadding = 8.dp
+private val ScreenMargin = 8.dp
+
+// 二级菜单到窗口底部的可用高度
+internal val LocalSubMenuMaxHeight = compositionLocalOf { Dp.Infinity }
 
 val DefaultMenuWidth = 188.dp
 val DefaultSubMenuWidth = 224.dp
@@ -56,6 +84,11 @@ internal class SubMenuSlot(val width: Dp, val content: State<@Composable () -> U
 @Stable
 class MenuScope internal constructor() {
     internal var activeSub by mutableStateOf<SubMenuSlot?>(null)
+    internal var subMaxHeightPx by mutableIntStateOf(Int.MAX_VALUE)
+    internal var mainHeightPx = 0
+
+    // 组合阶段登记，供定位弹层预留宽度
+    internal var subWidth: Dp = 0.dp
 }
 
 // 统一的紧凑菜单：34dp 行高、16dp 图标；二级菜单与主菜单同属一个弹层，悬停条目时在右侧展开
@@ -68,22 +101,88 @@ fun DesktopMenu(
     width: Dp = DefaultMenuWidth,
     content: @Composable MenuScope.() -> Unit
 ) {
-    DropdownMenu(
-        expanded = expanded,
+    if (!expanded) return
+    val scope = remember { MenuScope() }
+    val density = LocalDensity.current
+    val positionProvider = remember(offset, width, density) { MenuPositionProvider(offset, width, density, scope) }
+    val fade = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { fade.animateTo(1f, tween(FADE_IN_MS)) }
+    // 弹层透明，主菜单与二级菜单各自成面板；弹层位置只取决于主菜单
+    Popup(
+        popupPositionProvider = positionProvider,
         onDismissRequest = onDismiss,
-        modifier = modifier,
-        offset = offset,
-        shape = MenuShape,
-        containerColor = DesktopColors.PopupSurface,
-        shadowElevation = 12.dp
+        properties = PopupProperties(focusable = true)
     ) {
-        val scope = remember { MenuScope() }
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.width(width).padding(horizontal = 4.dp)) { scope.content() }
+        Row(
+            modifier.graphicsLayer { alpha = fade.value }.padding(PanelShadowMargin),
+            horizontalArrangement = Arrangement.spacedBy(PanelGap),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(Modifier.onSizeChanged { scope.mainHeightPx = it.height }.menuPanel(width)) { scope.content() }
             scope.activeSub?.let { slot ->
-                Column(Modifier.width(slot.width).padding(start = 4.dp, end = 4.dp)) { slot.content.value() }
+                val maxHeight = if (scope.subMaxHeightPx == Int.MAX_VALUE) Dp.Infinity else with(density) { scope.subMaxHeightPx.toDp() }
+                CompositionLocalProvider(LocalSubMenuMaxHeight provides maxHeight) {
+                    Column(Modifier.menuPanel(slot.width)) { slot.content.value() }
+                }
             }
         }
+    }
+}
+
+private fun Modifier.menuPanel(width: Dp): Modifier =
+    this.width(width).shadow(PanelElevation, MenuShape).background(DesktopColors.PopupSurface, MenuShape)
+        .padding(horizontal = 4.dp, vertical = PanelVerticalPadding)
+
+// 面板左上角落在 锚点左边缘 + offset.x、锚点下边缘 + offset.y，放不下时翻转；
+// 首次定位后锁定，二级菜单展开收起不再移动主菜单
+private class MenuPositionProvider(
+    private val offset: DpOffset,
+    private val menuWidth: Dp,
+    private val density: Density,
+    private val scope: MenuScope
+) : PopupPositionProvider {
+    private var lockedKey: Pair<IntRect, IntSize>? = null
+    private var lockedPosition = IntOffset.Zero
+
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val key = anchorBounds to windowSize
+        if (lockedKey == key) return lockedPosition
+        val position = with(density) {
+            val margin = PanelShadowMargin.roundToPx()
+            val hasSub = scope.subWidth > 0.dp
+            val subExtra = if (hasSub) (PanelGap + scope.subWidth).roundToPx() else 0
+            val panelWidth = maxOf(popupContentSize.width - 2 * margin, menuWidth.roundToPx() + subExtra)
+            val panelHeight = if (scope.mainHeightPx > 0) scope.mainHeightPx else popupContentSize.height - 2 * margin
+            val offsetX = offset.x.roundToPx()
+            val offsetY = offset.y.roundToPx()
+            val verticalMargin = ScreenMargin.roundToPx()
+
+            val horizontal = listOf(
+                anchorBounds.left + offsetX,
+                anchorBounds.right - panelWidth - offsetX,
+                windowSize.width - panelWidth
+            )
+            val x = horizontal.firstOrNull { it >= 0 && it + panelWidth <= windowSize.width } ?: horizontal.last()
+            // offset.y 为负是锚点内的点击位置，向上翻转时底边贴着该点，否则贴着锚点上沿
+            val flippedBottom = if (offsetY < 0) anchorBounds.bottom + offsetY else anchorBounds.top
+            val vertical = listOf(
+                maxOf(anchorBounds.bottom + offsetY, verticalMargin),
+                flippedBottom - panelHeight,
+                windowSize.height - panelHeight - verticalMargin
+            )
+            val y = vertical.firstOrNull { it >= verticalMargin && it + panelHeight <= windowSize.height - verticalMargin }
+                ?: vertical[1].coerceAtLeast(verticalMargin)
+            if (hasSub) scope.subMaxHeightPx = windowSize.height - y - verticalMargin
+            IntOffset(x - margin, y - margin)
+        }
+        lockedKey = key
+        lockedPosition = position
+        return position
     }
 }
 
@@ -114,6 +213,7 @@ fun MenuScope.SubMenuItem(
 ) {
     val contentState = rememberUpdatedState(content)
     val slot = remember { SubMenuSlot(width, contentState) }
+    if (width > subWidth) subWidth = width
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
     val open = {
