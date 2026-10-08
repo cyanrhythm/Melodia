@@ -1,12 +1,21 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -58,6 +68,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
@@ -65,9 +76,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.zIndex
@@ -78,6 +91,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.PlaylistDetail
@@ -107,7 +121,14 @@ internal const val DAILY_RECOMMEND_NAME = "每日推荐"
 // 表头项与吸顶列头占用的列表下标
 private const val LEADING_LIST_ITEMS = 2
 
+// 吸顶标题横栏滑入滑出与播放按钮展开的时长
+private const val STICKY_BAR_ANIMATION_MS = 200
+
 private val HeaderPadding = 24.dp
+private val ActionBarVerticalPadding = 16.dp
+private val PlayButtonSize = 56.dp
+private val StickyBarHeight = 64.dp
+private val StickyPlayButtonSize = 48.dp
 private val ControlHeight = 36.dp
 private val SearchWidth = 240.dp
 private val SortMenuWidth = 200.dp
@@ -280,6 +301,19 @@ private fun PlaylistContent(
     }
     val heroColor by animateColorAsState(lerp(heroBase, Color.Black, HERO_DARKEN_FRACTION), label = "playlistHero")
 
+    val density = LocalDensity.current
+    val barHeightPx = with(density) { StickyBarHeight.roundToPx() }
+    val playButtonBottomPx = with(density) { (ActionBarVerticalPadding + PlayButtonSize).roundToPx() }
+    var heroHeightPx by remember(playlist.id) { mutableIntStateOf(0) }
+    var headerHeightPx by remember(playlist.id) { mutableIntStateOf(0) }
+    // 大标题整体滑到横栏之下时出现歌单名，操作栏的播放按钮滑到横栏之下时再出现播放按钮
+    val showTitleBar by remember(barHeightPx) {
+        derivedStateOf { heroHeightPx > 0 && listState.scrolledPast(heroHeightPx - barHeightPx) }
+    }
+    val showPlayButton by remember(barHeightPx, playButtonBottomPx) {
+        derivedStateOf { heroHeightPx > 0 && listState.scrolledPast(heroHeightPx + playButtonBottomPx - barHeightPx) }
+    }
+
     val shouldLoadMore by remember(state) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -298,8 +332,13 @@ private fun PlaylistContent(
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             item(key = "header") {
-                Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(heroColor, DesktopColors.Pane)))) {
-                    PlaylistHero(playlist, isAlbum, count, totalMs)
+                Column(
+                    Modifier.fillMaxWidth().onSizeChanged { headerHeightPx = it.height }
+                        .background(Brush.verticalGradient(listOf(heroColor, DesktopColors.Pane)))
+                ) {
+                    Box(Modifier.onSizeChanged { heroHeightPx = it.height }) {
+                        PlaylistHero(playlist, isAlbum, count, totalMs)
+                    }
                     PlaylistActionBar(
                         isAlbum = isAlbum,
                         canSubscribe = canSubscribe,
@@ -345,7 +384,17 @@ private fun PlaylistContent(
                 }
             }
             stickyHeader(key = "columns") {
-                TrackColumnHeader(order, hasDates) { order = order.toggled(it) }
+                // 吸顶后让到标题横栏之下，位移由表头项的滚动位置推出
+                Box(
+                    Modifier.graphicsLayer {
+                        if (headerHeightPx > 0) {
+                            val naturalY = if (listState.firstVisibleItemIndex > 0) 0 else headerHeightPx - listState.firstVisibleItemScrollOffset
+                            translationY = (barHeightPx - naturalY).coerceIn(0, barHeightPx).toFloat()
+                        }
+                    }
+                ) {
+                    TrackColumnHeader(order, hasDates) { order = order.toggled(it) }
+                }
             }
             itemsIndexed(shown, key = { index, _ -> rowKeys[index] }) { index, track ->
                 val dragging = reorder.draggedIndex == index
@@ -427,6 +476,15 @@ private fun PlaylistContent(
                 }
             }
         }
+        Box(Modifier.fillMaxWidth().clipToBounds()) {
+            AnimatedVisibility(
+                visible = showTitleBar,
+                enter = fadeIn(tween(STICKY_BAR_ANIMATION_MS)) + slideInVertically(tween(STICKY_BAR_ANIMATION_MS)) { -it / 2 },
+                exit = fadeOut(tween(STICKY_BAR_ANIMATION_MS)) + slideOutVertically(tween(STICKY_BAR_ANIMATION_MS)) { -it / 2 }
+            ) {
+                PlaylistStickyBar(playlist.name, heroColor, showPlayButton, listState) { playDisplayed(false) }
+            }
+        }
     }
 
     if (showEdit) {
@@ -497,12 +555,13 @@ private fun PlaylistHero(playlist: PlaylistDetail, isAlbum: Boolean, count: Int,
     }
     Row(Modifier.fillMaxWidth().padding(HeaderPadding), verticalAlignment = Alignment.Bottom) {
         Cover(playlist.coverImgUrl, 200.dp, shape = RoundedCornerShape(6.dp))
-        Column(Modifier.padding(start = HeaderPadding)) {
+        Column(Modifier.weight(1f).padding(start = HeaderPadding)) {
             Text(typeLabel, color = DesktopColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(
                 playlist.name,
                 color = DesktopColors.TextPrimary,
                 fontSize = 48.sp,
+                lineHeight = 56.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -529,6 +588,56 @@ private fun PlaylistHero(playlist: PlaylistDetail, isAlbum: Boolean, count: Int,
                 if (owner.isNotBlank()) Text(" · ", color = DesktopColors.TextGray, fontSize = 14.sp)
                 Text(summary, color = DesktopColors.TextGray, fontSize = 14.sp)
             }
+        }
+    }
+}
+
+// 表头项已滚出视野，或滚动距离达到阈值
+private fun LazyListState.scrolledPast(thresholdPx: Int): Boolean =
+    firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset >= thresholdPx
+
+@Composable
+private fun PlaylistStickyBar(
+    name: String,
+    color: Color,
+    showPlay: Boolean,
+    listState: LazyListState,
+    onPlay: () -> Unit
+) {
+    Row(
+        // 横栏盖住列表顶部，滚轮事件转给列表
+        Modifier.fillMaxWidth().height(StickyBarHeight).background(color)
+            .scrollable(listState, Orientation.Vertical)
+            .padding(horizontal = HeaderPadding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AnimatedVisibility(
+            visible = showPlay,
+            enter = fadeIn(tween(STICKY_BAR_ANIMATION_MS)) + expandHorizontally(tween(STICKY_BAR_ANIMATION_MS)),
+            exit = fadeOut(tween(STICKY_BAR_ANIMATION_MS)) + shrinkHorizontally(tween(STICKY_BAR_ANIMATION_MS))
+        ) {
+            PlayCircleButton(StickyPlayButtonSize, 28.dp, onPlay, Modifier.padding(end = 12.dp))
+        }
+        Text(
+            name,
+            color = DesktopColors.TextPrimary,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun PlayCircleButton(size: Dp, iconSize: Dp, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    DesktopTooltip("播放") {
+        Box(
+            modifier.size(size).clip(CircleShape).background(DesktopColors.Accent)
+                .pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.PlayArrow, "播放全部", tint = DesktopColors.TextPrimary, modifier = Modifier.size(iconSize))
         }
     }
 }
@@ -562,19 +671,11 @@ private fun PlaylistActionBar(
 ) {
     val resourceLabel = if (isAlbum) "专辑" else "歌单"
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = HeaderPadding, vertical = 16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = HeaderPadding, vertical = ActionBarVerticalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DesktopTooltip("播放") {
-            Box(
-                Modifier.size(56.dp).clip(CircleShape).background(DesktopColors.Accent)
-                    .pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onPlay),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.PlayArrow, "播放全部", tint = DesktopColors.TextPrimary, modifier = Modifier.size(32.dp))
-            }
-        }
+        PlayCircleButton(PlayButtonSize, 32.dp, onPlay)
         ActionIcon(Icons.Rounded.Shuffle, "随机播放", onClick = onShuffle)
         if (canSubscribe) {
             ActionIcon(
