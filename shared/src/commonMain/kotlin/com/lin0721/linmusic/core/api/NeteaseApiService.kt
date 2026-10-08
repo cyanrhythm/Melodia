@@ -35,18 +35,6 @@ interface NeteaseApiService {
         @Body body: QrCheckRequest
     ): Response<QrCheckResponse>
 
-    // 发送手机验证码，参考 api-enhanced captcha_sent_v1（eapi）；旧的 sms/captcha/sent 会被判为风险登录
-    @POST("/eapi/middle/captcha/sent/v1")
-    suspend fun sendCaptcha(
-        @Body body: CaptchaSentRequest
-    ): CaptchaSentResponse
-
-    // 手机验证码登录，参考 api-enhanced login_cellphone（weapi）；登录 Cookie 在 Set-Cookie 里
-    @POST("/weapi/w/login/cellphone")
-    suspend fun loginCellphone(
-        @Body body: CellphoneLoginRequest
-    ): Response<CellphoneLoginResponse>
-
     // 刷新登录态，参考 api-enhanced login_refresh；新 Cookie 在 Set-Cookie 里
     @POST("/weapi/login/token/refresh")
     suspend fun refreshLogin(
@@ -116,39 +104,7 @@ data class QrCheckResponse(
     val cookies: String? = null
 )
 
-// ======================= 手机验证码登录 =======================
-
-// secrete 是网易 PC 登录流程固定的场景标识
-@Serializable
-data class CaptchaSentRequest(
-    val cellphone: String,
-    val ctcode: String = "86",
-    val secrete: String = "music_middleuser_pclogin",
-    val scene: String = "0"
-)
-
-@Serializable
-data class CaptchaSentResponse(
-    val code: Int = 0,
-    val message: String? = null
-)
-
-@Serializable
-data class CellphoneLoginRequest(
-    val phone: String,
-    val captcha: String,
-    val countrycode: String = "86",
-    val type: String = "1",
-    val https: String = "true",
-    val remember: String = "true",
-    val secureCaptcha: String = ""
-)
-
-@Serializable
-data class CellphoneLoginResponse(
-    val code: Int = 0,
-    val message: String? = null
-)
+// ======================= 登录续期 =======================
 
 @Serializable
 data class LoginRefreshResponse(

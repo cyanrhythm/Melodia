@@ -42,16 +42,6 @@ class LoginViewModel(
 
     private var pollJob: Job? = null
 
-    private val phoneLogin = PhoneLoginController(viewModelScope, authRepository)
-    val phoneState: StateFlow<PhoneLoginUiState> = phoneLogin.state
-
-    fun sendPhoneCaptcha(phone: String) = phoneLogin.sendCaptcha(phone)
-
-    fun submitPhoneLogin(phone: String, captcha: String, onLoginSuccess: (String) -> Unit) =
-        phoneLogin.submit(phone, captcha, onLoginSuccess)
-
-    fun resetPhoneState() = phoneLogin.reset()
-
     // 开始二维码登录：取 key → 本地生成二维码 → 轮询扫码状态
     fun startQrLogin(onLoginSuccess: (String) -> Unit) {
         stopQrPolling()

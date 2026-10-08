@@ -49,17 +49,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.google.zxing.common.BitMatrix
 import com.lin0721.linmusic.core.auth.LoginViewModel
-import com.lin0721.linmusic.core.auth.PhoneLoginUiState
 import com.lin0721.linmusic.core.auth.QrLoginState
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import java.awt.image.BufferedImage
 
-private const val PHONE_LENGTH = 11
-private const val CAPTCHA_MAX_LENGTH = 6
-
 private enum class LoginTab(val label: String) {
     SCAN("扫码"),
-    PHONE("验证码"),
     COOKIE("Cookie")
 }
 
@@ -78,7 +73,6 @@ fun LoginDialog(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.resetQrState()
-            viewModel.resetPhoneState()
         }
     }
 
@@ -102,7 +96,6 @@ fun LoginDialog(
                 )
                 when (tab) {
                     LoginTab.SCAN -> ScanLogin(viewModel, onLoginSuccess)
-                    LoginTab.PHONE -> PhoneLogin(viewModel, onLoginSuccess)
                     LoginTab.COOKIE -> CookieLogin(viewModel, onLoginSuccess)
                 }
                 Spacer(Modifier.height(8.dp))
@@ -135,54 +128,6 @@ private fun ScanLogin(viewModel: LoginViewModel, onLoginSuccess: (String) -> Uni
 }
 
 @Composable
-private fun PhoneLogin(viewModel: LoginViewModel, onLoginSuccess: (String) -> Unit) {
-    val state by viewModel.phoneState.collectAsState()
-    var phone by remember { mutableStateOf("") }
-    var captcha by remember { mutableStateOf("") }
-    val submit = { viewModel.submitPhoneLogin(phone, captcha, onLoginSuccess) }
-
-    OutlinedTextField(
-        value = phone,
-        onValueChange = { phone = it.filter(Char::isDigit).take(PHONE_LENGTH) },
-        label = { Text("手机号（+86）") },
-        singleLine = true,
-        colors = dialogFieldColors(),
-        modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = captcha,
-            onValueChange = { captcha = it.filter(Char::isDigit).take(CAPTCHA_MAX_LENGTH) },
-            label = { Text("验证码") },
-            singleLine = true,
-            colors = dialogFieldColors(),
-            modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
-                    submit()
-                    true
-                } else {
-                    false
-                }
-            }
-        )
-        OutlinedButton(
-            onClick = { viewModel.sendPhoneCaptcha(phone) },
-            enabled = !state.isSending && state.countdownSeconds == 0
-        ) {
-            Text(captchaButtonText(state), color = DesktopColors.TextPrimary, fontSize = 13.sp, maxLines = 1)
-        }
-    }
-    Text(
-        state.message.orEmpty(),
-        color = DesktopColors.TextGray,
-        fontSize = 12.sp,
-        modifier = Modifier.fillMaxWidth().height(28.dp).padding(top = 8.dp)
-    )
-    LoginButton(loading = state.isSubmitting, onClick = submit)
-}
-
-@Composable
 private fun CookieLogin(viewModel: LoginViewModel, onLoginSuccess: (String) -> Unit) {
     var cookie by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -192,7 +137,7 @@ private fun CookieLogin(viewModel: LoginViewModel, onLoginSuccess: (String) -> U
             cookie = it
             error = null
         },
-        placeholder = { Text("粘贴完整 Cookie，或只粘贴 MUSIC_U 的值", fontSize = 13.sp) },
+        placeholder = { Text("在浏览器登录 music.163.com 后，复制 Cookie 中 MUSIC_U 的值粘贴到这里", fontSize = 13.sp) },
         minLines = 3,
         maxLines = 5,
         colors = dialogFieldColors(),
@@ -223,12 +168,6 @@ private fun LoginButton(loading: Boolean, onClick: () -> Unit) {
             Text("登录", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold)
         }
     }
-}
-
-private fun captchaButtonText(state: PhoneLoginUiState): String = when {
-    state.isSending -> "发送中"
-    state.countdownSeconds > 0 -> "${state.countdownSeconds} 秒后重发"
-    else -> "获取验证码"
 }
 
 @Composable
