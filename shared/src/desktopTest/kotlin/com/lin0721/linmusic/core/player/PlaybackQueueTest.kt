@@ -307,6 +307,43 @@ class PlaybackQueueTest {
         assertEquals(1, queue.currentIndex.value)
     }
 
+    @Test
+    fun `进入前队列为空时还原快照应退出特殊上下文并保留当前队列`() {
+        val queue = PlaybackQueue()
+        queue.takeSnapshot()
+        queue.setPlayContext("intelligence")
+        queue.replaceAll(listOf(item(1), item(9)), startIndex = 0)
+
+        queue.restoreSnapshot()
+        assertNull(queue.playContext.value)
+        assertEquals(listOf(1L, 9L), queue.ids())
+        assertEquals(0, queue.currentIndex.value)
+    }
+
+    @Test
+    fun `快照丢失时退出特殊上下文只清除上下文不动队列`() {
+        val queue = PlaybackQueue()
+        queue.restore(listOf(item(1), item(9)), index = 1, context = "intelligence")
+
+        queue.exitSpecialContext()
+        assertNull(queue.playContext.value)
+        assertEquals(listOf(1L, 9L), queue.ids())
+        assertEquals(1, queue.currentIndex.value)
+    }
+
+    @Test
+    fun `有快照时退出特殊上下文等同还原快照`() {
+        val queue = queueOf(1, 2, 3, startIndex = 0)
+        queue.setPlayContext("我喜欢的音乐")
+        queue.takeSnapshot()
+        queue.setPlayContext("intelligence")
+        queue.replaceAll(listOf(item(1), item(9)), startIndex = 0)
+
+        queue.exitSpecialContext()
+        assertEquals("我喜欢的音乐", queue.playContext.value)
+        assertEquals(listOf(1L, 2L, 3L), queue.ids())
+    }
+
     // ======================= 恢复与替换 =======================
 
     @Test

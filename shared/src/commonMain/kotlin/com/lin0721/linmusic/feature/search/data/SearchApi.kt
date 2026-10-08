@@ -11,6 +11,8 @@ import com.lin0721.linmusic.feature.search.data.dto.SearchDefaultResponse
 import com.lin0721.linmusic.feature.search.data.dto.SearchSuggestRequest
 import com.lin0721.linmusic.feature.search.data.dto.SearchSuggestResponse
 import com.lin0721.linmusic.feature.search.data.dto.SearchSuggestWebResponse
+import com.lin0721.linmusic.feature.search.data.dto.VoiceSearchRequest
+import com.lin0721.linmusic.feature.search.data.dto.VoiceSearchResponse
 import retrofit2.http.Body
 import retrofit2.http.POST
 
@@ -29,11 +31,17 @@ interface SearchApi {
         @Body body: EmptyBody = EmptyBody()
     ): HotSearchDetailResponse
 
-    // 云搜索（按 type 区分单曲/专辑/歌手/歌单）
+    // 云搜索（按 type 区分单曲/专辑/歌手/歌单/电台）
     @POST("/eapi/cloudsearch/pc")
     suspend fun cloudSearch(
         @Body body: CloudSearchRequest
     ): CloudSearchResponse
+
+    // 节目（声音）搜索，响应结构与云搜索不同；真机核实 eapi 可用
+    @POST("/eapi/search/voice/get")
+    suspend fun searchVoices(
+        @Body body: VoiceSearchRequest
+    ): VoiceSearchResponse
 
     // 获取精品歌单标签列表
     @POST("/eapi/playlist/highquality/tags")

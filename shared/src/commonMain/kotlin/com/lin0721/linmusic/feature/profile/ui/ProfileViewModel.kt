@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.feature.profile.data.ProfileRepository
-import com.lin0721.linmusic.feature.profile.domain.ProfileEventInfo
 import com.lin0721.linmusic.feature.profile.domain.ProfileListenRankItem
 import com.lin0721.linmusic.feature.profile.domain.ProfilePlaylistInfo
 import com.lin0721.linmusic.feature.profile.domain.ProfileUserInfo
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 private const val PLAYLIST_PAGE_SIZE = 20
-private const val EVENT_PAGE_SIZE = 20
 
 sealed interface ProfileUiState {
     data object Loading : ProfileUiState
@@ -32,11 +30,6 @@ sealed interface ProfileUiState {
         val playlistsHasMore: Boolean = false,
         val playlistsLoadingMore: Boolean = false,
         val playlistsLoaded: Boolean = false,
-        val events: List<ProfileEventInfo> = emptyList(),
-        val eventsHasMore: Boolean = false,
-        val eventsLoadingMore: Boolean = false,
-        val eventsLastTime: Long = -1L,
-        val eventsLoaded: Boolean = false,
         val rankSubTab: Int = 0,
         val rankItems: List<ProfileListenRankItem> = emptyList(),
         val rankLoading: Boolean = false,
@@ -62,6 +55,14 @@ class ProfileViewModel(
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
     private var playlistOffset = 0
+
+    // 页面重新进入组合（如从详情页返回）时复用已有数据，仅 uid 变化或加载失败时才请求
+    fun loadIfNeeded(uid: Long) {
+        val state = _uiState.value
+        val inProgressOrLoaded = state is ProfileUiState.Loading || state is ProfileUiState.Success
+        if (this.uid == uid && inProgressOrLoaded) return
+        load(uid)
+    }
 
     // 由 ProfileScreen 的 LaunchedEffect(uid) 调用，uid 变化时会重新触发
     fun load(uid: Long) {
@@ -106,8 +107,7 @@ class ProfileViewModel(
         _uiState.value = state.copy(selectedTab = tabIndex)
         when (tabIndex) {
             0 -> loadPlaylistsIfNeeded()
-            1 -> loadEventsIfNeeded()
-            2 -> loadListeningRankIfNeeded()
+            1 -> loadListeningRankIfNeeded()
         }
     }
 
@@ -158,57 +158,6 @@ class ProfileViewModel(
                     _toastEvent.emit(error.message ?: "加载更多歌单失败")
                     val latest = _uiState.value as? ProfileUiState.Success ?: return@onFailure
                     _uiState.value = latest.copy(playlistsLoadingMore = false)
-                }
-        }
-    }
-
-    fun loadEventsIfNeeded() {
-        val state = _uiState.value as? ProfileUiState.Success ?: return
-        if (state.eventsLoaded) return
-        // 首次拉取也要标 loading，理由同 loadPlaylistsIfNeeded
-        _uiState.value = state.copy(eventsLoadingMore = true)
-        viewModelScope.launch {
-            // 首次拉取动态 time 传 -1L 获取最新一页
-            profileRepository.getUserEvents(uid, time = -1L, limit = EVENT_PAGE_SIZE)
-                .first()
-                .onSuccess { page ->
-                    val latest = _uiState.value as? ProfileUiState.Success ?: return@onSuccess
-                    _uiState.value = latest.copy(
-                        events = page.events,
-                        eventsHasMore = page.hasMore,
-                        eventsLastTime = page.lasttime,
-                        eventsLoaded = true,
-                        eventsLoadingMore = false
-                    )
-                }
-                .onFailure { error ->
-                    _toastEvent.emit(error.message ?: "加载动态失败")
-                    val latest = _uiState.value as? ProfileUiState.Success ?: return@onFailure
-                    _uiState.value = latest.copy(eventsLoaded = true, eventsLoadingMore = false)
-                }
-        }
-    }
-
-    fun loadMoreEvents() {
-        val state = _uiState.value as? ProfileUiState.Success ?: return
-        if (!state.eventsHasMore || state.eventsLoadingMore) return
-        _uiState.value = state.copy(eventsLoadingMore = true)
-        viewModelScope.launch {
-            profileRepository.getUserEvents(uid, time = state.eventsLastTime, limit = EVENT_PAGE_SIZE)
-                .first()
-                .onSuccess { page ->
-                    val latest = _uiState.value as? ProfileUiState.Success ?: return@onSuccess
-                    _uiState.value = latest.copy(
-                        events = latest.events + page.events,
-                        eventsHasMore = page.hasMore,
-                        eventsLastTime = page.lasttime,
-                        eventsLoadingMore = false
-                    )
-                }
-                .onFailure { error ->
-                    _toastEvent.emit(error.message ?: "加载更多动态失败")
-                    val latest = _uiState.value as? ProfileUiState.Success ?: return@onFailure
-                    _uiState.value = latest.copy(eventsLoadingMore = false)
                 }
         }
     }

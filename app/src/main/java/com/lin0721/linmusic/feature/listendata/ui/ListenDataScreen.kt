@@ -64,7 +64,7 @@ fun ListenDataScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.playerManager.playWhenReady.collectAsStateWithLifecycle()
 
     SecondaryScreenScaffold(title = "听歌数据", onBack = onBack) {
         FilterChipsRow(

@@ -1,6 +1,8 @@
 package com.lin0721.linmusic.desktop.player.mpv
 
 import com.lin0721.linmusic.core.log.AppLogger
+import com.lin0721.linmusic.desktop.player.AudioDevice
+import com.lin0721.linmusic.desktop.player.parseAudioDevices
 import com.sun.jna.Pointer
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToLong
@@ -12,7 +14,8 @@ private const val OBSERVE_DURATION = 2L
 private const val OBSERVE_PAUSE = 3L
 
 // 纯音频播放内核：只负责“播这个地址/暂停/跳转/音量”，队列与取地址由上层决定
-class MpvEngine(private val listener: Listener) {
+// 仅测试用：初始化前写入的额外选项
+class MpvEngine(private val listener: Listener, extraOptions: Map<String, String> = emptyMap()) {
 
     interface Listener {
         fun onPositionChanged(positionMs: Long)
@@ -36,6 +39,7 @@ class MpvEngine(private val listener: Listener) {
         setOption("idle", "yes")
         setOption("audio-display", "no")
         setOption("keep-open", "no")
+        extraOptions.forEach { (name, value) -> setOption(name, value) }
         check(mpv.mpv_initialize(ctx) >= 0) { "mpv_initialize 失败" }
         mpv.mpv_observe_property(ctx, OBSERVE_TIME_POS, "time-pos", MpvConst.FORMAT_DOUBLE)
         mpv.mpv_observe_property(ctx, OBSERVE_DURATION, "duration", MpvConst.FORMAT_DOUBLE)
@@ -46,10 +50,13 @@ class MpvEngine(private val listener: Listener) {
         }
     }
 
-    fun load(url: String, startMs: Long) {
+    // paused 为真时载入后停在开头，用于预载
+    // recordPath 非空时把读到的流录成该文件（容器由扩展名决定），空串关闭录制
+    fun load(url: String, startMs: Long, paused: Boolean = false, recordPath: String? = null) {
+        setProperty("stream-record", recordPath.orEmpty())
         // start 为全局选项，对下一个载入的文件生效
         setProperty("start", if (startMs > 0) "+${startMs / 1000.0}" else "none")
-        setProperty("pause", "no")
+        setProperty("pause", if (paused) "yes" else "no")
         command("loadfile", url, "replace")
     }
 
@@ -57,7 +64,24 @@ class MpvEngine(private val listener: Listener) {
 
     fun seekTo(positionMs: Long) = command("seek", (positionMs.coerceAtLeast(0) / 1000.0).toString(), "absolute")
 
-    fun setVolume(percent: Int) = setProperty("volume", percent.coerceIn(0, 100).toString())
+    fun setVolume(percent: Int) = setVolume(percent.toDouble())
+
+    // 淡入淡出需要小数步进，整数档位在低音量下有台阶感
+    fun setVolume(percent: Double) = setProperty("volume", "%.3f".format(java.util.Locale.ROOT, percent.coerceIn(0.0, 100.0)))
+
+    // 仅测试用
+    internal fun volume(): Double? = getProperty("volume")?.toDoubleOrNull()
+
+    // node 类型属性按字符串读取得到 JSON；读不到返回 null
+    fun audioDevices(): List<AudioDevice> = getProperty("audio-device-list")?.let(::parseAudioDevices).orEmpty()
+
+    // 切换失败（设备不存在等）返回 false，原设备保持不变
+    fun setAudioDevice(name: String): Boolean {
+        if (!running.get()) return false
+        val code = mpv.mpv_set_property_string(ctx, "audio-device", name)
+        if (code < 0) AppLogger.w(TAG, "切换输出设备失败 $name：${mpv.mpv_error_string(code)}")
+        return code >= 0
+    }
 
     fun stop() = command("stop")
 
@@ -119,6 +143,16 @@ class MpvEngine(private val listener: Listener) {
         if (!running.get()) return
         val code = mpv.mpv_set_property_string(ctx, name, value)
         if (code < 0) AppLogger.w(TAG, "设置属性失败 $name=$value：${mpv.mpv_error_string(code)}")
+    }
+
+    private fun getProperty(name: String): String? {
+        if (!running.get()) return null
+        val pointer = mpv.mpv_get_property_string(ctx, name) ?: return null
+        return try {
+            pointer.getString(0, "UTF-8")
+        } finally {
+            mpv.mpv_free(pointer)
+        }
     }
 
     private fun command(vararg args: String) {

@@ -360,7 +360,7 @@ private fun SortMenu(sort: StyleSort, onSelect: (StyleSort) -> Unit) {
             onDismissRequest = { expanded = false },
             offset = DpOffset(0.dp, 4.dp),
             shape = RoundedCornerShape(12.dp),
-            containerColor = DesktopColors.Surface,
+            containerColor = DesktopColors.PopupSurface,
             shadowElevation = 16.dp
         ) {
             StyleSort.entries.forEach { option ->

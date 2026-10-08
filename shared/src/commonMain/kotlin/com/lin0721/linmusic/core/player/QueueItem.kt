@@ -11,5 +11,7 @@ data class QueueItem(
     val artist: String,
     val coverUrl: String,
     // 本地外部音频 Uri，非空时直接本地播放
-    val localUri: String? = null
+    val localUri: String? = null,
+    // 播客节目所属电台 id，非播客为 0
+    val radioId: Long = 0
 )

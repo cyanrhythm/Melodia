@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerState
 import com.lin0721.linmusic.core.player.PlayMode
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.PlayerBackdropPalette
@@ -45,6 +46,8 @@ fun LazyListScope.fullPlayerPlaybackSection(
     title: String,
     artist: String,
     playContext: String?,
+    podcast: PodcastPlayerState = PodcastPlayerState(),
+    onToggleSubscribe: () -> Unit = {},
     currentLyricIndex: Int,
     isPlaying: Boolean,
     // 大播放按钮专用：弱网缓冲期间也要立刻显示"暂停中"，不受歌词区仍用的严格 isPlaying 影响
@@ -86,6 +89,7 @@ fun LazyListScope.fullPlayerPlaybackSection(
             FullPlayerCoverArt(
                 coverUrl = coverUrl,
                 playContext = playContext,
+                podcastRadioName = podcast.radioName,
                 onClose = onClose,
                 onMoreClick = onMoreClick,
                 previousCoverUrl = previousCoverUrl,
@@ -112,7 +116,9 @@ fun LazyListScope.fullPlayerPlaybackSection(
             artist = artist,
             isLiked = songState.isLiked,
             onToggleLike = onToggleLike,
-            onArtistClick = onArtistClick
+            onArtistClick = onArtistClick,
+            podcast = podcast,
+            onToggleSubscribe = onToggleSubscribe
         )
     }
 
@@ -165,7 +171,8 @@ fun LazyListScope.fullPlayerPlaybackSection(
             isRoaming = playContext == "similar_roaming",
             onDisableRoaming = onDisableRoaming,
             isIntelligence = playContext == "intelligence",
-            onDisableIntelligence = onDisableIntelligence
+            onDisableIntelligence = onDisableIntelligence,
+            showModeButtons = !podcast.isPodcast
         )
     }
 

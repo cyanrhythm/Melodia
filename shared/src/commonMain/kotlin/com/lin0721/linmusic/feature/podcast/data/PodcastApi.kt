@@ -37,6 +37,30 @@ interface PodcastApi {
         @Body body: PodcastToplistRequest = PodcastToplistRequest()
     ): PodcastToplistResponse
 
+    // 我订阅的电台（需登录），顺序以服务端为准，一次 30 条
+    @POST("/eapi/djradio/get/subed")
+    suspend fun getSubscribedRadios(
+        @Body body: PodcastSubscribedRequest = PodcastSubscribedRequest()
+    ): PodcastSubscribedResponse
+
+    // 分类分组推荐：12 个分类，每组若干电台（公开接口）
+    @POST("/eapi/djradio/home/category/recommend")
+    suspend fun getCategoryGroups(
+        @Body body: EmptyBody = EmptyBody()
+    ): PodcastCategoryGroupResponse
+
+    // 分类下的热门电台，可分页（公开接口）
+    @POST("/eapi/djradio/hot")
+    suspend fun getCategoryHotRadios(
+        @Body body: PodcastCategoryHotRequest
+    ): PodcastCategoryHotResponse
+
+    // 节目榜（公开接口）
+    @POST("/eapi/program/toplist/v1")
+    suspend fun getProgramToplist(
+        @Body body: PodcastProgramToplistRequest = PodcastProgramToplistRequest()
+    ): PodcastProgramToplistResponse
+
     // 电台详情
     @POST("/eapi/djradio/v2/get")
     suspend fun getRadioDetail(

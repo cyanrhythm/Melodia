@@ -169,8 +169,10 @@ private fun CreatePlaylistDialog(
     var name by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = { if (!isCreating) onDismiss() },
+        sheetState = sheetState,
         containerColor = SurfaceDark,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

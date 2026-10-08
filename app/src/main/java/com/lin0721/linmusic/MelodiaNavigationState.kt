@@ -34,6 +34,13 @@ sealed class Screen {
     data class Artist(val id: Long) : Screen()
     @Serializable
     data class Radio(val id: Long) : Screen()
+    // 「播客」tab 的二级页
+    @Serializable
+    data object PodcastSubscribed : Screen()
+    @Serializable
+    data object PodcastToplist : Screen()
+    @Serializable
+    data class PodcastCategory(val id: Long, val name: String) : Screen()
     @Serializable
     data class PlaylistCategory(val category: String) : Screen()
     // 「音乐」tab 的曲风详情
@@ -83,6 +90,9 @@ sealed class Screen {
     data class FollowList(val uid: Long, val mode: FollowListMode) : Screen()
 }
 
+// 回退栈栈帧：id 在整个应用生命周期内唯一，同一目标在栈里重复出现时仍可区分各自的页面现场
+data class NavEntry(val id: Long, val screen: Screen)
+
 // 应用级导航状态：主页/搜索/音乐库三个底栏 tab 各自持有一条独立回退栈，
 // 切 tab 只切换「当前激活栈」，不清空其余 tab 已经积累的浏览历史
 class MelodiaNavigationState(
@@ -90,25 +100,52 @@ class MelodiaNavigationState(
     initialSearchStack: List<Screen> = listOf(Screen.Search),
     initialLibraryStack: List<Screen> = listOf(Screen.Library),
     initialActiveTab: Screen = Screen.Home,
-    initialHomeTab: Int = 0
+    initialHomeTab: Int = 0,
+    initialHomeIds: List<Long> = emptyList(),
+    initialSearchIds: List<Long> = emptyList(),
+    initialLibraryIds: List<Long> = emptyList(),
+    initialNextEntryId: Long = 0L
 ) {
 
-    private val homeStack = mutableStateListOf<Screen>().apply { addAll(initialHomeStack) }
-    private val searchStack = mutableStateListOf<Screen>().apply { addAll(initialSearchStack) }
-    private val libraryStack = mutableStateListOf<Screen>().apply { addAll(initialLibraryStack) }
+    private var nextEntryId = initialNextEntryId
+
+    private fun buildEntries(screens: List<Screen>, ids: List<Long>): List<NavEntry> =
+        if (ids.size == screens.size) {
+            screens.mapIndexed { index, screen -> NavEntry(ids[index], screen) }
+        } else {
+            screens.map { screen -> NavEntry(nextEntryId++, screen) }
+        }
+
+    private val homeStack = mutableStateListOf<NavEntry>()
+        .apply { addAll(buildEntries(initialHomeStack, initialHomeIds)) }
+    private val searchStack = mutableStateListOf<NavEntry>()
+        .apply { addAll(buildEntries(initialSearchStack, initialSearchIds)) }
+    private val libraryStack = mutableStateListOf<NavEntry>()
+        .apply { addAll(buildEntries(initialLibraryStack, initialLibraryIds)) }
+
+    init {
+        // 恢复的 id 可能大于计数器，避免之后分配出重复 id
+        val maxId = (homeStack + searchStack + libraryStack).maxOfOrNull { it.id } ?: -1L
+        if (nextEntryId <= maxId) nextEntryId = maxId + 1
+    }
 
     var activeTab by mutableStateOf(initialActiveTab)
         private set
 
-    private fun stackFor(tab: Screen): MutableList<Screen> = when (tab) {
+    private fun stackFor(tab: Screen): MutableList<NavEntry> = when (tab) {
         Screen.Search -> searchStack
         Screen.Library -> libraryStack
         else -> homeStack
     }
 
-    private val activeStack: MutableList<Screen> get() = stackFor(activeTab)
+    private val activeStack: MutableList<NavEntry> get() = stackFor(activeTab)
 
-    val currentScreen: Screen by derivedStateOf { activeStack.lastOrNull() ?: activeTab }
+    val currentEntry: NavEntry by derivedStateOf { activeStack.last() }
+
+    val currentScreen: Screen by derivedStateOf { currentEntry.screen }
+
+    // 三条栈里仍然存在的全部栈帧，用于判断哪些页面现场该释放
+    val liveEntryIds: Set<Long> get() = (homeStack + searchStack + libraryStack).mapTo(HashSet()) { it.id }
 
     // 当前 tab 内栈深大于 1 时才有上一级可回退
     val canNavigateBack: Boolean get() = activeStack.size > 1
@@ -166,8 +203,8 @@ class MelodiaNavigationState(
                 activeTab = screen
             }
             else -> {
-                if (activeStack.lastOrNull() == screen) return
-                activeStack.add(screen)
+                if (activeStack.lastOrNull()?.screen == screen) return
+                activeStack.add(NavEntry(nextEntryId++, screen))
             }
         }
     }
@@ -179,10 +216,6 @@ class MelodiaNavigationState(
             activeStack.removeAt(activeStack.lastIndex)
             if (willExitPlayerNav) {
                 resetPlayerNavigation()
-            }
-            if (activeTab == Screen.Home && activeStack.size == 1) {
-                homeTab = TAB_ALL
-                showMusicNewWorks = false
             }
             return willExitPlayerNav
         }
@@ -289,11 +322,15 @@ class MelodiaNavigationState(
     }
 
     internal fun toSnapshot(): NavigationSnapshot = NavigationSnapshot(
-        homeStack = homeStack.toList(),
-        searchStack = searchStack.toList(),
-        libraryStack = libraryStack.toList(),
+        homeStack = homeStack.map { it.screen },
+        searchStack = searchStack.map { it.screen },
+        libraryStack = libraryStack.map { it.screen },
         activeTabIndex = tabIndex(activeTab),
-        homeTab = homeTab
+        homeTab = homeTab,
+        homeIds = homeStack.map { it.id },
+        searchIds = searchStack.map { it.id },
+        libraryIds = libraryStack.map { it.id },
+        nextEntryId = nextEntryId
     )
 }
 
@@ -305,7 +342,12 @@ internal data class NavigationSnapshot(
     val searchStack: List<Screen>,
     val libraryStack: List<Screen>,
     val activeTabIndex: Int,
-    val homeTab: Int
+    val homeTab: Int,
+    // 以下字段为后加，旧版本保存的快照缺省时由导航状态重新分配
+    val homeIds: List<Long> = emptyList(),
+    val searchIds: List<Long> = emptyList(),
+    val libraryIds: List<Long> = emptyList(),
+    val nextEntryId: Long = 0L
 )
 
 private fun tabIndex(tab: Screen): Int = when (tab) {
@@ -336,7 +378,11 @@ private val MelodiaNavigationStateSaver: Saver<MelodiaNavigationState, String> =
                 initialSearchStack = snapshot.searchStack.ifEmpty { listOf(Screen.Search) },
                 initialLibraryStack = snapshot.libraryStack.ifEmpty { listOf(Screen.Library) },
                 initialActiveTab = tabFromIndex(snapshot.activeTabIndex),
-                initialHomeTab = snapshot.homeTab
+                initialHomeTab = snapshot.homeTab,
+                initialHomeIds = snapshot.homeIds,
+                initialSearchIds = snapshot.searchIds,
+                initialLibraryIds = snapshot.libraryIds,
+                initialNextEntryId = snapshot.nextEntryId
             )
         }
     }

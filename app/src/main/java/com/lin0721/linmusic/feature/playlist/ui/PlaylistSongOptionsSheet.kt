@@ -58,8 +58,10 @@ fun PlaylistSongOptionsSheet(
     // 额外操作项
     extraOptions: @Composable ColumnScope.() -> Unit = {}
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

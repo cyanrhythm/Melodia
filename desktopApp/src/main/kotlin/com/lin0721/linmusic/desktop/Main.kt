@@ -20,6 +20,12 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import com.lin0721.linmusic.desktop.ui.lyricsview.rememberLyricsViewState
+import com.lin0721.linmusic.desktop.ui.rememberFullscreenState
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.di.desktopPlatformModule
@@ -41,21 +47,43 @@ import com.lin0721.linmusic.di.networkModule
 import com.lin0721.linmusic.di.repositoryModule
 import com.lin0721.linmusic.di.sourceModule
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
+import com.lin0721.linmusic.feature.podcast.data.PodcastProgressTracker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import com.lin0721.linmusic.desktop.platform.DesktopCacheMigration
+import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
+import com.lin0721.linmusic.desktop.platform.DesktopLogging
+import com.lin0721.linmusic.desktop.platform.DesktopPaths
+import com.lin0721.linmusic.desktop.platform.SingleInstance
 import org.jetbrains.skia.Image
 import org.koin.core.context.startKoin
+import kotlin.system.exitProcess
 import java.awt.Dimension
 
 private const val VOLUME_STEP = 5
 private const val EXIT_ANIMATION_MS = 250L
 
 fun main() {
+    DesktopLogging.install()
+    DesktopImageLoader.install()
+    // 已有实例则唤起它并退出
+    val activationRequests = Channel<Unit>(Channel.CONFLATED)
+    if (!SingleInstance(DesktopPaths.dataDir).acquire { activationRequests.trySend(Unit) }) {
+        exitProcess(0)
+    }
+    // 须先于缓存对象创建
+    DesktopCacheMigration.migrateAll()
     val koin = startKoin {
         modules(desktopPlatformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
     }.koin
     val controller = koin.get<PlaybackController>()
+    // 进程内常驻记录播客收听进度
+    PodcastProgressTracker(controller, koin.get()).start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
     val mpvController = controller as? MpvPlaybackController
     val settingsPreferences = koin.get<SettingsPreferences>()
     val playerViewModel = koin.get<PlayerViewModel>()
@@ -101,6 +129,10 @@ fun main() {
         // 主窗口关闭按钮与 Alt+F4 统一按设置处理；系统不支持托盘时隐藏后无法找回，只能退出
         val closeMainWindow = {
             if (closeAction == CloseAction.EXIT || !isTraySupported) exit() else isMainVisible = false
+        }
+
+        LaunchedEffect(Unit) {
+            for (request in activationRequests) showMainWindow()
         }
 
         hotkeys.onAction = { action ->
@@ -152,13 +184,33 @@ fun main() {
             size = DpSize(1280.dp, 800.dp),
             position = WindowPosition(Alignment.Center)
         )
+        val fullscreen = rememberFullscreenState(windowState)
+        val lyricsView = rememberLyricsViewState(fullscreen)
         Window(
             onCloseRequest = closeMainWindow,
             visible = isMainVisible,
             state = windowState,
             title = "Melodia",
             icon = appIcon,
-            undecorated = true
+            undecorated = true,
+            onPreviewKeyEvent = { event ->
+                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                    // 先收起全屏歌词；其后才轮到退出窗口全屏
+                    when {
+                        lyricsView.isOpen -> {
+                            lyricsView.close()
+                            true
+                        }
+                        fullscreen.isFullscreen -> {
+                            fullscreen.exit()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
         ) {
             LaunchedEffect(Unit) {
                 window.minimumSize = Dimension(960, 600)
@@ -169,9 +221,15 @@ fun main() {
                     window.toFront()
                 }
             }
-            WindowChromeEffect(maximized = windowState.placement == WindowPlacement.Maximized)
+            // 全屏与最大化一样不要圆角和边框线
+            WindowChromeEffect(maximized = windowState.placement != WindowPlacement.Floating)
             MelodiaDesktopTheme {
-                MelodiaDesktopApp(windowState = windowState, onClose = closeMainWindow)
+                MelodiaDesktopApp(
+                    windowState = windowState,
+                    fullscreen = fullscreen,
+                    lyricsView = lyricsView,
+                    onClose = closeMainWindow
+                )
             }
         }
 

@@ -52,7 +52,7 @@ fun RecentPlayScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.playerManager.playWhenReady.collectAsStateWithLifecycle()
 
     SecondaryScreenScaffold(title = "最近播放", onBack = onBack) {
         FilterChipsRow(

@@ -50,6 +50,14 @@ class FollowListViewModel(
 
     private var offset = 0
 
+    // 页面重新进入组合（如从用户主页返回）时复用已有数据，仅参数变化或加载失败时才请求
+    fun loadIfNeeded(uid: Long, mode: FollowListMode) {
+        val state = _uiState.value
+        val inProgressOrLoaded = state is FollowListUiState.Loading || state is FollowListUiState.Success
+        if (this.uid == uid && this.mode == mode && inProgressOrLoaded) return
+        load(uid, mode)
+    }
+
     // 由 FollowListScreen 的 LaunchedEffect(uid, mode) 调用
     fun load(uid: Long, mode: FollowListMode) {
         this.uid = uid

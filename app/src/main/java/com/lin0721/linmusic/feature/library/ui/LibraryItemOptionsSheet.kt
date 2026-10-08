@@ -60,8 +60,10 @@ fun LibraryItemOptionsSheet(
     onUnsubscribeAlbum: (Long) -> Unit,
     onUnsubscribeArtist: (Long) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

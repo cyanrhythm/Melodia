@@ -146,7 +146,7 @@ class LocalMusicViewModel(
         .map { it?.mediaId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val isPlaying: StateFlow<Boolean> = playerManager.isPlaying
+    val isPlaying: StateFlow<Boolean> = playerManager.playWhenReady
 
     private val _isImporting = MutableStateFlow(false)
     val isImporting: StateFlow<Boolean> = _isImporting.asStateFlow()

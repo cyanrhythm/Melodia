@@ -79,7 +79,7 @@ fun AddMusicToPlaylistSheet(
     onAddTrack: (Track, onComplete: () -> Unit) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val focusManager = LocalFocusManager.current
     var addingTrackIds by remember { mutableStateOf(setOf<Long>()) }
 

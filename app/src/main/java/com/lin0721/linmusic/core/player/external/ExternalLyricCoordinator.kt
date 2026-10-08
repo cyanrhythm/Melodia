@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private const val TAG = "ExternalLyricCoordinator"
+private const val LYRIC_VERSION_PREFIX = "lyric_"
+
+const val EXTRA_LYRIC_INFO = "lyricInfo"
 
 class ExternalLyricCoordinator(
     private val context: Context,
@@ -362,12 +365,17 @@ class ExternalLyricCoordinator(
         val existingExtras = original.extras
         if (isLyricInfoEnabled && currentLyricInfoJson.isNotBlank()) {
             val bundle = if (existingExtras != null) Bundle(existingExtras) else Bundle()
-            bundle.putString("lyricInfo", currentLyricInfoJson)
+            bundle.putString(EXTRA_LYRIC_INFO, currentLyricInfoJson)
             builder.setExtras(bundle)
-        } else if (existingExtras != null && existingExtras.containsKey("lyricInfo")) {
-            val bundle = Bundle(existingExtras)
-            bundle.remove("lyricInfo")
-            builder.setExtras(bundle)
+            // Media3 的 equals 忽略 extras，借 discSubtitle 让歌词变化可被感知
+            builder.setDiscSubtitle("$LYRIC_VERSION_PREFIX${sessionGeneration}_${currentLyricInfoJson.hashCode()}")
+        } else {
+            if (existingExtras != null && existingExtras.containsKey(EXTRA_LYRIC_INFO)) {
+                val bundle = Bundle(existingExtras)
+                bundle.remove(EXTRA_LYRIC_INFO)
+                builder.setExtras(bundle)
+            }
+            builder.setDiscSubtitle(null)
         }
 
         return builder.build()

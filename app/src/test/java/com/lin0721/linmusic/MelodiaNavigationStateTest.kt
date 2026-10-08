@@ -229,15 +229,153 @@ class MelodiaNavigationStateTest {
     }
 
     @Test
-    fun `从首页二级页面回退到栈底时重置分类为全部`() = inSnapshot {
+    fun `从首页音乐二级页面回退到栈底时保留音乐分类`() = inSnapshot {
         val nav = MelodiaNavigationState()
         nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
         nav.openPlaylist(1L, false)
         assertEquals(Screen.Playlist(1L, false), nav.currentScreen)
 
+        // 第一次返回回到首页音乐分类
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC, nav.homeTab)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第二次返回切回全部
         nav.navigateBack()
         assertEquals(Screen.Home, nav.currentScreen)
         assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
         assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `从首页播客二级页面回退到栈底时保留播客分类`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_PODCAST)
+        nav.navigateTo(Screen.PodcastCategory(100L, "分类"))
+        assertEquals(Screen.PodcastCategory(100L, "分类"), nav.currentScreen)
+
+        // 第一次返回回到播客分类
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_PODCAST, nav.homeTab)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第二次返回切回全部
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `从最新Feed进入二级页回退到栈底时保留最新展开态`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.selectHomeTab(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC)
+        nav.updateShowMusicNewWorks(true)
+        nav.openPlaylist(1L, true)
+        assertEquals(Screen.Playlist(1L, true), nav.currentScreen)
+
+        // 第一次返回保留最新Feed展开态
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC, nav.homeTab)
+        assertTrue(nav.showMusicNewWorks)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第二次返回收起最新
+        nav.navigateBack()
+        assertFalse(nav.showMusicNewWorks)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_MUSIC, nav.homeTab)
+        assertTrue(nav.canGoBackToHomeAll)
+
+        // 第三次返回切回全部
+        nav.navigateBack()
+        assertEquals(Screen.Home, nav.currentScreen)
+        assertEquals(com.lin0721.linmusic.feature.home.ui.TAB_ALL, nav.homeTab)
+        assertFalse(nav.canGoBackToHomeAll)
+    }
+
+    @Test
+    fun `栈里重复出现的同一目标拥有不同的栈帧 id`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.openArtist(1L)
+        val first = nav.currentEntry
+        nav.openPlaylist(2L, false)
+        nav.openArtist(1L)
+        val second = nav.currentEntry
+
+        assertEquals(first.screen, second.screen)
+        assertTrue(first.id != second.id)
+    }
+
+    @Test
+    fun `出栈后栈帧 id 不再存活，其余仍存活`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.openArtist(1L)
+        val artistId = nav.currentEntry.id
+        nav.openPlaylist(2L, true)
+        val playlistId = nav.currentEntry.id
+
+        nav.navigateBack()
+
+        assertTrue(artistId in nav.liveEntryIds)
+        assertFalse(playlistId in nav.liveEntryIds)
+    }
+
+    @Test
+    fun `各 tab 的栈帧 id 互不重复`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.openTab(Screen.Library)
+        nav.openArtist(1L)
+        nav.openTab(Screen.Home)
+
+        val ids = nav.liveEntryIds
+        assertEquals(4, ids.size)
+    }
+
+    @Test
+    fun `快照恢复后保留栈帧 id 且后续分配不重复`() = inSnapshot {
+        val nav = MelodiaNavigationState()
+        nav.openArtist(1L)
+        nav.openPlaylist(2L, false)
+        val before = nav.liveEntryIds
+        val currentId = nav.currentEntry.id
+
+        val snapshot = nav.toSnapshot()
+        val restored = MelodiaNavigationState(
+            initialHomeStack = snapshot.homeStack,
+            initialSearchStack = snapshot.searchStack,
+            initialLibraryStack = snapshot.libraryStack,
+            initialActiveTab = Screen.Home,
+            initialHomeIds = snapshot.homeIds,
+            initialSearchIds = snapshot.searchIds,
+            initialLibraryIds = snapshot.libraryIds,
+            initialNextEntryId = snapshot.nextEntryId
+        )
+
+        assertEquals(before, restored.liveEntryIds)
+        assertEquals(currentId, restored.currentEntry.id)
+        restored.openArtist(9L)
+        assertFalse(restored.currentEntry.id in before)
+    }
+
+    @Test
+    fun `旧版本快照缺少栈帧 id 时重新分配`() = inSnapshot {
+        val legacy = Json { ignoreUnknownKeys = true }.decodeFromString(
+            NavigationSnapshot.serializer(),
+            """{"homeStack":[{"type":"com.lin0721.linmusic.Screen.Home"}],"searchStack":[{"type":"com.lin0721.linmusic.Screen.Search"}],"libraryStack":[{"type":"com.lin0721.linmusic.Screen.Library"}],"activeTabIndex":0,"homeTab":0}"""
+        )
+        val restored = MelodiaNavigationState(
+            initialHomeStack = legacy.homeStack,
+            initialSearchStack = legacy.searchStack,
+            initialLibraryStack = legacy.libraryStack,
+            initialHomeIds = legacy.homeIds,
+            initialSearchIds = legacy.searchIds,
+            initialLibraryIds = legacy.libraryIds,
+            initialNextEntryId = legacy.nextEntryId
+        )
+
+        assertEquals(3, restored.liveEntryIds.size)
     }
 }

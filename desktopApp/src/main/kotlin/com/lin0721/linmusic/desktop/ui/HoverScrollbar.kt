@@ -71,12 +71,15 @@ private fun ScrollbarHost(
     Box(modifier.hoverable(hoverSource)) {
         content()
         if (alpha > 0f) {
-            VerticalScrollbar(
-                adapter = adapter,
-                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().graphicsLayer { this.alpha = alpha },
-                style = HoverScrollbarStyle,
-                interactionSource = barSource
-            )
+            // 滚动条放进与内容等大的层里再撑满，否则它在高度不受限的父级中会把整块撑到最大高度
+            Box(Modifier.matchParentSize()) {
+                VerticalScrollbar(
+                    adapter = adapter,
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().graphicsLayer { this.alpha = alpha },
+                    style = HoverScrollbarStyle,
+                    interactionSource = barSource
+                )
+            }
         }
     }
 }

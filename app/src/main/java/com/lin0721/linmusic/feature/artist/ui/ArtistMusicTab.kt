@@ -91,8 +91,8 @@ fun LazyListScope.artistMusicTab(
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
-                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "喜欢/收藏歌曲",
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "收藏到歌单",
                             tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )

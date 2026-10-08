@@ -1,96 +1,207 @@
 package com.lin0721.linmusic.desktop.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
-import com.lin0721.linmusic.feature.podcast.domain.PodcastCategory
-import com.lin0721.linmusic.feature.podcast.domain.PodcastProgram
+import com.lin0721.linmusic.feature.podcast.domain.PodcastProgressEntry
 import com.lin0721.linmusic.feature.podcast.domain.PodcastRadio
-import com.lin0721.linmusic.feature.podcast.domain.formatListenerCount
-import com.lin0721.linmusic.feature.podcast.domain.formatProgramDuration
-import com.lin0721.linmusic.feature.podcast.domain.formatSubCount
-import com.lin0721.linmusic.feature.podcast.ui.PodcastUiState
+import com.lin0721.linmusic.feature.podcast.ui.PodcastFilter
+import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeState
+import com.lin0721.linmusic.feature.podcast.ui.PodcastSection
+import com.lin0721.linmusic.feature.podcast.ui.itemsOrEmpty
 
-private val EdgePadding = 24.dp
+// 总览页「今日优选」最多展示几期
+private const val PICK_LIMIT = 8
+private val ContinueTileWidth = 240.dp
 
-// 「播客」页：节目在上（双击播放），电台货架在下；桌面端暂无电台详情页，货架只展示
+// 首页各处交互的出口，状态由 PodcastHomeViewModel 持有
+class PodcastTabActions(
+    val onFilterSelect: (PodcastFilter) -> Unit,
+    val onResume: (PodcastProgressEntry) -> Unit,
+    val onPickPlay: (Int) -> Unit,
+    val onRadioClick: (PodcastRadio) -> Unit,
+    val onOpenSubscribed: () -> Unit,
+    val onOpenToplist: () -> Unit,
+    val onOpenCategory: (id: Long, name: String) -> Unit,
+    val onLoginClick: () -> Unit,
+    val onRetryAll: () -> Unit,
+    val onRetrySubscribed: () -> Unit,
+    val onRetryPicks: () -> Unit,
+    val onRetryCategoryGroups: () -> Unit,
+    val onRetryToplist: () -> Unit,
+    val onRetryCategoryRadios: () -> Unit
+)
+
+// 「播客」tab：顶部吸顶筛选条，下面按筛选展示总览 / 我的订阅 / 某个分类
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PodcastTab(
-    uiState: PodcastUiState,
-    listState: LazyListState,
-    onCategorySelect: (Long?) -> Unit,
-    onProgramPlay: (Int) -> Unit,
-    onRetry: () -> Unit
-) {
-    when (uiState) {
-        PodcastUiState.Loading -> HomeTabLoading()
-        is PodcastUiState.Error -> HomeTabError(uiState.message, onRetry)
-        is PodcastUiState.Success -> {
-            val data = uiState.data
-            HoverScrollbarBox(listState) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    if (data.categories.isNotEmpty()) {
-                        item(key = "categories") {
-                            CategoryChips(data.categories, data.selectedCategoryId, onCategorySelect)
+fun PodcastTab(state: PodcastHomeState, listState: LazyListState, actions: PodcastTabActions) {
+    HoverScrollbarBox(listState) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            stickyHeader(key = "filters") {
+                PodcastFilterBar(state.categories, state.filter, actions.onFilterSelect)
+            }
+            when (val filter = state.filter) {
+                PodcastFilter.All -> overviewSections(state, actions)
+                PodcastFilter.Subscribed -> subscribedSections(state, actions)
+                is PodcastFilter.Category -> categorySections(filter, state, actions)
+            }
+        }
+    }
+}
+
+// 总览：继续收听 → 我的订阅 → 今日优选 → 分类货架 → 热门电台榜
+private fun LazyListScope.overviewSections(state: PodcastHomeState, actions: PodcastTabActions) {
+    val publicSections = listOf(state.picks, state.categoryGroups, state.toplistRadios)
+    val noLocalContent = state.continueListening.isEmpty()
+    if (noLocalContent && publicSections.all { it is PodcastSection.Loading }) {
+        item(key = "loading") { HomeTabLoading(Modifier.fillMaxWidth().height(320.dp)) }
+        return
+    }
+    val firstError = publicSections.filterIsInstance<PodcastSection.Error>().firstOrNull()
+    if (noLocalContent && firstError != null && publicSections.all { it is PodcastSection.Error }) {
+        item(key = "error") { HomeTabError(firstError.message, actions.onRetryAll, Modifier.fillMaxWidth().height(320.dp)) }
+        return
+    }
+
+    if (state.continueListening.isNotEmpty()) {
+        item(key = "continue") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PodcastSectionHeader("继续收听")
+                PodcastGrid(state.continueListening, ContinueTileWidth, gap = 8.dp, stretch = true) { entry, modifier ->
+                    PodcastContinueTile(entry, onClick = { actions.onResume(entry) }, modifier = modifier)
+                }
+            }
+        }
+    }
+
+    subscribedShelf(state, actions)
+
+    when (val picks = state.picks) {
+        PodcastSection.Loading -> item(key = "picks_loading") { PodcastInlineLoading() }
+        is PodcastSection.Error -> item(key = "picks_error") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PodcastSectionHeader("今日优选")
+                PodcastInlineError(picks.message, actions.onRetryPicks)
+            }
+        }
+        is PodcastSection.Success -> if (picks.data.isNotEmpty()) {
+            item(key = "picks") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PodcastSectionHeader("今日优选")
+                    Column(Modifier.padding(horizontal = PodcastEdgePadding - 12.dp)) {
+                        picks.data.take(PICK_LIMIT).forEachIndexed { index, program ->
+                            PodcastProgramRow(
+                                program = program,
+                                progress = state.progress[program.songId],
+                                onPlay = { actions.onPickPlay(index) }
+                            )
                         }
                     }
-                    item(key = "programs") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SectionTitle("最新节目")
-                            if (data.isProgramLoading) {
-                                HomeTabLoading(Modifier.fillMaxWidth().height(160.dp))
-                            } else {
-                                Column(Modifier.padding(horizontal = EdgePadding - 12.dp)) {
-                                    data.programs.forEachIndexed { index, program ->
-                                        ProgramRow(program) { onProgramPlay(index) }
-                                    }
-                                }
-                            }
-                        }
+                }
+            }
+        }
+    }
+
+    when (val groups = state.categoryGroups) {
+        PodcastSection.Loading -> item(key = "groups_loading") { PodcastInlineLoading() }
+        is PodcastSection.Error -> item(key = "groups_error") {
+            PodcastInlineError(groups.message, actions.onRetryCategoryGroups)
+        }
+        is PodcastSection.Success -> groups.data.forEach { group ->
+            item(key = "group_${group.categoryId}") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PodcastSectionHeader(group.categoryName, "全部") {
+                        actions.onOpenCategory(group.categoryId, group.categoryName)
                     }
-                    // 未登录时该段为空，整块不出现
-                    if (data.personalizedRadios.isNotEmpty()) {
-                        item(key = "personalized") { RadioShelf("猜你喜欢", data.personalizedRadios) }
-                    }
-                    if (data.recommendRadios.isNotEmpty()) {
-                        item(key = "recommend") { RadioShelf("精选电台", data.recommendRadios) }
-                    }
-                    if (data.toplistRadios.isNotEmpty()) {
-                        item(key = "toplist") { RadioShelf("热门电台榜", data.toplistRadios, showRank = true) }
+                    PodcastRadioShelf(group.radios, actions.onRadioClick)
+                }
+            }
+        }
+    }
+
+    when (val toplist = state.toplistRadios) {
+        PodcastSection.Loading -> item(key = "toplist_loading") { PodcastInlineLoading() }
+        is PodcastSection.Error -> item(key = "toplist_error") {
+            PodcastInlineError(toplist.message, actions.onRetryToplist)
+        }
+        is PodcastSection.Success -> if (toplist.data.isNotEmpty()) {
+            item(key = "toplist") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PodcastSectionHeader("热门电台榜", "全部", actions.onOpenToplist)
+                    PodcastRadioShelf(toplist.data, actions.onRadioClick, showRank = true)
+                }
+            }
+        }
+    }
+}
+
+// 总览里的订阅货架：未登录、没有订阅时整块不出现
+private fun LazyListScope.subscribedShelf(state: PodcastHomeState, actions: PodcastTabActions) {
+    if (!state.isLoggedIn) return
+    when (val subscribed = state.subscribed) {
+        PodcastSection.Loading -> Unit
+        is PodcastSection.Error -> item(key = "subs_error") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PodcastSectionHeader("我的订阅")
+                PodcastInlineError(subscribed.message, actions.onRetrySubscribed)
+            }
+        }
+        is PodcastSection.Success -> if (subscribed.data.isNotEmpty()) {
+            item(key = "subs") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PodcastSectionHeader("我的订阅", "全部", actions.onOpenSubscribed)
+                    PodcastRadioShelf(subscribed.data, actions.onRadioClick, updatedRadioIds = state.updatedRadioIds)
+                }
+            }
+        }
+    }
+}
+
+// 「已订阅」筛选：订阅的电台铺成网格
+private fun LazyListScope.subscribedSections(state: PodcastHomeState, actions: PodcastTabActions) {
+    if (!state.isLoggedIn) {
+        item(key = "subs_login") { PodcastHint("登录后查看你订阅的电台", actionText = "去登录", onAction = actions.onLoginClick) }
+        return
+    }
+    when (val subscribed = state.subscribed) {
+        PodcastSection.Loading -> item(key = "subs_loading") { HomeTabLoading(Modifier.fillMaxWidth().height(240.dp)) }
+        is PodcastSection.Error -> item(key = "subs_error") {
+            HomeTabError(subscribed.message, actions.onRetrySubscribed, Modifier.fillMaxWidth().height(240.dp))
+        }
+        is PodcastSection.Success -> {
+            if (subscribed.data.isEmpty()) {
+                item(key = "subs_empty") { PodcastHint("还没有订阅的电台，在电台详情页点「订阅」，更新会出现在这里") }
+                return
+            }
+            item(key = "subs_grid") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PodcastSectionHeader("我的订阅", "全部", actions.onOpenSubscribed)
+                    PodcastGrid(subscribed.data, CardWidth, gap = 16.dp, stretch = false) { radio, modifier ->
+                        PodcastRadioTile(
+                            radio = radio,
+                            onClick = { actions.onRadioClick(radio) },
+                            modifier = modifier,
+                            hasUpdate = radio.id in state.updatedRadioIds
+                        )
                     }
                 }
             }
@@ -98,112 +209,31 @@ fun PodcastTab(
     }
 }
 
-// 分类胶囊：「推荐」是虚拟项，对应不限分类
-@Composable
-private fun CategoryChips(categories: List<PodcastCategory>, selectedId: Long?, onSelect: (Long?) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = EdgePadding),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item(key = "all") { OutlineChip("推荐", selectedId == null) { onSelect(null) } }
-        itemsIndexed(categories, key = { _, item -> item.id }) { _, category ->
-            OutlineChip(category.name, selectedId == category.id) { onSelect(category.id) }
+// 分类筛选：该分类的热门电台，更多的翻页在分类二级页
+private fun LazyListScope.categorySections(
+    filter: PodcastFilter.Category,
+    state: PodcastHomeState,
+    actions: PodcastTabActions
+) {
+    val categoryName = state.categories.firstOrNull { it.id == filter.id }?.name.orEmpty()
+    when (val radios = state.categoryRadios) {
+        PodcastSection.Loading -> item(key = "cat_loading") { HomeTabLoading(Modifier.fillMaxWidth().height(240.dp)) }
+        is PodcastSection.Error -> item(key = "cat_error") {
+            HomeTabError(radios.message, actions.onRetryCategoryRadios, Modifier.fillMaxWidth().height(240.dp))
         }
-    }
-}
-
-// 节目行：封面 + 标题 + 电台·主播 + 时长收听数，双击播放
-@Composable
-private fun ProgramRow(program: PodcastProgram, onPlay: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-            .background(if (hovered) DesktopColors.PaneHover else Color.Transparent)
-            .hoverable(interaction).onDoubleClick(onPlay).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Cover(program.coverUrl, 64.dp)
-        Column(Modifier.weight(1f).padding(start = 16.dp)) {
-            Text(
-                program.name,
-                color = DesktopColors.TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            val source = listOfNotNull(
-                program.radioName.takeIf { it.isNotBlank() },
-                program.djName.takeIf { it.isNotBlank() }
-            ).joinToString(" · ")
-            if (source.isNotBlank()) {
-                Text(
-                    source,
-                    color = DesktopColors.TextGray,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
+        is PodcastSection.Success -> {
+            if (radios.data.isEmpty()) {
+                item(key = "cat_empty") { PodcastHint("这个分类暂时没有电台") }
+                return
             }
-            val meta = listOfNotNull(
-                formatProgramDuration(program.durationMs).takeIf { it.isNotBlank() },
-                formatListenerCount(program.listenerCount).takeIf { it.isNotBlank() }
-            ).joinToString(" · ")
-            if (meta.isNotBlank()) {
-                Text(meta, color = DesktopColors.TextGray.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1)
+            item(key = "cat_radios") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PodcastSectionHeader("热门电台", "全部") { actions.onOpenCategory(filter.id, categoryName) }
+                    PodcastGrid(radios.data, CardWidth, gap = 16.dp, stretch = false) { radio, modifier ->
+                        PodcastRadioTile(radio = radio, onClick = { actions.onRadioClick(radio) }, modifier = modifier)
+                    }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun RadioShelf(title: String, radios: List<PodcastRadio>, showRank: Boolean = false) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitle(title)
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = EdgePadding),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(radios, key = { index, item -> "${item.id}_$index" }) { index, radio ->
-                RadioCard(radio, rank = if (showRank) index + 1 else null)
-            }
-        }
-    }
-}
-
-// 电台卡片；桌面端没有电台详情页，故不可点。rank 非空时在封面左上角标名次
-@Composable
-private fun RadioCard(radio: PodcastRadio, rank: Int?) {
-    Column(Modifier.width(CardWidth)) {
-        Box {
-            Cover(radio.picUrl, CardWidth, shape = RoundedCornerShape(6.dp))
-            if (rank != null) {
-                Text(
-                    "$rank",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.padding(8.dp).clip(RoundedCornerShape(4.dp))
-                        .background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 6.dp, vertical = 1.dp)
-                )
-            }
-        }
-        Text(
-            radio.name,
-            color = DesktopColors.TextPrimary,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-        val meta = listOfNotNull(
-            radio.programCount.takeIf { it > 0 }?.let { "$it 期" },
-            formatSubCount(radio.subCount).takeIf { it.isNotBlank() }
-        ).joinToString(" · ")
-        if (meta.isNotBlank()) {
-            Text(meta, color = DesktopColors.TextGray, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

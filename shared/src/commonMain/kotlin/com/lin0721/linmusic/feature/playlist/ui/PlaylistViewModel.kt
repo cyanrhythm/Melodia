@@ -10,6 +10,7 @@ import com.lin0721.linmusic.core.download.toToastMessage
 import com.lin0721.linmusic.core.download.yearFromEpochMillis
 import com.lin0721.linmusic.core.model.PlaylistDetail
 import com.lin0721.linmusic.core.model.Track
+import com.lin0721.linmusic.core.offline.OfflinePlayability
 import com.lin0721.linmusic.core.auth.SyncProfileAfterLoginUseCase
 import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.songlike.LoadLikedSongIdsUseCase
@@ -72,7 +73,8 @@ class PlaylistViewModel(
     private val resourceProvider: ResourceProvider,
     private val playlistMutationBus: PlaylistMutationBus,
     private val searchRepository: SearchRepository,
-    private val songDownloadManager: SongDownloader
+    private val songDownloadManager: SongDownloader,
+    private val offlinePlayability: OfflinePlayability
 ) : ViewModel() {
 
     private var allRecommendedTracks = listOf<Track>()
@@ -85,6 +87,14 @@ class PlaylistViewModel(
 
     private val _uiState = MutableStateFlow<PlaylistUiState>(PlaylistUiState.Loading)
     val uiState: StateFlow<PlaylistUiState> = _uiState.asStateFlow()
+
+    // 离线时本机没有音频的曲目，列表据此置灰；在线时恒为空
+    val unplayableIds: StateFlow<Set<Long>> = combine(
+        offlinePlayability.online,
+        _uiState.map { state -> (state as? PlaylistUiState.Success)?.playlist?.tracks?.map { it.id } }.distinctUntilChanged()
+    ) { _, ids -> ids }
+        .map { ids -> if (ids == null) emptySet() else offlinePlayability.unplayableIds(ids) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
@@ -131,7 +141,18 @@ class PlaylistViewModel(
         }
     }
 
+    private var requestedPlaylistId: Long? = null
+
+    // 页面重新进入组合（如从详情页返回）时复用已有数据，仅未加载或失败时才请求
+    fun loadPlaylistIfNeeded(id: Long, isAlbum: Boolean = false) {
+        val state = _uiState.value
+        val inProgressOrLoaded = state is PlaylistUiState.Loading || state is PlaylistUiState.Success
+        if (requestedPlaylistId == id && isAlbumMode == isAlbum && inProgressOrLoaded) return
+        loadPlaylist(id, isAlbum)
+    }
+
     fun loadPlaylist(id: Long, isAlbum: Boolean = false) {
+        requestedPlaylistId = id
         isAlbumMode = isAlbum
         _uiState.value = PlaylistUiState.Loading
         allRecommendedTracks = emptyList()
@@ -370,12 +391,18 @@ class PlaylistViewModel(
     fun playAll(shuffle: Boolean) {
         withAllTracks { tracks ->
             val ordered = if (shuffle) tracks.shuffled() else tracks
-            ordered.firstOrNull()?.let { playSongInList(it, ordered) }
+            viewModelScope.launch {
+                // 离线时从第一首可播放的歌曲起播
+                val unplayable = offlinePlayability.unplayableIds(ordered.map { it.id })
+                ordered.firstOrNull { it.id !in unplayable }?.let { playSongInList(it, ordered) }
+            }
         }
     }
 
     // 点击某首歌起播：队列必须包含歌单全部曲目，而不只是已滚动加载的部分
     fun playTrackInPlaylist(track: Track) {
+        // 离线时置灰曲目点击无响应
+        if (track.id in unplayableIds.value) return
         withAllTracks { tracks -> playSongInList(track, tracks) }
     }
 

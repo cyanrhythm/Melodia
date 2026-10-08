@@ -31,10 +31,14 @@ data class PodcastRadioDto(
     val picUrl: String? = null,
     val desc: String? = null,
     val rcmdtext: String? = null,
+    // 分类分组接口里推荐语的大小写与其它接口不同
+    val rcmdText: String? = null,
     val programCount: Int = 0,
     val subCount: Long = 0,
     val category: String? = null,
-    val dj: PodcastDjDto? = null
+    val dj: PodcastDjDto? = null,
+    val lastProgramName: String? = null,
+    val lastProgramCreateTime: Long = 0
 )
 
 @Serializable
@@ -66,6 +70,42 @@ data class PodcastToplistResponse(
 ) {
     val isSuccess: Boolean get() = code == 200
 }
+
+// 订阅列表，需登录
+@Serializable
+data class PodcastSubscribedResponse(
+    val code: Int = 0,
+    val djRadios: List<PodcastRadioDto> = emptyList(),
+    val hasMore: Boolean = false
+) {
+    val isSuccess: Boolean get() = code == 200
+}
+
+// 分类下热门电台
+@Serializable
+data class PodcastCategoryHotResponse(
+    val code: Int = 0,
+    val djRadios: List<PodcastRadioDto> = emptyList(),
+    val hasMore: Boolean = false
+) {
+    val isSuccess: Boolean get() = code == 200
+}
+
+// 分类分组推荐，外层是 data
+@Serializable
+data class PodcastCategoryGroupResponse(
+    val code: Int = 0,
+    val data: List<PodcastCategoryGroupDto> = emptyList()
+) {
+    val isSuccess: Boolean get() = code == 200
+}
+
+@Serializable
+data class PodcastCategoryGroupDto(
+    val categoryId: Long = 0,
+    val categoryName: String = "",
+    val radios: List<PodcastRadioDto> = emptyList()
+)
 
 // 电台详情外层是 data 而非 djRadio
 @Serializable
@@ -100,6 +140,20 @@ data class PodcastProgramRecommendResponse(
     val isSuccess: Boolean get() = code == 200
 }
 
+// 节目榜：每项包一层 program，名次由顺序体现
+@Serializable
+data class PodcastProgramToplistResponse(
+    val code: Int = 0,
+    val toplist: List<PodcastProgramRankDto> = emptyList()
+) {
+    val isSuccess: Boolean get() = code == 200
+}
+
+@Serializable
+data class PodcastProgramRankDto(
+    val program: PodcastProgramDto? = null
+)
+
 @Serializable
 data class PodcastProgramListResponse(
     val code: Int = 0,
@@ -120,8 +174,8 @@ data class PodcastProgramDto(
     // 毫秒时间戳
     val createTime: Long = 0,
     val listenerCount: Long = 0,
-    // 期号
-    val serialNum: Int = 0,
+    // 期号。声音搜索结果里它是 13 位的类时间戳大数，必须按 Long 解析，映射时再取合理值
+    val serialNum: Long = 0,
     val description: String? = null,
     // 真正可播放的那首歌，缺失即为不可播节目
     val mainSong: PodcastMainSongDto? = null,
@@ -156,6 +210,26 @@ data class PodcastToplistRequest(
     val offset: Int = 0,
     // 0 新晋，1 热门
     val type: Int = 1
+)
+
+@Serializable
+data class PodcastSubscribedRequest(
+    val limit: Int = 30,
+    val offset: Int = 0,
+    val total: Boolean = true
+)
+
+@Serializable
+data class PodcastCategoryHotRequest(
+    val cateId: Long,
+    val limit: Int = 30,
+    val offset: Int = 0
+)
+
+@Serializable
+data class PodcastProgramToplistRequest(
+    val limit: Int = 50,
+    val offset: Int = 0
 )
 
 @Serializable

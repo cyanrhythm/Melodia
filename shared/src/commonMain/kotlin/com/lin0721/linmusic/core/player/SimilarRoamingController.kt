@@ -69,7 +69,7 @@ class SimilarRoamingController(
     fun disable() {
         if (!isRoaming) return
         roamingJob?.cancel()
-        queue.restoreSnapshot()
+        queue.exitSpecialContext()
         stateStore.saveQueue(queue)
     }
 

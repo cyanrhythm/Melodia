@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.awtEventOrNull
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -56,6 +58,9 @@ import com.lin0721.linmusic.core.model.Track
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 
 // 双击播放，右键或悬停出现的更多按钮打开操作菜单
+// 离线不可播放的歌曲行置灰程度
+private const val DISABLED_ROW_ALPHA = 0.38f
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TrackRow(
@@ -64,7 +69,8 @@ fun TrackRow(
     isCurrent: Boolean,
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
-    actions: TrackActions? = null
+    actions: TrackActions? = null,
+    enabled: Boolean = true
 ) {
     val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
@@ -75,7 +81,7 @@ fun TrackRow(
     var moreMenuOpen by remember { mutableStateOf(false) }
     val isLiked = actions != null && track.id in actions.likedSongIds
 
-    Box(modifier.fillMaxWidth().onSizeChanged { rowHeightPx = it.height }) {
+    Box(modifier.fillMaxWidth().alpha(if (enabled) 1f else DISABLED_ROW_ALPHA).onSizeChanged { rowHeightPx = it.height }) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
                 .background(if (hovered || contextMenuOffset != null || moreMenuOpen) DesktopColors.PaneHover else Color.Transparent)
@@ -87,7 +93,7 @@ fun TrackRow(
                         contextMenuOffset = with(density) {
                             DpOffset(position.x.toDp(), (position.y - rowHeightPx).toDp())
                         }
-                    } else if (event.awtEventOrNull?.clickCount == 2) {
+                    } else if (enabled && event.awtEventOrNull?.clickCount == 2) {
                         onPlay()
                     }
                 }
@@ -199,7 +205,7 @@ private fun TrackMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
         offset = offset,
-        containerColor = DesktopColors.Surface
+        containerColor = DesktopColors.PopupSurface
     ) {
         TrackMenuItem(Icons.AutoMirrored.Rounded.QueueMusic, "下一首播放") {
             onDismiss()
@@ -221,6 +227,10 @@ private fun TrackMenu(
                 onDismiss()
                 navigator.openArtist(artist.id, artist.name)
             }
+        }
+        TrackMenuItem(Icons.Rounded.Download, "下载") {
+            onDismiss()
+            actions.onDownload(track)
         }
         if (track.al.id > 0) {
             TrackMenuItem(Icons.Rounded.Album, "查看专辑") {

@@ -6,10 +6,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,7 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +36,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.SubcomposeAsyncImage
@@ -45,112 +45,86 @@ import coil3.request.ImageRequest
 import com.lin0721.linmusic.core.ui.components.CoverPlaceholder
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.theme.LayoutReflowDurationMs
-import com.lin0721.linmusic.core.ui.theme.MelodiaPress
-import com.lin0721.linmusic.core.ui.theme.RadiusCompact
-import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
-import com.lin0721.linmusic.core.ui.theme.TextGray
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaOrientationClass
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaOrientationClass
+import com.lin0721.linmusic.core.ui.theme.MelodiaPress
+import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
+import com.lin0721.linmusic.core.ui.theme.RadiusCompact
+import com.lin0721.linmusic.core.ui.theme.TextGray
 import com.lin0721.linmusic.feature.home.domain.HomeCard
 import com.lin0721.linmusic.feature.home.domain.HomeShelf
 
-// 网格列数与网格/横向滚动切换阈值按断点取值：
-// 手机 2 列 3 行不变；平板竖屏 4 列 2 行；平板横屏可用宽度更富余，6 列 2 行
-private const val GRID_COLUMNS_COMPACT = 2
-private const val GRID_COLUMNS_EXPANDED_PORTRAIT = 4
-private const val GRID_COLUMNS_EXPANDED_LANDSCAPE = 6
-private const val GRID_MAX_ROWS_COMPACT = 3
-private const val GRID_MAX_ROWS_EXPANDED = 2
+// 每屏可见卡片数，带小数是为了让最右一张露出一截，提示还能横滑
+private const val VISIBLE_CARDS_COMPACT = 2.3f
+private const val VISIBLE_CARDS_EXPANDED_PORTRAIT = 4.3f
+private const val VISIBLE_CARDS_EXPANDED_LANDSCAPE = 6.3f
 
 // 封面解码尺寸固定，与链接请求的 400y400 对齐，不随卡片宽度变化
 private const val SHELF_COVER_DECODE_SIZE_PX = 400
 
-private val GridGap = 12.dp
-private val GridRowGap = 14.dp
-private val HorizontalCardWidthCompact = 150.dp
-private val HorizontalCardWidthExpanded = 200.dp
+private val MinCardWidth = 96.dp
 
+internal val HomeCardGap = 12.dp
 internal val HomeEdgePadding = 20.dp
 
+// 区块之间的统一间距，由各区块自己在顶部留出
+internal val HomeSectionSpacing = MelodiaSpacing.lg
+
+// 首页横滑卡片宽度：按容器宽度与断点反推，保证每屏露出固定张数。
+// 平板播放面板开合时容器宽度会突变，宽度平滑过渡而非一帧跳变
 @Composable
-private fun rememberShelfGridColumns(): Int {
+internal fun rememberHomeCardWidth(containerWidth: Dp): Dp {
     val windowSizeClass = LocalMelodiaWindowSizeClass.current
     val orientationClass = LocalMelodiaOrientationClass.current
-    return when {
+    val visibleCards = when {
         windowSizeClass == MelodiaWindowSizeClass.Expanded && orientationClass == MelodiaOrientationClass.Landscape ->
-            GRID_COLUMNS_EXPANDED_LANDSCAPE
-        windowSizeClass == MelodiaWindowSizeClass.Expanded -> GRID_COLUMNS_EXPANDED_PORTRAIT
-        else -> GRID_COLUMNS_COMPACT
+            VISIBLE_CARDS_EXPANDED_LANDSCAPE
+        windowSizeClass == MelodiaWindowSizeClass.Expanded -> VISIBLE_CARDS_EXPANDED_PORTRAIT
+        else -> VISIBLE_CARDS_COMPACT
     }
+    val target = ((containerWidth - HomeEdgePadding - HomeCardGap * visibleCards.toInt()) / visibleCards)
+        .coerceAtLeast(MinCardWidth)
+    val width by animateDpAsState(
+        targetValue = target,
+        animationSpec = tween(LayoutReflowDurationMs, easing = FastOutSlowInEasing),
+        label = "home_card_width"
+    )
+    return width
 }
 
-// 一个货架：标题 + 卡片区。卡片少走网格，多则横向滚动。
-// 网格用 FlowRow 而非懒加载网格——垂直懒加载容器嵌进外层 LazyColumn 会因无界高度约束崩溃；
-// 所有卡片同处一个父级，列数变化时卡片保持身份，才能平滑过渡到新位置。
-// 横向 LazyRow 方向不同，宽度有界，可以安全嵌套。
+@Composable
+internal fun HomeSectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(bottom = 12.dp)
+    )
+}
+
+// 一个货架：标题 + 横滑卡片。横向 LazyRow 宽度有界，可以安全嵌进外层 LazyColumn
 @Composable
 fun HomeShelfSection(
     shelf: HomeShelf,
     onCardClick: (HomeCard) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val windowSizeClass = LocalMelodiaWindowSizeClass.current
-    val columns = rememberShelfGridColumns()
-    val maxRows = if (windowSizeClass == MelodiaWindowSizeClass.Expanded) GRID_MAX_ROWS_EXPANDED else GRID_MAX_ROWS_COMPACT
-    val gridMaxCards = columns * maxRows
-    // 平板播放面板开合时断点会切换，横向卡片宽度平滑过渡而非一帧跳变
-    val horizontalCardWidth by animateDpAsState(
-        targetValue = if (windowSizeClass == MelodiaWindowSizeClass.Expanded) HorizontalCardWidthExpanded else HorizontalCardWidthCompact,
-        animationSpec = tween(LayoutReflowDurationMs, easing = FastOutSlowInEasing),
-        label = "shelf_horizontal_card_width"
-    )
-
-    Column(modifier = modifier.fillMaxWidth().padding(top = MelodiaSpacing.lg)) {
-        Text(
-            text = shelf.title,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = HomeEdgePadding, end = HomeEdgePadding, bottom = 13.dp)
-        )
-
-        if (shelf.cards.size <= gridMaxCards) {
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = HomeEdgePadding)
-                    .padding(bottom = GridRowGap),
-                horizontalArrangement = Arrangement.spacedBy(GridGap),
-                verticalArrangement = Arrangement.spacedBy(GridRowGap),
-                maxItemsInEachRow = columns
-            ) {
-                shelf.cards.forEachIndexed { index, card ->
-                    // 服务端会把同一资源投放到多个位次，key 必须带类型与下标才不会撞
-                    key("${card::class.simpleName}_${card.id}_$index") {
-                        HomeShelfCard(
-                            card = card,
-                            rank = (index + 1).takeIf { shelf.showRank },
-                            modifier = Modifier
-                                .weight(1f)
-                                .homeReflowBounds(),
-                            onClick = { onCardClick(card) }
-                        )
-                    }
-                }
-                // 不满一整行时补等宽占位，避免最后一张/几张被拉伸
-                repeat((columns - shelf.cards.size % columns) % columns) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        } else {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(top = HomeSectionSpacing)) {
+        val cardWidth = rememberHomeCardWidth(maxWidth)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HomeSectionTitle(
+                text = shelf.title,
+                modifier = Modifier.padding(horizontal = HomeEdgePadding)
+            )
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = HomeEdgePadding),
-                horizontalArrangement = Arrangement.spacedBy(GridGap)
+                horizontalArrangement = Arrangement.spacedBy(HomeCardGap)
             ) {
                 // 服务端会把同一资源投放到多个位次，key 必须带类型与下标才不会撞
                 itemsIndexed(
@@ -160,13 +134,20 @@ fun HomeShelfSection(
                     HomeShelfCard(
                         card = card,
                         rank = (index + 1).takeIf { shelf.showRank },
-                        modifier = Modifier.width(horizontalCardWidth),
+                        modifier = Modifier.width(cardWidth),
                         onClick = { onCardClick(card) }
                     )
                 }
             }
         }
     }
+}
+
+private fun HomeCard.typeLabel(): String = when (this) {
+    is HomeCard.Playlist -> "歌单"
+    is HomeCard.Album -> "专辑"
+    is HomeCard.Song -> "单曲"
+    is HomeCard.Voice -> "播客"
 }
 
 @Composable
@@ -183,7 +164,7 @@ private fun HomeShelfCard(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(RadiusCompact))
         ) {
-            // 平板让位切换密度后卡片尺寸会变，固定解码尺寸才能继续命中内存缓存，不闪占位图
+            // 卡宽随容器变化，固定解码尺寸才能继续命中内存缓存，不闪占位图
             val context = LocalContext.current
             val coverRequest = remember(card.coverUrl) {
                 ImageRequest.Builder(context)
@@ -199,21 +180,6 @@ private fun HomeShelfCard(
                 loading = { CoverPlaceholder() },
                 error = { CoverPlaceholder() }
             )
-
-            rank?.let {
-                Text(
-                    text = it.toString(),
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
 
             // 歌曲与播客单集点一下直接播放，给个播放符号说清楚；歌单与专辑是进详情页，不加
             if (card is HomeCard.Song || card is HomeCard.Voice) {
@@ -237,13 +203,21 @@ private fun HomeShelfCard(
         }
 
         Text(
+            text = rank?.let { "${card.typeLabel()} · $it" } ?: card.typeLabel(),
+            color = TextGray,
+            fontSize = 11.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 7.dp)
+        )
+
+        Text(
             text = card.title,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 13.5.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 7.dp)
+            modifier = Modifier.padding(top = 1.dp)
         )
 
         if (card.caption.isNotBlank()) {

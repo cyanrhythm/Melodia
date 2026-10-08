@@ -46,3 +46,16 @@ fun formatProgramDate(timeMs: Long, nowMs: Long = System.currentTimeMillis()): S
         String.format(Locale.US, "%d-%02d-%02d", target.get(Calendar.YEAR), month, day)
     }
 }
+
+// 剩余时长，不足一分钟按一分钟计，如「剩 12 分钟」「剩 1 小时 5 分钟」
+fun formatRemaining(remainingMs: Long): String {
+    if (remainingMs <= 0) return ""
+    val totalMinutes = (remainingMs + 59_999) / 60_000
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours == 0L -> "剩 $minutes 分钟"
+        minutes == 0L -> "剩 $hours 小时"
+        else -> "剩 $hours 小时 $minutes 分钟"
+    }
+}

@@ -42,6 +42,7 @@ kotlin {
         getByName("desktopTest").dependencies {
             implementation(libs.junit)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.okhttp.mockwebserver)
         }
     }
 }

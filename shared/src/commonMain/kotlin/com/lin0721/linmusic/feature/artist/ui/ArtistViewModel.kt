@@ -87,6 +87,12 @@ class ArtistViewModel(
         }
     }
 
+    // 页面重新进入组合（如从详情页返回）时复用已有数据，仅未加载或失败时才请求
+    fun loadArtistDataIfNeeded(artistId: Long) {
+        if (currentArtistId == artistId && _uiState.value !is ArtistUiState.Error) return
+        loadArtistData(artistId)
+    }
+
     fun loadArtistData(artistId: Long) {
         currentArtistId = artistId
         albumOffset = 0

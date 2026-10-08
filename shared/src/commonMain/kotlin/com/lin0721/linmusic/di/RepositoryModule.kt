@@ -3,12 +3,18 @@ package com.lin0721.linmusic.di
 import com.lin0721.linmusic.core.auth.AuthRepository
 import com.lin0721.linmusic.core.auth.AuthRepositoryImpl
 import com.lin0721.linmusic.core.auth.SyncProfileAfterLoginUseCase
+import com.lin0721.linmusic.core.cache.OfflineFallback
+import com.lin0721.linmusic.core.offline.OfflinePlayability
 import com.lin0721.linmusic.core.playlistmutation.PlaylistMutationBus
 import com.lin0721.linmusic.core.songlike.LoadLikedSongIdsUseCase
 import com.lin0721.linmusic.feature.create.data.CreateRepository
 import com.lin0721.linmusic.feature.create.data.CreateRepositoryImpl
 import com.lin0721.linmusic.feature.podcast.data.PodcastRepository
 import com.lin0721.linmusic.feature.podcast.data.PodcastRepositoryImpl
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.lin0721.linmusic.feature.music.data.MusicRepository
 import com.lin0721.linmusic.feature.music.data.MusicRepositoryImpl
 import com.lin0721.linmusic.feature.home.data.HomeRepository
@@ -60,6 +66,12 @@ import org.koin.dsl.module
  */
 val repositoryModule = module {
 
+    // 离线回退：在线写缓存，离线读缓存（core/cache，由各仓储复用）
+    singleOf(::OfflineFallback)
+
+    // 离线时哪些歌曲可播放（依赖各平台的 CachedAudioIndex）
+    singleOf(::OfflinePlayability)
+
     // 登录态与账号信息（core/auth，跨业务域共享）
     singleOf(::AuthRepositoryImpl) { bind<AuthRepository>() }
 
@@ -67,6 +79,8 @@ val repositoryModule = module {
     singleOf(::HomeRepositoryImpl) { bind<HomeRepository>() }
     singleOf(::MusicRepositoryImpl) { bind<MusicRepository>() }
     singleOf(::PodcastRepositoryImpl) { bind<PodcastRepository>() }
+    // 播放器里的播客订阅状态，迷你条与全屏播放页共用，随进程存活
+    single { PodcastPlayerController(CoroutineScope(SupervisorJob() + Dispatchers.Main), get(), get(), get(), get()) }
 
     // 搜索数据仓储（feature/search）
     singleOf(::SearchRepositoryImpl) { bind<SearchRepository>() }

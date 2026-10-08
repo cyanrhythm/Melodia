@@ -30,8 +30,9 @@ import com.lin0721.linmusic.feature.music.ui.MusicViewModel
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksFeedActions
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksFeedContent
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
-import com.lin0721.linmusic.feature.podcast.ui.PodcastContent
-import com.lin0721.linmusic.feature.podcast.ui.PodcastViewModel
+import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeActions
+import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeContent
+import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import org.koin.androidx.compose.koinViewModel
 
 internal const val TAB_ALL = 0
@@ -43,7 +44,7 @@ internal const val TAB_PODCAST = 2
 fun HomeScreen(
     viewModel: HomeViewModel = koinViewModel(),
     musicViewModel: MusicViewModel = koinViewModel(),
-    podcastViewModel: PodcastViewModel = koinViewModel(),
+    podcastViewModel: PodcastHomeViewModel = koinViewModel(),
     newWorksViewModel: NewWorksViewModel = koinViewModel(),
     selectedTab: Int = TAB_ALL,
     onTabSelected: (Int) -> Unit = {},
@@ -54,6 +55,9 @@ fun HomeScreen(
     onPlaylistClick: (Long, Boolean) -> Unit = { _, _ -> },
     onArtistClick: (Long) -> Unit = {},
     onRadioClick: (Long) -> Unit = {},
+    onPodcastSubscribedClick: () -> Unit = {},
+    onPodcastToplistClick: () -> Unit = {},
+    onPodcastCategoryClick: (id: Long, name: String) -> Unit = { _, _ -> },
     onStyleClick: (id: Long, name: String) -> Unit = { _, _ -> },
     onSearchClick: () -> Unit = {},
     onOpenSidebar: () -> Unit = {},
@@ -63,7 +67,7 @@ fun HomeScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val musicUiState by musicViewModel.uiState.collectAsStateWithLifecycle()
-    val podcastUiState by podcastViewModel.uiState.collectAsStateWithLifecycle()
+    val podcastState by podcastViewModel.state.collectAsStateWithLifecycle()
     val newWorksUiState by newWorksViewModel.uiState.collectAsStateWithLifecycle()
     val newWorksCollectState by newWorksViewModel.collectState.collectAsStateWithLifecycle()
     val newWorksImportState by newWorksViewModel.importState.collectAsStateWithLifecycle()
@@ -156,12 +160,26 @@ fun HomeScreen(
                         onRetry = { musicViewModel.loadStyles() }
                     )
 
-                    selectedTab == TAB_PODCAST -> PodcastContent(
-                        uiState = podcastUiState,
-                        onCategorySelect = { podcastViewModel.selectCategory(it) },
-                        onProgramClick = { podcastViewModel.playProgramAt(it) },
-                        onRadioClick = { onRadioClick(it.id) },
-                        onRetry = { podcastViewModel.loadFeed() }
+                    selectedTab == TAB_PODCAST -> PodcastHomeContent(
+                        state = podcastState,
+                        actions = remember(podcastViewModel, onRadioClick, onPodcastSubscribedClick, onPodcastToplistClick, onPodcastCategoryClick) {
+                            PodcastHomeActions(
+                                onFilterSelect = podcastViewModel::selectFilter,
+                                onResume = podcastViewModel::resume,
+                                onPickClick = podcastViewModel::playPicks,
+                                onRadioClick = { onRadioClick(it.id) },
+                                onOpenSubscribed = onPodcastSubscribedClick,
+                                onOpenToplist = onPodcastToplistClick,
+                                onOpenCategory = onPodcastCategoryClick,
+                                onLoginClick = { showLoginSheet = true },
+                                onRetryAll = podcastViewModel::refresh,
+                                onRetrySubscribed = podcastViewModel::retrySubscribed,
+                                onRetryPicks = podcastViewModel::retryPicks,
+                                onRetryCategoryGroups = podcastViewModel::retryCategoryGroups,
+                                onRetryToplist = podcastViewModel::retryToplistRadios,
+                                onRetryCategoryRadios = podcastViewModel::retryCategoryRadios
+                            )
+                        }
                     )
 
                     else -> HomeContent(
@@ -174,7 +192,8 @@ fun HomeScreen(
                         onRetry = { viewModel.loadHomeData() },
                         onLoadMore = { viewModel.loadMoreShelves() },
                         onIntelligenceClick = { viewModel.startIntelligenceMode() },
-                        onRoamingClick = { viewModel.startRoaming() }
+                        onRoamingClick = { viewModel.startRoaming() },
+                        onDailyPlay = { viewModel.playDailySong() }
                     )
                 }
             }

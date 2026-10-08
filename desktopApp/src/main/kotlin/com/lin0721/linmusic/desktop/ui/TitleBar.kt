@@ -1,8 +1,12 @@
 package com.lin0721.linmusic.desktop.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,12 +45,15 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +62,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.awt.awtEventOrNull
@@ -64,12 +74,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.WindowScope
 import com.lin0721.linmusic.core.auth.UserProfile
+import com.lin0721.linmusic.desktop.platform.download.DownloadTaskStatus
+import com.lin0721.linmusic.desktop.platform.download.DownloadTask
+import com.lin0721.linmusic.desktop.ui.icons.DownloadIcons
 import com.lin0721.linmusic.desktop.ui.navigation.BackStack
 import com.lin0721.linmusic.desktop.ui.navigation.DesktopRoute
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 private val CloseHover = Color(0xFFE81123)
+
+private const val CHECK_SHOW_MS = 1_500L
+private const val FILL_ANIMATION_MS = 200
+
+// 与底栏侧边图标按钮（PlayerBar）同尺寸、同悬停放大系数
+private val DOWNLOAD_BUTTON_SIZE = 32.dp
+private val DOWNLOAD_ICON_SIZE = 20.dp
+private const val DOWNLOAD_HOVER_SCALE = 1.1f
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -84,6 +107,9 @@ fun WindowScope.TitleBar(
     onSearchSubmit: () -> Unit,
     isBrowseActive: Boolean,
     onBrowseClick: () -> Unit,
+    downloadTasks: List<DownloadTask>,
+    downloadsOpen: Boolean,
+    onDownloadsClick: (() -> Unit)?,
     onLoginClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLogoutClick: () -> Unit,
@@ -131,6 +157,7 @@ fun WindowScope.TitleBar(
             )
         }
         Row(Modifier.align(Alignment.CenterEnd).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+            if (onDownloadsClick != null) DownloadsButton(downloadTasks, downloadsOpen, onDownloadsClick)
             AvatarMenu(userProfile, onLoginClick, onSettingsClick, onLogoutClick)
             WindowButton(Icons.Rounded.Remove, "最小化", onClick = onMinimize)
             WindowButton(
@@ -139,6 +166,70 @@ fun WindowScope.TitleBar(
                 onClick = onToggleMaximize
             )
             WindowButton(Icons.Rounded.Close, "关闭", hoverColor = CloseHover, onClick = onClose)
+        }
+    }
+}
+
+// 头像左侧的下载入口，样式同底栏图标按钮
+// 图标按整轮进度染色，全部成功短暂变对勾；有暂停或失败的任务时亮红点
+@Composable
+private fun DownloadsButton(tasks: List<DownloadTask>, open: Boolean, onClick: () -> Unit) {
+    val tracker = remember { DownloadRoundTracker() }
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var showCheck by remember { mutableStateOf(false) }
+    LaunchedEffect(tasks) {
+        val summary = tracker.update(tasks)
+        progress = summary.progress
+        if (summary.progress != null) showCheck = false
+        if (summary.finished && summary.allSucceeded) showCheck = true
+    }
+    LaunchedEffect(showCheck) {
+        if (showCheck) {
+            delay(CHECK_SHOW_MS)
+            showCheck = false
+        }
+    }
+    val fill by animateFloatAsState(progress ?: 0f, tween(FILL_ANIMATION_MS), label = "downloadFill")
+    val needsAttention = tasks.any { it.status == DownloadTaskStatus.PAUSED || it.status == DownloadTaskStatus.FAILED }
+
+    val hoverSource = remember { MutableInteractionSource() }
+    val hovered by hoverSource.collectIsHoveredAsState()
+    val scale by animateFloatAsState(if (hovered) DOWNLOAD_HOVER_SCALE else 1f, tween(FILL_ANIMATION_MS), label = "downloadHover")
+    val tint = if (hovered || open) DesktopColors.TextPrimary else DesktopColors.TextGray
+    val tooltip = progress?.let { "下载中 ${(it * 100).roundToInt()}%" } ?: "下载管理"
+    DesktopTooltip(tooltip, side = TooltipSide.Bottom, modifier = Modifier.padding(end = 8.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            IconButton(
+                onClick = onClick,
+                interactionSource = hoverSource,
+                modifier = Modifier.size(DOWNLOAD_BUTTON_SIZE).graphicsLayer { scaleX = scale; scaleY = scale }
+            ) {
+                Crossfade(showCheck, animationSpec = tween(FILL_ANIMATION_MS), label = "downloadIcon") { check ->
+                    Box(Modifier.size(DOWNLOAD_ICON_SIZE)) {
+                        val icon = if (check) DownloadIcons.Check else DownloadIcons.Download
+                        Icon(icon, "下载管理", tint = if (check) DesktopColors.TextPrimary else tint, modifier = Modifier.fillMaxSize())
+                        if (!check && fill > 0f) {
+                            Icon(
+                                icon,
+                                null,
+                                tint = DesktopColors.Accent,
+                                modifier = Modifier.fillMaxSize().drawWithContent {
+                                    clipRect(top = size.height * (1f - fill)) { this@drawWithContent.drawContent() }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            if (needsAttention && !showCheck) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 5.dp).size(8.dp)
+                        .border(1.dp, DesktopColors.WindowBackground, CircleShape)
+                        .padding(1.dp)
+                        .clip(CircleShape)
+                        .background(DesktopColors.Accent)
+                )
+            }
         }
     }
 }
@@ -163,7 +254,7 @@ private fun AvatarMenu(
                 Icon(Icons.Rounded.Person, "账户", tint = DesktopColors.TextGray, modifier = Modifier.size(20.dp))
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.Surface) {
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
             if (userProfile != null) {
                 Text(
                     userProfile.nickname,
@@ -200,7 +291,6 @@ private fun AvatarMenuItem(icon: ImageVector, text: String, onClick: () -> Unit)
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SearchBox(
     query: String,
@@ -249,10 +339,7 @@ private fun SearchBox(
             )
         }
         Box(Modifier.padding(horizontal = 10.dp).width(1.dp).height(24.dp).background(DesktopColors.SurfaceLight))
-        TooltipArea(
-            tooltip = { TooltipLabel("浏览") },
-            delayMillis = 400
-        ) {
+        DesktopTooltip("浏览", side = TooltipSide.Bottom) {
             Icon(
                 Icons.Rounded.Explore,
                 "浏览",
@@ -280,7 +367,7 @@ private fun NavArrow(icon: ImageVector, description: String, enabled: Boolean, o
 private fun WindowButton(
     icon: ImageVector,
     description: String,
-    hoverColor: Color = DesktopColors.Surface,
+    hoverColor: Color = DesktopColors.PaneHover,
     onClick: () -> Unit
 ) {
     var hovered by remember { mutableStateOf(false) }

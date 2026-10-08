@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.AddCircleOutline
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -96,10 +98,11 @@ fun PlaylistScreen(
 ) {
     val uiState      by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTrack by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.playerManager.playWhenReady.collectAsStateWithLifecycle()
     val playMode by viewModel.playerManager.playMode.collectAsStateWithLifecycle()
     val playContext by viewModel.playerManager.playContext.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
+    val unplayableIds by viewModel.unplayableIds.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
     val userProfile  by viewModel.userProfile.collectAsStateWithLifecycle()
     val commentsState by viewModel.commentsState.collectAsStateWithLifecycle()
@@ -216,7 +219,7 @@ fun PlaylistScreen(
         viewModel.toastEvent.collect { com.lin0721.linmusic.core.ui.components.ToastManager.showToast(it) }
     }
     LaunchedEffect(playlistId, isAlbum) {
-        viewModel.loadPlaylist(playlistId, isAlbum)
+        viewModel.loadPlaylistIfNeeded(playlistId, isAlbum)
         if (playlistId == -1L) {
             viewModel.loadHistoryDates()
         }
@@ -554,6 +557,7 @@ fun PlaylistScreen(
                         currentTrackId = currentTrack?.mediaId,
                     isPlaying      = isPlaying,
                     likedSongIds   = likedSongIds,
+                    unplayableIds  = unplayableIds,
                     collectState   = collectState,
                     isLoggedIn     = userProfile != null,
                     recommendedSongs = state.recommendedSongs,
@@ -765,8 +769,10 @@ fun PlaylistScreen(
 
         if (showMoreMenuSheet && successState != null) {
             val playlist = successState.playlist
+            val moreMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
                 onDismissRequest = { showMoreMenuSheet = false },
+                sheetState = moreMenuSheetState,
                 containerColor = MaterialTheme.colorScheme.background,
                 shape = BottomSheetShape,
                 dragHandle = { MelodiaDragHandle() }
@@ -849,7 +855,7 @@ fun PlaylistScreen(
                     val menuItems = buildList {
                         add(
                             PlaylistMenuItem(
-                                icon = if (successState.isSubscribed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                icon = if (successState.isSubscribed) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
                                 title = if (successState.isSubscribed) "取消收藏$resourceLabel" else "收藏$resourceLabel"
                             ) {
                                 showMoreMenuSheet = false

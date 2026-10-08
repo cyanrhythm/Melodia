@@ -50,7 +50,13 @@ class SilentPlaybackController : PlaybackController {
 
     override suspend fun initController() = Unit
 
-    override fun playQueue(items: List<QueueItem>, startIndex: Int, playContext: String?, source: PlaySource?) {
+    override fun playQueue(
+        items: List<QueueItem>,
+        startIndex: Int,
+        playContext: String?,
+        source: PlaySource?,
+        startPositionMs: Long
+    ) {
         if (items.isEmpty()) return
         _queue.value = items
         _playContext.value = playContext

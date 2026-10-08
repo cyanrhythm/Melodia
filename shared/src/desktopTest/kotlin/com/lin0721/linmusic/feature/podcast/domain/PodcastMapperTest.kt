@@ -53,6 +53,14 @@ class PodcastMapperTest {
     }
 
     @Test
+    fun `异常的大数期号按未知处理`() {
+        val dirty = program().copy(serialNum = 1716894795619)
+
+        assertEquals(0, listOf(dirty).toPodcastPrograms().single().serialNum)
+        assertEquals(26, listOf(program()).toPodcastPrograms().single().serialNum)
+    }
+
+    @Test
     fun `没有mainSong的节目被丢弃`() {
         val items = listOf(
             program(id = 1, songId = null),
@@ -128,6 +136,18 @@ class PodcastMapperTest {
         assertEquals("0:05", formatProgramDuration(5000))
         assertEquals("1:00:00", formatProgramDuration(3600000))
         assertEquals("", formatProgramDuration(0))
+    }
+
+    @Test
+    fun `剩余时长向上取整并带时位`() {
+        assertEquals("剩 1 分钟", formatRemaining(1))
+        assertEquals("剩 1 分钟", formatRemaining(60_000))
+        assertEquals("剩 2 分钟", formatRemaining(60_001))
+        assertEquals("剩 59 分钟", formatRemaining(59 * 60_000L))
+        assertEquals("剩 1 小时", formatRemaining(60 * 60_000L))
+        assertEquals("剩 1 小时 5 分钟", formatRemaining(65 * 60_000L))
+        assertEquals("", formatRemaining(0))
+        assertEquals("", formatRemaining(-5))
     }
 
     @Test

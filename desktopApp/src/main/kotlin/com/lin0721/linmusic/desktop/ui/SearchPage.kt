@@ -362,6 +362,21 @@ private fun ResultEntry(
             circle = true,
             onClick = { navigator.openArtist(item.artist.id, item.artist.name) }
         )
+        is SearchResultItem.RadioItem -> CollectionEntry(
+            coverUrl = item.radio.picUrl,
+            title = item.radio.name,
+            subtitle = listOfNotNull(
+                item.radio.djName.takeIf { it.isNotBlank() },
+                item.radio.programCount.takeIf { it > 0 }?.let { "$it 期" }
+            ).joinToString(" · ").ifBlank { "电台" },
+            onClick = { navigator.openRadio(item.radio.id) }
+        )
+        is SearchResultItem.ProgramItem -> PodcastProgramRow(
+            program = item.program,
+            progress = null,
+            onPlay = { viewModel.playProgram(item.program) },
+            index = null
+        )
     }
 }
 

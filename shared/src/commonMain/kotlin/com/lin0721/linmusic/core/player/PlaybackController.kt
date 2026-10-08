@@ -17,6 +17,7 @@ interface PlaybackController {
 
     companion object {
         const val CONTEXT_INTELLIGENCE = "intelligence"
+        const val CONTEXT_PODCAST = "podcast"
     }
 
     val isPlaying: StateFlow<Boolean>
@@ -38,7 +39,14 @@ interface PlaybackController {
 
     suspend fun initController()
 
-    fun playQueue(items: List<QueueItem>, startIndex: Int, playContext: String? = null, source: PlaySource? = null)
+    // startPositionMs 为起播进度，仅对起播的那一项生效
+    fun playQueue(
+        items: List<QueueItem>,
+        startIndex: Int,
+        playContext: String? = null,
+        source: PlaySource? = null,
+        startPositionMs: Long = 0L
+    )
     fun playAudio(
         songId: Long,
         url: String,

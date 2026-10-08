@@ -1,20 +1,53 @@
 package com.lin0721.linmusic.feature.settings.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.LocalBottomOverlayInset
+import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
+import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 
+private val PlayerPageModes = listOf(
+    SettingsPreferences.PLAYER_PAGE_MODE_AUTO to "自动",
+    SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN to "全屏式",
+    SettingsPreferences.PLAYER_PAGE_MODE_SIDE to "侧边小窗式"
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
     val showLockscreen by viewModel.showLockscreen.collectAsStateWithLifecycle()
     val carMode by viewModel.carMode.collectAsStateWithLifecycle()
     val showCreateEntry by viewModel.showCreateEntry.collectAsStateWithLifecycle()
-    val panelDefaultFullscreen by viewModel.panelDefaultFullscreen.collectAsStateWithLifecycle()
+    val playerPageMode by viewModel.playerPageMode.collectAsStateWithLifecycle()
+    val sidePlayerPinned by viewModel.sidePlayerPinned.collectAsStateWithLifecycle()
+
+    var showPlayerModeSheet by remember { mutableStateOf(false) }
+    val playerModeLabel = PlayerPageModes.firstOrNull { it.first == playerPageMode }?.second ?: "自动"
+    val playerModeSubtitle = when (playerPageMode) {
+        SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN -> "全屏式：点击展开，返回直接收起"
+        SettingsPreferences.PLAYER_PAGE_MODE_SIDE -> "侧边小窗式：播放页固定在右侧，与内容并排"
+        else -> "自动：竖屏全屏式，横屏侧边小窗式"
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -56,15 +89,70 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
 
             item {
                 SettingsGroupCard(SettingsSubMenu.EXTENSIONS.sectionTitles[3]) {
-                    SettingsSwitchRow(
-                        title = "播放页默认全屏",
-                        subtitle = "平板上点击播放条时直接全屏展开，关闭则以侧栏展开",
-                        checked = panelDefaultFullscreen,
-                        onCheckedChange = { viewModel.updatePanelDefaultFullscreen(it) }
+                    SettingsRow(
+                        title = "播放页模式：$playerModeLabel",
+                        subtitle = playerModeSubtitle,
+                        onClick = { showPlayerModeSheet = true }
                     )
+                    if (playerPageMode != SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN) {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                        SettingsSwitchRow(
+                            title = "侧边播放页钉住",
+                            subtitle = "关闭后按返回键直接收起侧边播放页",
+                            checked = sidePlayerPinned,
+                            onCheckedChange = { viewModel.updateSidePlayerPinned(it) }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showPlayerModeSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showPlayerModeSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.background,
+                shape = BottomSheetShape,
+                dragHandle = { MelodiaDragHandle() }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(start = MelodiaSpacing.lg, end = MelodiaSpacing.lg, bottom = MelodiaSpacing.lg)
+                ) {
+                    Text(
+                        text = "选择播放页模式",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(bottom = MelodiaSpacing.md)
+                    )
+                    PlayerPageModes.forEach { (key, label) ->
+                        val isSelected = playerPageMode == key
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.updatePlayerPageMode(key)
+                                    showPlayerModeSheet = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 15.sp
+                            )
+                            if (isSelected) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
-

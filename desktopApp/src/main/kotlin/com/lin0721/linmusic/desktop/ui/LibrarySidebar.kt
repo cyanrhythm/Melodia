@@ -6,8 +6,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -96,7 +94,6 @@ import com.lin0721.linmusic.feature.library.ui.LibraryItemType
 import com.lin0721.linmusic.feature.library.ui.LibraryUiState
 import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
 
-private const val TOOLTIP_DELAY_MS = 400
 private const val VIEW_SWITCH_MS = 150
 private val SearchHeight = FilterChipDefaults.Height
 private val ShadowHeight = 8.dp
@@ -527,10 +524,9 @@ private fun typeLabel(type: LibraryItemType): String = when (type) {
 }
 
 // 小网格：只有封面，悬停显示标题
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LibraryCoverTile(item: LibraryItem, onClick: () -> Unit) {
-    TooltipArea(tooltip = { TooltipLabel(item.title) }, delayMillis = TOOLTIP_DELAY_MS) {
+    DesktopTooltip(item.title, side = TooltipSide.Right) {
         val shape = coverShape(item)
         Box(Modifier.padding(SmallTileInset).clip(shape).pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onClick)) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -581,7 +577,6 @@ internal fun coverShape(item: LibraryItem): Shape =
     if (item.type == LibraryItemType.ARTIST) CircleShape else RoundedCornerShape(4.dp)
 
 // 形态切换入口：有 baseIcon 时悬停换成收起/展开图标，没有则只在 iconRevealed 时出现
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LibraryTitleToggle(
     baseIcon: ImageVector?,
@@ -593,7 +588,7 @@ internal fun LibraryTitleToggle(
 ) {
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
-    TooltipArea(tooltip = { TooltipLabel(hint) }, delayMillis = TOOLTIP_DELAY_MS) {
+    DesktopTooltip(hint, side = TooltipSide.Right) {
         Row(
             Modifier.clip(RoundedCornerShape(20.dp)).hoverable(source).pointerHoverIcon(PointerIcon.Hand)
                 .clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
@@ -618,10 +613,9 @@ internal fun LibraryTitleToggle(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LibraryIconButton(icon: ImageVector, description: String, filled: Boolean = false, onClick: () -> Unit) {
-    TooltipArea(tooltip = { TooltipLabel(description) }, delayMillis = TOOLTIP_DELAY_MS) {
+    DesktopTooltip(description, side = TooltipSide.Right) {
         IconButton(
             onClick = onClick,
             modifier = Modifier.size(32.dp),
@@ -639,7 +633,7 @@ internal fun LibraryIconButton(icon: ImageVector, description: String, filled: B
 private fun LoginPrompt(onLoginClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(8.dp))
-            .background(DesktopColors.Surface).padding(16.dp)
+            .background(DesktopColors.CardSurface).padding(16.dp)
     ) {
         Text("登录后查看你的歌单", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold)
         Spacer(Modifier.padding(top = 4.dp))

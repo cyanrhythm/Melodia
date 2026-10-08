@@ -73,11 +73,13 @@ fun LoginBottomSheet(
         onDispose { viewModel.resetQrState() }
     }
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = {
             viewModel.resetQrState()
             onDismiss()
         },
+        sheetState = sheetState,
         containerColor = SurfaceDark,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.core.userartist
 
+import com.lin0721.linmusic.core.cache.testOfflineFallback
 import com.lin0721.linmusic.core.model.Artist
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -24,7 +25,7 @@ class UserArtistRepositoryImplTest {
             sublist = { _ -> ArtistSublistResponse(code = 200, data = listOf(artist(1, "已关注歌手"))) }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertTrue(result.isSuccess)
         assertEquals(listOf("已关注歌手"), result.getOrNull()?.map { it.name })
@@ -36,7 +37,7 @@ class UserArtistRepositoryImplTest {
             sublist = { _ -> ArtistSublistResponse(code = 200, data = emptyList()) }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertTrue(result.isSuccess)
         assertEquals(emptyList<Any>(), result.getOrNull())
@@ -46,7 +47,7 @@ class UserArtistRepositoryImplTest {
     fun `接口异常且无任何数据时返回失败`() = runBlocking {
         val api = FakeUserArtistApi(sublist = { _ -> throw RuntimeException("网络异常") })
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertTrue(result.isFailure)
     }
@@ -55,7 +56,7 @@ class UserArtistRepositoryImplTest {
     fun `业务码非200且无数据时返回失败`() = runBlocking {
         val api = FakeUserArtistApi(sublist = { _ -> ArtistSublistResponse(code = 301) })
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertTrue(result.isFailure)
     }
@@ -71,7 +72,7 @@ class UserArtistRepositoryImplTest {
             }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertEquals("primary.jpg", result.getOrNull()?.first()?.avatarUrl)
     }
@@ -87,7 +88,7 @@ class UserArtistRepositoryImplTest {
             }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertEquals("fallback.jpg", result.getOrNull()?.first()?.avatarUrl)
     }
@@ -104,7 +105,7 @@ class UserArtistRepositoryImplTest {
             }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertEquals(total, result.getOrNull()?.size)
         assertEquals(listOf(0, 100, 200), requests.map { it.offset })
@@ -122,7 +123,7 @@ class UserArtistRepositoryImplTest {
             }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertTrue(result.isSuccess)
         assertEquals(100, result.getOrNull()?.size)
@@ -136,7 +137,7 @@ class UserArtistRepositoryImplTest {
             }
         )
 
-        val result = UserArtistRepositoryImpl(api).getFavoriteArtists().first()
+        val result = UserArtistRepositoryImpl(api, testOfflineFallback()).getFavoriteArtists().first()
 
         assertEquals(100, result.getOrNull()?.size)
     }

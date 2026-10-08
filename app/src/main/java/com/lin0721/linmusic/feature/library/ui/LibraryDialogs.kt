@@ -38,8 +38,10 @@ fun LibraryCreatePlaylistSheet(
     onCreate: (String) -> Unit
 ) {
     var playlistNameInput by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }
@@ -123,8 +125,10 @@ fun LibrarySortMenuSheet(
     onSelect: (LibrarySortOrder) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

@@ -77,44 +77,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import com.lin0721.linmusic.core.auth.UserProfile
 
-// 本地音乐入口项
-@Composable
-private fun LocalMusicEntryRow(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = MelodiaSpacing.md, vertical = MelodiaSpacing.xs)
-            .clip(RoundedCornerShape(PillRadius))
-            .background(MaterialTheme.colorScheme.surface)
-            .pressable(MelodiaPress.Row) { onClick() }
-            .padding(horizontal = MelodiaSpacing.md, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.LibraryMusic,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(modifier = Modifier.width(MelodiaSpacing.sm))
-        Text(
-            text = "本地音乐",
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .size(16.dp)
-                .graphicsLayer { rotationZ = 180f }
-        )
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
@@ -345,27 +307,29 @@ fun LibraryScreen(
                 }
             }
 
+            val successState = uiState as? LibraryUiState.Success
+            // 2. 分类过滤器横向滚动列表（包含最右侧本地音乐入口）
+            LibraryFilterPillsRow(
+                selectedFilter = selectedFilter,
+                playlistCount = successState?.playlistCount ?: 0,
+                albumCount = successState?.albumCount ?: 0,
+                artistCount = successState?.artistCount ?: 0,
+                onSelect = { viewModel.toggleFilter(it) },
+                onClear = { viewModel.clearFilter() },
+                selectedPlaylistOwnerFilter = selectedPlaylistOwnerFilter,
+                onSelectPlaylistOwnerFilter = { viewModel.togglePlaylistOwnerFilter(it) },
+                showCategoryFilters = userProfile != null,
+                onLocalMusicClick = onNavigateToLocalMusic
+            )
+
             // 用户登录状态条件渲染
             if (userProfile == null) {
-                NotLoggedInView(
-                    onLoginClick = { showLoginSheet = true }
-                )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    NotLoggedInView(
+                        onLoginClick = { showLoginSheet = true }
+                    )
+                }
             } else {
-                val successState = uiState as? LibraryUiState.Success
-                // 2. 分类过滤器横向滚动列表
-                LibraryFilterPillsRow(
-                    selectedFilter = selectedFilter,
-                    playlistCount = successState?.playlistCount ?: 0,
-                    albumCount = successState?.albumCount ?: 0,
-                    artistCount = successState?.artistCount ?: 0,
-                    onSelect = { viewModel.toggleFilter(it) },
-                    onClear = { viewModel.clearFilter() },
-                    selectedPlaylistOwnerFilter = selectedPlaylistOwnerFilter,
-                    onSelectPlaylistOwnerFilter = { viewModel.togglePlaylistOwnerFilter(it) }
-                )
-
-                LocalMusicEntryRow(onClick = onNavigateToLocalMusic)
-
                 // 3. 混合聚合列表容器
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when (val state = uiState) {

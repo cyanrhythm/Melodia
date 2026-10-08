@@ -17,6 +17,8 @@ import com.lin0721.linmusic.core.ui.components.PlaylistCollectState
 import com.lin0721.linmusic.feature.playlist.domain.SongCollectDelegate
 import com.lin0721.linmusic.feature.search.data.SearchHistoryPreferences
 import com.lin0721.linmusic.feature.search.data.SearchRepository
+import com.lin0721.linmusic.feature.podcast.domain.PodcastProgram
+import com.lin0721.linmusic.feature.podcast.domain.playPodcastPrograms
 import com.lin0721.linmusic.feature.search.domain.SearchResultItem
 import com.lin0721.linmusic.feature.search.domain.SearchType
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
@@ -535,5 +537,14 @@ class SearchViewModel(
         }
         val startIndex = tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
         playerManager.playQueue(queueItems, startIndex, "搜索")
+    }
+
+    // 从点击的节目起播，当前节目搜索结果作为队列。搜索结果不带收听进度，从头播放
+    fun playProgram(program: PodcastProgram) {
+        val state = _resultsByType.getValue(SearchType.PROGRAM).value
+        if (state !is SearchResultsUiState.Success) return
+        val programs = state.items.filterIsInstance<SearchResultItem.ProgramItem>().map { it.program }
+        val startIndex = programs.indexOfFirst { it.id == program.id }.coerceAtLeast(0)
+        playerManager.playPodcastPrograms(programs, startIndex, emptyMap())
     }
 }

@@ -30,6 +30,7 @@ import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.ui.components.CustomToast
 import com.lin0721.linmusic.core.ui.components.MelodiaNavigationBar
 import com.lin0721.linmusic.core.ui.components.MiniPlayerCard
+import com.lin0721.linmusic.core.ui.components.MiniPlayerLikeMode
 import com.lin0721.linmusic.feature.create.ui.CreatePopupMenu
 import com.lin0721.linmusic.feature.player.ui.FullPlayerScreen
 import com.lin0721.linmusic.feature.settings.ui.UpdateBanner
@@ -81,6 +82,7 @@ fun MelodiaBottomOverlay(
     onCancelPendingSkip: () -> Boolean = { false },
     isMiniPlayerLiked: Boolean = false,
     onMiniPlayerLikeClick: () -> Unit = {},
+    miniPlayerLikeMode: MiniPlayerLikeMode = MiniPlayerLikeMode.Collect,
     onCreateDismiss: () -> Unit,
     onNavigate: (Screen) -> Unit,
     onCreateClick: () -> Unit,
@@ -207,6 +209,7 @@ fun MelodiaBottomOverlay(
                                     onCancelPendingSkip = onCancelPendingSkip,
                                     isLiked = isMiniPlayerLiked,
                                     onLikeClick = onMiniPlayerLikeClick,
+                                    likeMode = miniPlayerLikeMode,
                                     expanded = true,
                                     // 和右侧展开态面板同宽，两者上下贴齐
                                     modifier = Modifier
@@ -242,6 +245,7 @@ fun MelodiaBottomOverlay(
                             onCancelPendingSkip = onCancelPendingSkip,
                             isLiked = isMiniPlayerLiked,
                             onLikeClick = onMiniPlayerLikeClick,
+                            likeMode = miniPlayerLikeMode,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MelodiaSpacing.sm)

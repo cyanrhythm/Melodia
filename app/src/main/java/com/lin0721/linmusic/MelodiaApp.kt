@@ -69,6 +69,7 @@ import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.ui.interaction.pressable
 import com.lin0721.linmusic.core.ui.theme.ScreenSlideDurationMs
 import com.lin0721.linmusic.core.ui.components.MiniPlayerCard
+import com.lin0721.linmusic.core.ui.components.MiniPlayerLikeMode
 import com.lin0721.linmusic.feature.recognition.service.PlaybackRecognitionState
 import com.lin0721.linmusic.feature.recognition.ui.RecognitionScreen
 import com.lin0721.linmusic.core.ui.theme.MelodiaPress
@@ -90,6 +91,7 @@ import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.rememberMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaOrientationClass
+import com.lin0721.linmusic.core.ui.theme.MelodiaOrientationClass
 import com.lin0721.linmusic.core.ui.theme.rememberMelodiaOrientationClass
 import com.lin0721.linmusic.feature.player.ui.PlayerDockPanel
 import com.lin0721.linmusic.core.ui.theme.PanelFullscreenSpec
@@ -123,7 +125,9 @@ fun MelodiaApp() {
     val viewModel: HomeViewModel = koinViewModel()
     val settingsPreferences: SettingsPreferences = koinInject()
     val showCreateEntry by settingsPreferences.showCreateEntry.collectAsStateWithLifecycle(initialValue = true)
-    val panelDefaultFullscreen by settingsPreferences.panelDefaultFullscreen.collectAsStateWithLifecycle(initialValue = false)
+    val playerPageMode by settingsPreferences.playerPageMode
+        .collectAsStateWithLifecycle(initialValue = SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
+    val sidePlayerPinned by settingsPreferences.sidePlayerPinned.collectAsStateWithLifecycle(initialValue = true)
     // 迷你条、面板等 Android 组件直接消费 Media3 MediaItem，取具体实现
     val playerManager: PlayerManager = koinInject()
     val currentTrack by playerManager.currentTrack.collectAsStateWithLifecycle()
@@ -138,7 +142,29 @@ fun MelodiaApp() {
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
-    val isMiniPlayerLiked = currentTrack?.mediaId?.toLongOrNull()?.let { it in likedSongIds } ?: false
+    // mini 栏＋按钮触发的"收藏到歌单"弹层，非 null 时显示
+    var miniCollectSongId by remember { mutableStateOf<Long?>(null) }
+    val podcastState by viewModel.podcastState.collectAsStateWithLifecycle()
+    val miniPlayerLikeMode = when {
+        !podcastState.isPodcast -> MiniPlayerLikeMode.Collect
+        podcastState.canSubscribe -> MiniPlayerLikeMode.Subscribe
+        else -> MiniPlayerLikeMode.Hidden
+    }
+    val isMiniPlayerLiked = if (podcastState.isPodcast) {
+        podcastState.subscribed
+    } else {
+        currentTrack?.mediaId?.toLongOrNull()?.let { it in likedSongIds } ?: false
+    }
+    val onMiniPlayerLikeClick: () -> Unit = {
+        if (podcastState.isPodcast) {
+            viewModel.toggleSubscribe()
+        } else {
+            currentTrack?.mediaId?.toLongOrNull()?.let { songId ->
+                miniCollectSongId = songId
+                viewModel.prepareCollectDialog(songId)
+            }
+        }
+    }
 
     val playerSheet = rememberMelodiaPlayerSheetState()
     // 冷启动默认落在音乐库 tab（底栏顺序同步为音乐库优先）
@@ -165,7 +191,13 @@ fun MelodiaApp() {
     // Expanded 断点下播放器是否展开为常驻侧栏面板；与手机端 playerSheet 完全独立的状态机。
     // 面板在任意页面都保持展开态（不局限于 Tab 根页面）
     var isPanelExpanded by remember { mutableStateOf(false) }
-    val isPanelVisible = windowSizeClass == MelodiaWindowSizeClass.Expanded && isPanelExpanded
+    // 宽屏下是否用侧栏面板承载播放页；否则与手机一样走底部上滑的全屏播放页
+    val usePanel = windowSizeClass == MelodiaWindowSizeClass.Expanded && when (playerPageMode) {
+        SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN -> false
+        SettingsPreferences.PLAYER_PAGE_MODE_SIDE -> true
+        else -> orientationClass == MelodiaOrientationClass.Landscape
+    }
+    val isPanelVisible = usePanel && isPanelExpanded
     // 面板展开分两段：rise 从迷你条位置向上长到全高（浮在内容区之上）；长满后内容区在面板遮挡下一帧切换为
     // 让位态（宽度、页面密度、卡片边距、底栏长度同时到位）。收起时先在面板遮挡下切回全宽，再让面板缩回迷你条
     val panelRise = remember { Animatable(0f) }
@@ -173,9 +205,10 @@ fun MelodiaApp() {
     // 面板铺满全屏：由面板左上角的侧栏按钮切换；面板收起或离开 Expanded 时一并退出
     var isPanelFullscreen by remember { mutableStateOf(false) }
     val panelFullscreen = remember { Animatable(0f) }
-    LaunchedEffect(isPanelVisible, windowSizeClass) {
+    LaunchedEffect(isPanelVisible, usePanel) {
         if (!isPanelVisible) isPanelFullscreen = false
-        if (windowSizeClass != MelodiaWindowSizeClass.Expanded) {
+        if (!usePanel) {
+            isPanelExpanded = false
             isPanelDocked = false
             panelRise.snapTo(0f)
             panelFullscreen.snapTo(0f)
@@ -186,6 +219,10 @@ fun MelodiaApp() {
             isPanelDocked = false
             panelRise.animateTo(0f, PanelRiseSpec)
         }
+    }
+    // 切到侧栏模式（设置变更或旋转）时收起已打开的底部全屏播放页
+    LaunchedEffect(usePanel) {
+        if (usePanel && playerSheet.isOpen) playerSheet.animateTo(false, 0f)
     }
     val isPanelShown by remember { derivedStateOf { panelRise.value > 0f } }
     var hasPanelBeenShown by remember { mutableStateOf(false) }
@@ -206,8 +243,6 @@ fun MelodiaApp() {
     // 原始系统栏高度，双卡片模式下两张卡片据此避让；此处在任何 consumeWindowInsets 之外，读到的是完整值
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navigationBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // mini 栏爱心按钮触发的"收藏到歌单"弹层，非 null 时显示
-    var miniCollectSongId by remember { mutableStateOf<Long?>(null) }
     var isLyricsFullScreen by remember { mutableStateOf(false) }
     var isLyricsControlsVisible by remember { mutableStateOf(true) }
 
@@ -217,7 +252,7 @@ fun MelodiaApp() {
         window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     }
 
-    val shouldHideSystemBars = if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
+    val shouldHideSystemBars = if (usePanel) {
         isLyricsFullScreen
     } else {
         isLyricsFullScreen && !isLyricsControlsVisible
@@ -240,15 +275,13 @@ fun MelodiaApp() {
 
     val toastMessage = rememberGlobalToastMessage()
 
-    // 已展开时不重置全屏态，避免点击迷你条把用户手动切换的侧栏/全屏状态覆盖
     fun openPanel() {
-        if (!isPanelExpanded) isPanelFullscreen = panelDefaultFullscreen
         isPanelExpanded = true
     }
 
     fun handleBack() {
         val shouldReopenPlayer = navigation.navigateBack()
-        if (shouldReopenPlayer && windowSizeClass != MelodiaWindowSizeClass.Expanded) {
+        if (shouldReopenPlayer && !usePanel) {
             playerSheet.animateTo(true, 0f)
         }
     }
@@ -263,7 +296,7 @@ fun MelodiaApp() {
 
     // 系统返回键与侧滑返回拦截：按优先级关闭浮层或返回上一级。
     // 当存在浮层、处于非主页 tab、当前栈深大于 1、或主页未处于「全部」默认分类时均由 handleBack() 逐级处理。
-    // 平板播放面板常驻不随返回键收起，直接交由内容导航处理
+    // 侧栏面板钉住时不随返回键收起，直接交由内容导航处理
     val isAnyOverlayOpen = playerSheet.isOpen || navigation.isNavigatingFromPlayer || sidebar.isOpen ||
             showCreateSheet || navigation.canGoBackToHomeAll
 
@@ -283,6 +316,11 @@ fun MelodiaApp() {
     // 全屏态下返回键先收回侧栏；注册在上面的通用返回处理之后，优先级更高
     BackHandler(enabled = isPanelFullscreen) {
         isPanelFullscreen = false
+    }
+
+    // 侧栏未钉住时返回直接收起面板（含全屏态）；侧边栏、创建菜单等全局浮层先处理
+    BackHandler(enabled = isPanelVisible && !sidePlayerPinned && !sidebar.isOpen && !showCreateSheet) {
+        isPanelExpanded = false
     }
 
     val isDrawerDraggable = userProfile != null && (sidebar.isOpen || sidebar.isTouchStartingAtEdge)
@@ -399,7 +437,8 @@ fun MelodiaApp() {
                         ) {
                             CompositionLocalProvider(LocalMelodiaSystemBarsConsumed provides isPanelDocked) {
                                 MelodiaNavHost(
-                                    currentScreen = navigation.currentScreen,
+                                    currentEntry = navigation.currentEntry,
+                                    liveEntryIds = navigation.liveEntryIds,
                                     homeViewModel = viewModel,
                                     homeTab = navigation.homeTab,
                                     showMusicNewWorks = navigation.showMusicNewWorks,
@@ -448,30 +487,25 @@ fun MelodiaApp() {
                             onTogglePlay = { viewModel.togglePlayPause() },
                             onNext = { viewModel.playerManager.playNext() },
                             onMiniPlayerClick = {
-                                if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
+                                if (usePanel) {
                                     openPanel()
                                 } else {
                                     playerSheet.animateTo(true, 0f)
                                 }
                             },
                             onMiniPlayerDrag = { delta ->
-                                if (windowSizeClass != MelodiaWindowSizeClass.Expanded) playerSheet.onDrag(delta)
+                                if (!usePanel) playerSheet.onDrag(delta)
                             },
                             onMiniPlayerDragEnd = { velocity ->
-                                if (windowSizeClass != MelodiaWindowSizeClass.Expanded) playerSheet.onDragEnd(velocity)
+                                if (!usePanel) playerSheet.onDragEnd(velocity)
                             },
                             previousQueueItem = previousQueueItem,
                             nextQueueItem = nextQueueItem,
                             onMiniPlayerPrevious = { viewModel.playerManager.skipToPrevious() },
                             onCancelPendingSkip = { viewModel.playerManager.cancelPendingSkip() },
                             isMiniPlayerLiked = isMiniPlayerLiked,
-                            onMiniPlayerLikeClick = {
-                                val songId = currentTrack?.mediaId?.toLongOrNull()
-                                if (songId != null) {
-                                    miniCollectSongId = songId
-                                    viewModel.prepareCollectDialog(songId)
-                                }
-                            },
+                            onMiniPlayerLikeClick = onMiniPlayerLikeClick,
+                            miniPlayerLikeMode = miniPlayerLikeMode,
                             onCreateDismiss = { showCreateSheet = false },
                             onNavigate = { navigation.openTab(it) },
                             onCreateClick = { showCreateSheet = !showCreateSheet },
@@ -507,7 +541,7 @@ fun MelodiaApp() {
             // 卡片底边与迷你条所在行的底边只差 sm，起始矩形与迷你条重合；
             // 内容按卡片全高布局，只动画裁剪区域，避免 FullPlayerScreen 逐帧重排。
             // 全屏时左边缘向左推到距屏幕左边 sm 处，宽度只在布局阶段读进度
-            if ((isPanelShown || hasPanelBeenShown) && windowSizeClass == MelodiaWindowSizeClass.Expanded) {
+            if ((isPanelShown || hasPanelBeenShown) && usePanel) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -648,7 +682,7 @@ fun MelodiaApp() {
                         onTogglePlay = { viewModel.togglePlayPause() },
                         onNext = { viewModel.playerManager.playNext() },
                         onClick = {
-                            if (windowSizeClass == MelodiaWindowSizeClass.Expanded) {
+                            if (usePanel) {
                                 // 平板播放面板位于内容层，会被识别页挡住，只能先收起识别页
                                 showRecognition = false
                                 openPanel()
@@ -658,23 +692,18 @@ fun MelodiaApp() {
                             }
                         },
                         onDrag = { delta ->
-                            if (windowSizeClass != MelodiaWindowSizeClass.Expanded) playerSheet.onDrag(delta)
+                            if (!usePanel) playerSheet.onDrag(delta)
                         },
                         onDragEnd = { velocity ->
-                            if (windowSizeClass != MelodiaWindowSizeClass.Expanded) playerSheet.onDragEnd(velocity)
+                            if (!usePanel) playerSheet.onDragEnd(velocity)
                         },
                         previousQueueItem = previousQueueItem,
                         nextQueueItem = nextQueueItem,
                         onPrevious = { viewModel.playerManager.skipToPrevious() },
                         onCancelPendingSkip = { viewModel.playerManager.cancelPendingSkip() },
                         isLiked = isMiniPlayerLiked,
-                        onLikeClick = {
-                            val songId = currentTrack?.mediaId?.toLongOrNull()
-                            if (songId != null) {
-                                miniCollectSongId = songId
-                                viewModel.prepareCollectDialog(songId)
-                            }
-                        },
+                        onLikeClick = onMiniPlayerLikeClick,
+                        likeMode = miniPlayerLikeMode,
                         modifier = modifier
                     )
                 }

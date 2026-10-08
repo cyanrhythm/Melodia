@@ -6,8 +6,6 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -74,7 +72,6 @@ import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.library.ui.LibrarySortOrder
 import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
 
-private const val TOOLTIP_DELAY_MS = 400
 private const val PLAYLIST_NAME_MAX_LENGTH = 40
 internal const val EMPTY_NAME_MESSAGE = "名字不能为空哦！"
 
@@ -119,14 +116,13 @@ private fun LibraryPopupMenu(
         modifier = Modifier.width(menuWidth),
         offset = DpOffset(anchorWidth - menuWidth, MenuGap),
         shape = RoundedCornerShape(12.dp),
-        containerColor = DesktopColors.Surface,
+        containerColor = DesktopColors.PopupSurface,
         shadowElevation = 16.dp,
         content = content
     )
 }
 
 // 排序名与当前视图图标合成一个按钮，点击弹出排序与视图菜单；showSortLabel 为 false 时只剩图标
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LibrarySortViewMenu(
     viewModel: LibraryViewModel,
@@ -139,7 +135,7 @@ internal fun LibrarySortViewMenu(
     var anchorWidth by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     Box(Modifier.onSizeChanged { anchorWidth = with(density) { it.width.toDp() } }) {
-        TooltipArea(tooltip = { TooltipLabel("排序与视图") }, delayMillis = TOOLTIP_DELAY_MS) {
+        DesktopTooltip("排序与视图", side = TooltipSide.Right) {
             Row(
                 Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).pointerHoverIcon(PointerIcon.Hand)
                     .clickable { expanded = true }.padding(horizontal = 10.dp),
@@ -216,10 +212,9 @@ private fun SortOption(order: LibrarySortOrder, selected: Boolean, onClick: () -
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ViewModeOption(mode: LibraryViewMode, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    TooltipArea(tooltip = { TooltipLabel(viewModeLabel(mode)) }, delayMillis = TOOLTIP_DELAY_MS, modifier = modifier) {
+    DesktopTooltip(viewModeLabel(mode), modifier = modifier) {
         Box(
             Modifier.fillMaxWidth().height(34.dp).clip(RoundedCornerShape(8.dp))
                 .background(if (selected) DesktopColors.SurfaceLight else Color.Transparent)
@@ -301,7 +296,7 @@ internal fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> U
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.Surface,
+        containerColor = DesktopColors.PopupSurface,
         title = { Text("新建歌单", color = DesktopColors.TextPrimary) },
         text = {
             Column(Modifier.width(320.dp)) {

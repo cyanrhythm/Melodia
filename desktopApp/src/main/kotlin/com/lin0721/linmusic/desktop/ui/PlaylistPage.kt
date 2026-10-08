@@ -17,9 +17,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,11 +55,13 @@ fun PlaylistPage(
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(playlistId, isAlbum) {
-        viewModel.loadPlaylist(playlistId, isAlbum)
+        viewModel.loadPlaylistIfNeeded(playlistId, isAlbum)
     }
+    val navigator = LocalDesktopNavigator.current
     val uiState by viewModel.uiState.collectAsState()
     val nowPlaying by controller.nowPlaying.collectAsState()
     val likedSongIds by viewModel.likedSongIds.collectAsState()
+    val unplayableIds by viewModel.unplayableIds.collectAsState()
     val collectState by viewModel.collectState.collectAsState()
     val actions = rememberTrackActions(
         likedSongIds = likedSongIds,
@@ -111,7 +115,8 @@ fun PlaylistPage(
                         PlaylistHeader(
                             playlist = state.playlist,
                             isAlbum = isAlbum,
-                            onPlayAll = { viewModel.playAll(shuffle = false) }
+                            onPlayAll = { viewModel.playAll(shuffle = false) },
+                            onDownloadAll = { viewModel.downloadPlaylist(state.playlist.id, state.playlist.name, navigator.downloadLevel) }
                         )
                     }
                     itemsIndexed(tracks, key = { index, track -> "${track.id}_$index" }) { index, track ->
@@ -121,6 +126,7 @@ fun PlaylistPage(
                             isCurrent = nowPlaying?.songId == track.id,
                             onPlay = { viewModel.playTrackInPlaylist(track) },
                             actions = actions,
+                            enabled = track.id !in unplayableIds,
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
@@ -138,7 +144,7 @@ fun PlaylistPage(
 }
 
 @Composable
-private fun PlaylistHeader(playlist: PlaylistDetail, isAlbum: Boolean, onPlayAll: () -> Unit) {
+private fun PlaylistHeader(playlist: PlaylistDetail, isAlbum: Boolean, onPlayAll: () -> Unit, onDownloadAll: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(24.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Cover(playlist.coverImgUrl, 200.dp, shape = RoundedCornerShape(6.dp))
@@ -172,6 +178,9 @@ private fun PlaylistHeader(playlist: PlaylistDetail, isAlbum: Boolean, onPlayAll
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Rounded.PlayArrow, "播放全部", tint = DesktopColors.TextPrimary, modifier = Modifier.size(32.dp))
+            }
+            IconButton(onClick = onDownloadAll) {
+                Icon(Icons.Rounded.Download, if (isAlbum) "下载专辑" else "下载歌单", tint = DesktopColors.TextGray, modifier = Modifier.size(28.dp))
             }
             Text("双击歌曲即可播放", color = DesktopColors.TextGray, fontSize = 13.sp)
         }

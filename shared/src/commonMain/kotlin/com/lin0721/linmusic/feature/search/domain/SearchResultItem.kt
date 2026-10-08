@@ -4,6 +4,8 @@ import com.lin0721.linmusic.core.model.Album
 import com.lin0721.linmusic.core.model.Artist
 import com.lin0721.linmusic.core.model.PlaylistDetail
 import com.lin0721.linmusic.core.model.Track
+import com.lin0721.linmusic.feature.podcast.domain.PodcastProgram
+import com.lin0721.linmusic.feature.podcast.domain.PodcastRadio
 
 // 分类型搜索结果条目，按 SearchType 承载对应的共享领域模型，不新建重复模型
 sealed interface SearchResultItem {
@@ -28,6 +30,16 @@ sealed interface SearchResultItem {
     data class PlaylistItem(val playlist: PlaylistDetail) : SearchResultItem {
         override val id: Long get() = playlist.id
         override val stableKey: String get() = "playlist_${playlist.id}"
+    }
+
+    data class RadioItem(val radio: PodcastRadio) : SearchResultItem {
+        override val id: Long get() = radio.id
+        override val stableKey: String get() = "radio_${radio.id}"
+    }
+
+    data class ProgramItem(val program: PodcastProgram) : SearchResultItem {
+        override val id: Long get() = program.id
+        override val stableKey: String get() = "program_${program.id}"
     }
 }
 

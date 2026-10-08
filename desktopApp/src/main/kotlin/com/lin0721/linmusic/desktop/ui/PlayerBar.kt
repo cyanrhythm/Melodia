@@ -2,8 +2,6 @@ package com.lin0721.linmusic.desktop.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -20,36 +18,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.AddCircleOutline
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Fullscreen
-import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material.icons.rounded.SpeakerGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,12 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.player.PlayMode
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.desktop.ui.icons.PlayerBarIcons
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import kotlin.math.roundToInt
 
-private const val TOOLTIP_DELAY_MS = 400
 private const val HOVER_SCALE = 1.1f
 private const val HOVER_SCALE_MS = 150
 private val TransportButtonSize = 36.dp
@@ -71,10 +73,9 @@ private val SideButtonSize = 32.dp
 
 // 右侧与红心按钮的图标比切歌按钮的字形占格更满，缩小图标才能看起来一样大
 private val SideIconSize = 20.dp
-private val VolumeSliderWidth = 88.dp
+private val VolumeSliderWidth = 120.dp
 private const val NOT_SUPPORTED_MESSAGE = "暂未支持"
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlayerBar(
     controller: PlaybackController,
@@ -83,8 +84,16 @@ fun PlayerBar(
     onVolumeChange: (Int) -> Unit,
     nowPlayingOpen: Boolean,
     onToggleNowPlaying: () -> Unit,
+    queueOpen: Boolean,
+    onToggleQueue: () -> Unit,
+    devicesOpen: Boolean,
+    onToggleDevices: (() -> Unit)?,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
     lyricVisible: Boolean,
     onToggleLyric: () -> Unit,
+    lyricsViewOpen: Boolean,
+    onToggleLyricsView: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navigator = LocalDesktopNavigator.current
@@ -94,6 +103,7 @@ fun PlayerBar(
     val position by controller.currentPosition.collectAsState()
     val duration by controller.duration.collectAsState()
     val songDetail by playerViewModel.songDetailState.collectAsState()
+    val podcast by playerViewModel.podcastState.collectAsState()
     val hasTrack = nowPlaying != null
     val notSupported = { navigator.showMessage(NOT_SUPPORTED_MESSAGE) }
 
@@ -104,10 +114,7 @@ fun PlayerBar(
         Row(Modifier.weight(0.27f), verticalAlignment = Alignment.CenterVertically) {
             val track = nowPlaying
             if (track != null) {
-                TooltipArea(
-                    tooltip = { TooltipLabel(if (nowPlayingOpen) "隐藏“正在播放”" else "显示“正在播放”") },
-                    delayMillis = TOOLTIP_DELAY_MS
-                ) {
+                DesktopTooltip(if (nowPlayingOpen) "隐藏“正在播放”" else "显示“正在播放”") {
                     Box(Modifier.pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onToggleNowPlaying)) {
                         Cover(track.artworkUri, 56.dp)
                     }
@@ -116,21 +123,64 @@ fun PlayerBar(
                     Text(track.title, color = DesktopColors.TextPrimary, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     NowPlayingArtists(track, playerViewModel, 12.sp)
                 }
-                BarIconButton(
-                    icon = if (songDetail.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    description = if (songDetail.isLiked) "从喜欢的音乐中移除" else "添加到喜欢的音乐",
-                    active = songDetail.isLiked,
-                    size = SideButtonSize, iconSize = SideIconSize,
-                    modifier = Modifier.padding(start = 4.dp),
-                    onClick = {
-                        if (navigator.isLoggedIn) playerViewModel.toggleLike() else navigator.showMessage("请先登录账号")
+                if (podcast.isPodcast) {
+                    // 播客：♡ 直接订阅所属电台
+                    if (podcast.canSubscribe) {
+                        BarIconButton(
+                            icon = if (podcast.subscribed) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            description = if (podcast.subscribed) "取消订阅电台" else "订阅电台",
+                            active = podcast.subscribed,
+                            size = SideButtonSize, iconSize = SideIconSize,
+                            modifier = Modifier.padding(start = 4.dp),
+                            onClick = playerViewModel::toggleSubscribe
+                        )
                     }
-                )
+                } else {
+                    val collectState by playerViewModel.collectState.collectAsState()
+                    var showCollectPopup by remember(track.songId) { mutableStateOf(false) }
+
+                    Box {
+                        BarIconButton(
+                            icon = if (songDetail.isLiked) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
+                            description = "收藏到歌单",
+                            active = songDetail.isLiked,
+                            size = SideButtonSize, iconSize = SideIconSize,
+                            modifier = Modifier.padding(start = 4.dp),
+                            onClick = {
+                                if (!navigator.isLoggedIn) {
+                                    navigator.showMessage("请先登录账号")
+                                } else {
+                                    track.songId?.let { songId ->
+                                        playerViewModel.prepareCollectDialog(songId)
+                                        showCollectPopup = true
+                                    }
+                                }
+                            }
+                        )
+
+                        if (showCollectPopup && track.songId != null) {
+                            val songId = track.songId!!
+                            CollectToPlaylistPopup(
+                                songId = songId,
+                                state = collectState,
+                                onSave = { items ->
+                                    playerViewModel.savePlaylistCollection(songId, items)
+                                    showCollectPopup = false
+                                },
+                                onCreate = { name ->
+                                    playerViewModel.createPlaylistAndAddSong(name, songId)
+                                    showCollectPopup = false
+                                },
+                                onDismiss = { showCollectPopup = false }
+                            )
+                        }
+                    }
+                }
             }
         }
         Column(Modifier.weight(0.4f), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BarIconButton(
+                if (!podcast.isPodcast) BarIconButton(
                     Icons.Rounded.Shuffle,
                     "随机播放",
                     enabled = hasTrack,
@@ -153,7 +203,7 @@ fun PlayerBar(
                     }
                 }
                 BarIconButton(Icons.Rounded.SkipNext, "下一首", enabled = hasTrack, onClick = controller::playNext)
-                BarIconButton(
+                if (!podcast.isPodcast) BarIconButton(
                     if (playMode == PlayMode.SINGLE_LOOP) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
                     "循环模式",
                     enabled = hasTrack,
@@ -165,51 +215,117 @@ fun PlayerBar(
             ProgressRow(position, duration, enabled = hasTrack && duration > 0, onSeek = controller::seekTo)
         }
         Row(Modifier.weight(0.33f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            BarIconButton(
-                Icons.Rounded.Lyrics,
+            if (!podcast.isPodcast) BarIconButton(
+                PlayerBarIcons.DesktopLyric,
                 if (lyricVisible) "关闭桌面歌词" else "开启桌面歌词",
                 active = lyricVisible,
                 showDot = true,
                 size = SideButtonSize, iconSize = SideIconSize,
                 onClick = onToggleLyric
             )
-            BarIconButton(Icons.AutoMirrored.Rounded.QueueMusic, "播放队列", size = SideButtonSize, iconSize = SideIconSize, onClick = notSupported)
-            BarIconButton(Icons.Rounded.SpeakerGroup, "连接设备", size = SideButtonSize, iconSize = SideIconSize, onClick = notSupported)
+            if (!podcast.isPodcast) BarIconButton(
+                PlayerBarIcons.Lyrics,
+                if (lyricsViewOpen) "收起全屏歌词" else "全屏歌词",
+                enabled = hasTrack,
+                active = lyricsViewOpen,
+                showDot = true,
+                size = SideButtonSize, iconSize = SideIconSize,
+                onClick = onToggleLyricsView
+            )
+            BarIconButton(
+                PlayerBarIcons.Queue,
+                "播放队列",
+                enabled = hasTrack,
+                active = queueOpen,
+                showDot = true,
+                size = SideButtonSize, iconSize = SideIconSize,
+                onClick = onToggleQueue
+            )
+            if (onToggleDevices != null) BarIconButton(
+                PlayerBarIcons.Devices,
+                "输出设备",
+                active = devicesOpen,
+                showDot = true,
+                size = SideButtonSize, iconSize = SideIconSize,
+                onClick = onToggleDevices
+            )
             // 占位播放器没有音量能力时不显示
             if (volume != null) VolumeControl(volume, onVolumeChange)
             BarIconButton(Icons.Rounded.PictureInPictureAlt, "迷你播放器", size = SideButtonSize, iconSize = SideIconSize, onClick = notSupported)
-            BarIconButton(Icons.Rounded.Fullscreen, "全屏", size = SideButtonSize, iconSize = SideIconSize, onClick = notSupported)
+            BarIconButton(
+                if (isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                if (isFullscreen) "退出全屏" else "全屏",
+                size = SideButtonSize, iconSize = SideIconSize,
+                onClick = onToggleFullscreen
+            )
         }
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun VolumeControl(volume: Int, onVolumeChange: (Int) -> Unit) {
     // 静音前的音量，再点一次恢复
     var lastAudible by remember { mutableStateOf(if (volume > 0) volume else 100) }
-    BarIconButton(
-        icon = when {
-            volume == 0 -> Icons.AutoMirrored.Rounded.VolumeOff
-            volume < 50 -> Icons.AutoMirrored.Rounded.VolumeDown
-            else -> Icons.AutoMirrored.Rounded.VolumeUp
-        },
-        description = if (volume == 0) "取消静音" else "静音",
-        size = SideButtonSize, iconSize = SideIconSize,
-        onClick = {
-            if (volume > 0) {
-                lastAudible = volume
-                onVolumeChange(0)
-            } else {
-                onVolumeChange(lastAudible)
+    var scrollDeltaAccumulator by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(volume) {
+        if (volume > 0) {
+            lastAudible = volume
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.onPointerEvent(PointerEventType.Scroll) { event ->
+            val deltaY = event.changes.firstOrNull()?.scrollDelta?.y ?: return@onPointerEvent
+            if (deltaY == 0f) return@onPointerEvent
+            event.changes.forEach { it.consume() }
+
+            scrollDeltaAccumulator += deltaY
+            val steps = scrollDeltaAccumulator.toInt()
+            if (steps != 0) {
+                scrollDeltaAccumulator -= steps
+                val newVolume = if (steps < 0) {
+                    if (volume == 0) {
+                        val base = if (lastAudible > 0) lastAudible else 0
+                        (base + (-steps - 1) * 5 + if (base == 0) 5 else 0).coerceIn(0, 100)
+                    } else {
+                        (volume - steps * 5).coerceIn(0, 100)
+                    }
+                } else {
+                    (volume - steps * 5).coerceIn(0, 100)
+                }
+                if (newVolume != volume) {
+                    onVolumeChange(newVolume)
+                }
             }
         }
-    )
-    PlayerSlider(
-        value = volume / 100f,
-        onValueChange = { onVolumeChange((it * 100).roundToInt()) },
-        modifier = Modifier.width(VolumeSliderWidth),
-        previewLabel = { "${(it * 100).roundToInt()}%" }
-    )
+    ) {
+        BarIconButton(
+            icon = when {
+                volume == 0 -> Icons.AutoMirrored.Rounded.VolumeOff
+                volume < 50 -> Icons.AutoMirrored.Rounded.VolumeDown
+                else -> Icons.AutoMirrored.Rounded.VolumeUp
+            },
+            description = if (volume == 0) "取消静音" else "静音",
+            size = SideButtonSize, iconSize = SideIconSize,
+            onClick = {
+                if (volume > 0) {
+                    lastAudible = volume
+                    onVolumeChange(0)
+                } else {
+                    onVolumeChange(lastAudible)
+                }
+            }
+        )
+        PlayerSlider(
+            value = volume / 100f,
+            onValueChange = { onVolumeChange((it * 100).roundToInt()) },
+            modifier = Modifier.width(VolumeSliderWidth),
+            previewLabel = { "${(it * 100).roundToInt()}%" }
+        )
+    }
 }
 
 @Composable
@@ -258,7 +374,6 @@ private fun hoverScale(hovered: Boolean) =
     animateFloatAsState(if (hovered) HOVER_SCALE else 1f, tween(HOVER_SCALE_MS), label = "hoverScale")
 
 // 底栏统一的图标按钮：悬停时变亮并放大；showDot 为真且处于激活态时，图标下方加指示点
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BarIconButton(
     icon: ImageVector,
@@ -274,7 +389,7 @@ private fun BarIconButton(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val scale by hoverScale(hovered && enabled)
-    TooltipArea(tooltip = { TooltipLabel(description) }, delayMillis = TOOLTIP_DELAY_MS) {
+    DesktopTooltip(description) {
         Box(modifier.size(size), contentAlignment = Alignment.Center) {
             IconButton(
                 onClick = onClick,

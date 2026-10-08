@@ -24,8 +24,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddCircleOutline
-import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material3.CircularProgressIndicator
@@ -327,7 +327,7 @@ private fun ReleaseFeedCard(
             MelodiaIconButton(onClick = onAdd) {
                 StateIcon(inLibrary) { added ->
                     Icon(
-                        imageVector = if (added) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
+                        imageVector = if (added) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         contentDescription = if (added) "已添加" else "添加",
                         tint = if (added) MaterialTheme.colorScheme.primary else Color.White,
                         modifier = Modifier.size(28.dp)

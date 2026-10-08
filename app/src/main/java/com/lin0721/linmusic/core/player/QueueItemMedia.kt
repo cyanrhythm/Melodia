@@ -5,24 +5,42 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 
-fun QueueItem.toMediaItem(url: String, playContext: String? = null, artworkUri: String? = coverUrl): MediaItem {
+private fun QueueItem.toMetadata(playContext: String?, artworkUri: String?): MediaMetadata {
     val bundle = Bundle().apply {
         putLong("songId", songId)
         if (playContext != null) putString("playContext", playContext)
     }
-    val metadata = MediaMetadata.Builder()
+    return MediaMetadata.Builder()
         .setTitle(title)
         .setArtist(artist)
         .setArtworkUri(artworkUri?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) })
         .setExtras(bundle)
         .build()
-    return MediaItem.Builder()
+}
+
+fun QueueItem.toMediaItem(url: String, playContext: String? = null, artworkUri: String? = coverUrl): MediaItem =
+    MediaItem.Builder()
         .setUri(url)
         .setMediaId(songId.toString())
-        .setMediaMetadata(metadata)
+        .setMediaMetadata(toMetadata(playContext, artworkUri))
         .setCustomCacheKey(streamCacheKey(songId, url))
         .build()
-}
+
+// 离线播放已完整缓存的歌曲：URL 只用于推断容器格式，完整缓存命中时不会发起网络请求
+fun QueueItem.toOfflineCachedMediaItem(cacheKey: String, playContext: String? = null, artworkUri: String? = coverUrl): MediaItem =
+    MediaItem.Builder()
+        .setUri("https://offline.invalid/" + Uri.encode(cacheKey.substringAfter('/')))
+        .setMediaId(songId.toString())
+        .setMediaMetadata(toMetadata(playContext, artworkUri))
+        .setCustomCacheKey(cacheKey)
+        .build()
+
+// 点击播放后、播放地址尚未返回时用于即时显示的曲目，只带元数据不带播放地址
+fun QueueItem.toPendingMediaItem(playContext: String? = null, artworkUri: String? = coverUrl): MediaItem =
+    MediaItem.Builder()
+        .setMediaId(songId.toString())
+        .setMediaMetadata(toMetadata(playContext, artworkUri))
+        .build()
 
 // 冷启动恢复的上次曲目，只带元数据不带播放地址
 fun PlaybackState.toRestoredMediaItem(): MediaItem {

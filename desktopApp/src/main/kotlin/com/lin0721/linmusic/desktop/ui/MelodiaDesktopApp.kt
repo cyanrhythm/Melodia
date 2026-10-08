@@ -1,5 +1,11 @@
 package com.lin0721.linmusic.desktop.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -10,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -21,21 +28,33 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.WindowState
 import com.lin0721.linmusic.core.auth.LoginViewModel
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.core.download.DownloadTrackInfo
+import com.lin0721.linmusic.core.download.SongDownloader
+import com.lin0721.linmusic.core.download.yearFromEpochMillis
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.desktop.platform.download.DesktopSongDownloader
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryMode
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
+import com.lin0721.linmusic.desktop.ui.lyricsview.CHROME_ANIM_MS
+import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewOverlay
+import com.lin0721.linmusic.desktop.ui.lyricsview.LyricsViewState
 import com.lin0721.linmusic.desktop.ui.navigation.BackStack
+import com.lin0721.linmusic.desktop.ui.navigation.DesktopFrameHost
 import com.lin0721.linmusic.desktop.ui.navigation.DesktopRoute
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
@@ -49,7 +68,11 @@ import com.lin0721.linmusic.feature.music.ui.StyleDetailViewModel
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
-import com.lin0721.linmusic.feature.podcast.ui.PodcastViewModel
+import com.lin0721.linmusic.feature.podcast.ui.PodcastCategoryViewModel
+import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
+import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
+import com.lin0721.linmusic.feature.podcast.ui.PodcastToplistViewModel
+import com.lin0721.linmusic.feature.podcast.ui.RadioDetailViewModel
 import com.lin0721.linmusic.feature.search.ui.DiscoveryUiState
 import com.lin0721.linmusic.feature.search.ui.PlaylistCategoryViewModel
 import com.lin0721.linmusic.feature.search.ui.SearchViewModel
@@ -62,24 +85,33 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.core.context.GlobalContext
 
+private val ChromeEnter = fadeIn(tween(CHROME_ANIM_MS)) + expandVertically(tween(CHROME_ANIM_MS))
+private val ChromeExit = fadeOut(tween(CHROME_ANIM_MS)) + shrinkVertically(tween(CHROME_ANIM_MS))
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit) {
+fun WindowScope.MelodiaDesktopApp(
+    windowState: WindowState,
+    fullscreen: FullscreenState,
+    lyricsView: LyricsViewState,
+    onClose: () -> Unit
+) {
     val koin = remember { GlobalContext.get() }
     val homeViewModel = remember { koin.get<HomeViewModel>() }
     val musicViewModel = remember { koin.get<MusicViewModel>() }
-    val podcastViewModel = remember { koin.get<PodcastViewModel>() }
+    val podcastViewModel = remember { koin.get<PodcastHomeViewModel>() }
     val newWorksViewModel = remember { koin.get<NewWorksViewModel>() }
     val libraryViewModel = remember { koin.get<LibraryViewModel>() }
     val loginViewModel = remember { koin.get<LoginViewModel>() }
     val playbackController = remember { koin.get<PlaybackController>() }
     val playerViewModel = remember { koin.get<PlayerViewModel>() }
     val searchViewModel = remember { koin.get<SearchViewModel>() }
-    val playlistViewModel = remember { koin.get<PlaylistViewModel>() }
-    val categoryViewModel = remember { koin.get<PlaylistCategoryViewModel>() }
-    val artistViewModel = remember { koin.get<ArtistViewModel>() }
-    val styleDetailViewModel = remember { koin.get<StyleDetailViewModel>() }
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val settingsPreferences = remember { koin.get<SettingsPreferences>() }
+    val songDownloader = remember { koin.get<SongDownloader>() }
+    val downloader = songDownloader as? DesktopSongDownloader
+    val downloadTasks = downloader?.tasks?.collectAsState()?.value.orEmpty()
+    val downloadLevel by settingsPreferences.wifiQuality.collectAsState(initial = "standard")
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
     val mpvController = playbackController as? MpvPlaybackController
 
@@ -90,7 +122,10 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
     var showNewWorks by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val isMaximized = windowState.placement == WindowPlacement.Maximized
+    val isFullscreen = fullscreen.isFullscreen
     val nowPlaying by playbackController.nowPlaying.collectAsState()
+    // 没有曲目时歌词界面无内容可看，自动收起
+    LaunchedEffect(nowPlaying == null) { if (nowPlaying == null) lyricsView.close() }
     // 初值为关闭：读到已保存的开启状态后，侧栏随动画展开
     val nowPlayingOpen by desktopPreferences.nowPlayingPanelOpen.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
@@ -125,6 +160,18 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
     val setDockOpen: (Boolean) -> Unit = { open ->
         if (isLibraryExpanded) expandedDockOpen = open else setNowPlayingOpen(open)
     }
+    var dockOverlay by remember { mutableStateOf<DockOverlay?>(null) }
+    // 右侧栏收起后覆盖面板一并撤掉，下次展开回到正在播放页
+    LaunchedEffect(dockOpen) { if (!dockOpen) dockOverlay = null }
+    // 覆盖面板已显示则关掉它；否则展开右侧栏并把面板盖上去
+    val toggleOverlay: (DockOverlay) -> Unit = { target ->
+        if (dockOpen && dockOverlay == target) {
+            dockOverlay = null
+        } else {
+            dockOverlay = target
+            setDockOpen(true)
+        }
+    }
     val searchInput by searchViewModel.inputState.collectAsState()
     val discovery by searchViewModel.discoveryState.collectAsState()
     val defaultKeyword = (discovery as? DiscoveryUiState.Success)?.defaultKeyword.orEmpty()
@@ -135,23 +182,50 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
         openArtist = { id, name -> backStack.navigate(DesktopRoute.Artist(id, name)) },
         openPlaylist = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name)) },
         openAlbum = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name, isAlbum = true)) },
+        openRadio = { id -> backStack.navigate(DesktopRoute.Radio(id)) },
+        openPodcastSubscribed = { backStack.navigate(DesktopRoute.PodcastSubscribed) },
+        openPodcastToplist = { backStack.navigate(DesktopRoute.PodcastToplist) },
+        openPodcastCategory = { id, name -> backStack.navigate(DesktopRoute.PodcastCategory(id, name)) },
+        openLogin = { showLogin = true },
+        downloadLevel = downloadLevel,
+        downloadTrack = { track ->
+            songDownloader.enqueueSingle(
+                DownloadTrackInfo(
+                    track.id, track.name, track.ar.joinToString("/") { it.name },
+                    track.al.name, track.al.picUrl.takeIf { it.isNotBlank() },
+                    yearFromEpochMillis(track.publishTime)
+                ),
+                downloadLevel
+            )
+            navigatorMessages.tryEmit("已加入下载队列")
+        },
         showMessage = { navigatorMessages.tryEmit(it) }
     )
 
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val frameHost = remember(saveableStateHolder) {
+        DesktopFrameHost(
+            saveableStateHolder = saveableStateHolder,
+            liveEntryIds = { backStack.liveEntryIds },
+            scope = scope,
+            onToast = { navigatorMessages.tryEmit(it) }
+        )
+    }
+    val liveEntryIds = backStack.liveEntryIds
+    LaunchedEffect(liveEntryIds) { frameHost.reconcile() }
+
     LaunchedEffect(Unit) {
         val playbackMessages = mpvController?.messages ?: emptyFlow()
+        val downloadMessages = downloader?.messages ?: emptyFlow()
         merge(
             homeViewModel.toastEvent,
-            styleDetailViewModel.toastEvent,
             libraryViewModel.toastEvent,
             searchViewModel.toastEvent,
-            playlistViewModel.toastEvent,
-            categoryViewModel.toastEvent,
             playerViewModel.toastEvent,
-            artistViewModel.toastEvent,
             newWorksViewModel.toastEvent,
             navigatorMessages,
-            playbackMessages
+            playbackMessages,
+            downloadMessages
         )
             .collect { snackbarHostState.showSnackbar(it) }
     }
@@ -167,9 +241,18 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
     }
 
     CompositionLocalProvider(LocalDesktopNavigator provides navigator) {
-        Box(Modifier.fillMaxSize().background(DesktopColors.WindowBackground)) {
+        Box(
+            Modifier.fillMaxSize().background(DesktopColors.WindowBackground)
+                .onPointerEvent(PointerEventType.Enter) { lyricsView.pointerInWindow = true }
+                .onPointerEvent(PointerEventType.Exit) { lyricsView.pointerInWindow = false }
+        ) {
             Column(Modifier.fillMaxSize()) {
-                TitleBar(
+                // 全屏或歌词沉浸态时收起自绘标题栏，Esc 或底栏按钮退出
+                AnimatedVisibility(
+                    visible = !isFullscreen && !lyricsView.isImmersive,
+                    enter = ChromeEnter,
+                    exit = ChromeExit
+                ) { TitleBar(
                     backStack = backStack,
                     isMaximized = isMaximized,
                     userProfile = userProfile,
@@ -188,6 +271,9 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
                     },
                     isBrowseActive = backStack.current == DesktopRoute.Browse,
                     onBrowseClick = { backStack.navigate(DesktopRoute.Browse) },
+                    downloadTasks = downloadTasks,
+                    downloadsOpen = dockOpen && dockOverlay == DockOverlay.Downloads,
+                    onDownloadsClick = downloader?.let { { toggleOverlay(DockOverlay.Downloads) } },
                     onLoginClick = { showLogin = true },
                     onSettingsClick = { backStack.navigate(DesktopRoute.Settings) },
                     onLogoutClick = homeViewModel::logout,
@@ -196,10 +282,11 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
                         windowState.placement = if (isMaximized) WindowPlacement.Floating else WindowPlacement.Maximized
                     },
                     onClose = onClose
-                )
+                ) }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
-                    val hasTrack = nowPlaying != null
+                    // 无曲目时下载面板也要能打开，右侧栏只承载它
+                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads
                     // 侧栏最宽不超过固定上限，且尽量给中间内容区留出 CenterMinWidth；
                     // 两侧互相让位时，音乐库按正在播放栏的记忆宽度算，正在播放栏按音乐库的实际占用算
                     val dockStaticOccupied = when {
@@ -268,73 +355,98 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
                             )
                             Pane(Modifier.weight(1f)) {
                                 Box(Modifier.settledLayoutWidth(LocalPaneWidthExtra.current).fillMaxSize()) {
-                                    when (val route = backStack.current) {
-                                        DesktopRoute.Home -> HomePage(
-                                            viewModel = homeViewModel,
-                                            musicViewModel = musicViewModel,
-                                            podcastViewModel = podcastViewModel,
-                                            newWorksViewModel = newWorksViewModel,
-                                            selectedTab = homeTab,
-                                            // 点任意主胶囊都回到该 tab 的默认内容，「最新」只能由二级胶囊单独选中；
-                                            // 已在「音乐」默认内容时再点「音乐」则回到「全部」，收起二级胶囊
-                                            onTabSelected = {
-                                                homeTab = if (it == HOME_TAB_MUSIC && homeTab == HOME_TAB_MUSIC && !showNewWorks) {
-                                                    HOME_TAB_ALL
-                                                } else {
-                                                    it
+                                    val entry = backStack.currentEntry
+                                    frameHost.Provide(entry) {
+                                        when (val route = entry.route) {
+                                            DesktopRoute.Home -> HomePage(
+                                                viewModel = homeViewModel,
+                                                musicViewModel = musicViewModel,
+                                                podcastViewModel = podcastViewModel,
+                                                newWorksViewModel = newWorksViewModel,
+                                                selectedTab = homeTab,
+                                                // 点任意主胶囊都回到该 tab 的默认内容，「最新」只能由二级胶囊单独选中；
+                                                // 已在「音乐」默认内容时再点「音乐」则回到「全部」，收起二级胶囊
+                                                onTabSelected = {
+                                                    homeTab = if (it == HOME_TAB_MUSIC && homeTab == HOME_TAB_MUSIC && !showNewWorks) {
+                                                        HOME_TAB_ALL
+                                                    } else {
+                                                        it
+                                                    }
+                                                    showNewWorks = false
+                                                },
+                                                newWorksSelected = showNewWorks,
+                                                onNewWorksSelectedChange = { showNewWorks = it },
+                                                onPlaylistClick = { id, title -> backStack.navigate(DesktopRoute.Playlist(id, title)) },
+                                                onStyleClick = { id, name -> backStack.navigate(DesktopRoute.Style(id, name)) }
+                                            )
+                                            is DesktopRoute.Style -> StyleDetailPage(
+                                                tagId = route.id,
+                                                name = route.name,
+                                                viewModel = frameHost.viewModelFor(entry.id, StyleDetailViewModel::class, { it.toastEvent }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            is DesktopRoute.Playlist -> PlaylistPage(
+                                                playlistId = route.id,
+                                                isAlbum = route.isAlbum,
+                                                viewModel = frameHost.viewModelFor(entry.id, PlaylistViewModel::class, { it.toastEvent }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            DesktopRoute.Browse -> BrowsePage(
+                                                viewModel = searchViewModel,
+                                                onHotSearchClick = { keyword ->
+                                                    backStack.navigate(DesktopRoute.Search)
+                                                    searchViewModel.searchWithKeyword(keyword)
+                                                },
+                                                onCategoryClick = { backStack.navigate(DesktopRoute.PlaylistCategory(it)) }
+                                            )
+                                            is DesktopRoute.PlaylistCategory -> PlaylistCategoryPage(
+                                                category = route.name,
+                                                viewModel = frameHost.viewModelFor(entry.id, PlaylistCategoryViewModel::class, { it.toastEvent }) { koin.get() },
+                                                onPlaylistClick = { id, title -> backStack.navigate(DesktopRoute.Playlist(id, title)) }
+                                            )
+                                            is DesktopRoute.Artist -> ArtistPage(
+                                                artistId = route.id,
+                                                viewModel = frameHost.viewModelFor(entry.id, ArtistViewModel::class, { it.toastEvent }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            is DesktopRoute.Radio -> RadioDetailPage(
+                                                radioId = route.id,
+                                                viewModel = frameHost.viewModelFor(entry.id, RadioDetailViewModel::class, { it.toastEvent }) { koin.get() }
+                                            )
+                                            DesktopRoute.PodcastSubscribed -> PodcastSubscribedPage(
+                                                viewModel = frameHost.viewModelFor(entry.id, PodcastSubscribedViewModel::class, { emptyFlow() }) { koin.get() }
+                                            )
+                                            DesktopRoute.PodcastToplist -> PodcastToplistPage(
+                                                viewModel = frameHost.viewModelFor(entry.id, PodcastToplistViewModel::class, { emptyFlow() }) { koin.get() }
+                                            )
+                                            is DesktopRoute.PodcastCategory -> PodcastCategoryPage(
+                                                categoryId = route.id,
+                                                name = route.name,
+                                                viewModel = frameHost.viewModelFor(entry.id, PodcastCategoryViewModel::class, { emptyFlow() }) { koin.get() }
+                                            )
+                                            DesktopRoute.Settings -> SettingsPage()
+                                            DesktopRoute.Search -> SearchPage(
+                                                viewModel = searchViewModel,
+                                                controller = playbackController,
+                                                onOpenPlaylist = { id, title, isAlbum ->
+                                                    backStack.navigate(DesktopRoute.Playlist(id, title, isAlbum))
                                                 }
-                                                showNewWorks = false
-                                            },
-                                            newWorksSelected = showNewWorks,
-                                            onNewWorksSelectedChange = { showNewWorks = it },
-                                            onPlaylistClick = { id, title -> backStack.navigate(DesktopRoute.Playlist(id, title)) },
-                                            onStyleClick = { id, name -> backStack.navigate(DesktopRoute.Style(id, name)) }
-                                        )
-                                        is DesktopRoute.Style -> StyleDetailPage(
-                                            tagId = route.id,
-                                            name = route.name,
-                                            viewModel = styleDetailViewModel,
-                                            controller = playbackController
-                                        )
-                                        is DesktopRoute.Playlist -> PlaylistPage(
-                                            playlistId = route.id,
-                                            isAlbum = route.isAlbum,
-                                            viewModel = playlistViewModel,
-                                            controller = playbackController
-                                        )
-                                        DesktopRoute.Browse -> BrowsePage(
-                                            viewModel = searchViewModel,
-                                            onHotSearchClick = { keyword ->
-                                                backStack.navigate(DesktopRoute.Search)
-                                                searchViewModel.searchWithKeyword(keyword)
-                                            },
-                                            onCategoryClick = { backStack.navigate(DesktopRoute.PlaylistCategory(it)) }
-                                        )
-                                        is DesktopRoute.PlaylistCategory -> PlaylistCategoryPage(
-                                            category = route.name,
-                                            viewModel = categoryViewModel,
-                                            onPlaylistClick = { id, title -> backStack.navigate(DesktopRoute.Playlist(id, title)) }
-                                        )
-                                        is DesktopRoute.Artist -> ArtistPage(
-                                            artistId = route.id,
-                                            viewModel = artistViewModel,
-                                            controller = playbackController
-                                        )
-                                        DesktopRoute.Settings -> SettingsPage()
-                                        DesktopRoute.Search -> SearchPage(
-                                            viewModel = searchViewModel,
-                                            controller = playbackController,
-                                            onOpenPlaylist = { id, title, isAlbum ->
-                                                backStack.navigate(DesktopRoute.Playlist(id, title, isAlbum))
-                                            }
-                                        )
+                                            )
+                                    }
                                     }
                                 }
                             }
                             NowPlayingDock(
                                 state = dockState,
-                                hasTrack = nowPlaying != null,
+                                hasTrack = hasTrack,
                                 open = dockOpen,
+                                overlay = dockOverlay,
+                                audioOutput = mpvController,
+                                downloader = downloader,
+                                onCloseOverlay = { dockOverlay = null },
+                                onOpenComments = { toggleOverlay(DockOverlay.Comments) },
+                                onOpenLyricsView = lyricsView::open,
+                                onOpenLyricsFullscreen = lyricsView::openWithFullscreen,
                                 onOpenChange = setDockOpen,
                                 controller = playbackController,
                                 playerViewModel = playerViewModel,
@@ -359,21 +471,48 @@ fun WindowScope.MelodiaDesktopApp(windowState: WindowState, onClose: () -> Unit)
                             )
                         }
                     }
+                    // 盖住整个工作区的全屏歌词，收起后原样露出下层
+                    LyricsViewOverlay(
+                        state = lyricsView,
+                        controller = playbackController,
+                        playerViewModel = playerViewModel,
+                        settingsPreferences = settingsPreferences,
+                        desktopPreferences = desktopPreferences,
+                        isFullscreen = isFullscreen
+                    )
                 }
                 val volume = mpvController?.volume?.collectAsState()?.value
-                PlayerBar(
+                AnimatedVisibility(
+                    visible = !lyricsView.isImmersive,
+                    enter = ChromeEnter,
+                    exit = ChromeExit
+                ) { PlayerBar(
                     controller = playbackController,
                     playerViewModel = playerViewModel,
                     volume = volume,
                     onVolumeChange = { mpvController?.setVolume(it) },
-                    nowPlayingOpen = dockOpen,
-                    onToggleNowPlaying = { setDockOpen(!dockOpen) },
+                    nowPlayingOpen = dockOpen && dockOverlay == null,
+                    // 盖着覆盖面板时点封面是撤掉面板露出正在播放页，而不是收起右侧栏
+                    onToggleNowPlaying = {
+                        if (dockOpen && dockOverlay != null) dockOverlay = null else setDockOpen(!dockOpen)
+                    },
+                    queueOpen = dockOpen && dockOverlay == DockOverlay.Queue,
+                    onToggleQueue = { toggleOverlay(DockOverlay.Queue) },
+                    devicesOpen = dockOpen && dockOverlay == DockOverlay.Devices,
+                    // 占位播放器没有输出设备能力时不显示按钮
+                    onToggleDevices = mpvController?.let { { toggleOverlay(DockOverlay.Devices) } },
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = fullscreen::toggle,
                     lyricVisible = showDesktopLyric,
-                    onToggleLyric = { scope.launch { settingsPreferences.saveShowDesktopLrc(!showDesktopLyric) } }
-                )
+                    onToggleLyric = { scope.launch { settingsPreferences.saveShowDesktopLrc(!showDesktopLyric) } },
+                    lyricsViewOpen = lyricsView.isOpen,
+                    onToggleLyricsView = { if (lyricsView.isOpen) lyricsView.close() else lyricsView.open() }
+                ) }
             }
-            SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
-            WindowResizeHandles(enabled = !isMaximized)
+            SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)) { data ->
+                Snackbar(data, containerColor = DesktopColors.PopupSurface, contentColor = DesktopColors.TextPrimary)
+            }
+            WindowResizeHandles(enabled = !isMaximized && !isFullscreen)
         }
     }
 

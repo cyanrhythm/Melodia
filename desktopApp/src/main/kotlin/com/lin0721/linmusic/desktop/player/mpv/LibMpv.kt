@@ -13,6 +13,10 @@ internal interface LibMpv : Library {
     fun mpv_set_option_string(ctx: Pointer, name: String, data: String): Int
     fun mpv_set_property_string(ctx: Pointer, name: String, data: String): Int
 
+    // 返回值由 mpv 分配，读完须交给 mpv_free 释放
+    fun mpv_get_property_string(ctx: Pointer, name: String): Pointer?
+    fun mpv_free(data: Pointer)
+
     // args 须以 null 结尾，对应 C 端 const char**
     fun mpv_command(ctx: Pointer, args: Array<String?>): Int
     fun mpv_observe_property(ctx: Pointer, replyUserdata: Long, name: String, format: Int): Int

@@ -6,12 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// 配色取值与 Android 端 core/ui/theme/Color.kt 一致
+// 背景分三档：窗口与边框 WindowBackground、大背景 Pane、卡片 CardSurface；
+// PopupSurface 是菜单、对话框与悬停的底色，Surface 是药丸、搜索框、图标按钮、选项格子等控件的底色
 object DesktopColors {
     val WindowBackground = Color(0xFF000000)
     val Pane = Color(0xFF121212)
-    val PaneHover = Color(0xFF1F1F1F)
-    val Surface = Color(0xFF282828)
+    val Surface = Color(0xFF2A2A2A)
+    val CardSurface = Color(0xFF1F1F1F)
+    val PopupSurface = Color(0xFF282828)
+    // 行与按钮的悬停底，与菜单同色
+    val PaneHover = PopupSurface
     val SurfaceLight = Color(0xFF3E3E3E)
     val TextPrimary = Color(0xFFFFFFFF)
     val TextGray = Color(0xFFB3B3B3)

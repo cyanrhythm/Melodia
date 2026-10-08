@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import com.lin0721.linmusic.core.log.AppLogger
@@ -60,6 +61,25 @@ object AudioCacheManager {
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "清除音频缓存失败", e)
+        }
+    }
+
+    // 在指定歌曲中找出播放缓存里已完整缓存的，返回 songId 到缓存 key 的映射；key 形如 songId/文件名
+    fun findCompleteKeys(context: Context, maxSize: Long, songIds: Set<Long>): Map<Long, String> {
+        if (songIds.isEmpty()) return emptyMap()
+        return try {
+            val cache = getCache(context, maxSize)
+            val result = HashMap<Long, String>()
+            for (key in cache.keys) {
+                val songId = key.substringBefore('/', "").toLongOrNull() ?: continue
+                if (songId !in songIds || songId in result) continue
+                val length = ContentMetadata.getContentLength(cache.getContentMetadata(key))
+                if (length > 0 && cache.isCached(key, 0, length)) result[songId] = key
+            }
+            result
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "查询已缓存歌曲失败", e)
+            emptyMap()
         }
     }
 

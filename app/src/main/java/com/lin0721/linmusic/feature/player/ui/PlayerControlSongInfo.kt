@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.theme.InfoCardRadius
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerState
 
 // 封面下方的歌名歌手行，右侧带收藏按钮
 @Composable
@@ -27,7 +28,10 @@ fun SongInfo(
     artist: String,
     isLiked: Boolean,
     onToggleLike: () -> Unit,
-    onArtistClick: (() -> Unit)? = null
+    onArtistClick: (() -> Unit)? = null,
+    // 播客节目：♡ 直接订阅所属电台
+    podcast: PodcastPlayerState = PodcastPlayerState(),
+    onToggleSubscribe: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -56,7 +60,18 @@ fun SongInfo(
                 modifier = if (onArtistClick != null) Modifier.clickable(onClick = onArtistClick) else Modifier
             )
         }
-        MelodiaIconButton(
+        if (podcast.isPodcast) {
+            if (podcast.canSubscribe) {
+                MelodiaIconButton(onClick = onToggleSubscribe, modifier = Modifier.offset(x = 10.dp)) {
+                    Icon(
+                        if (podcast.subscribed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (podcast.subscribed) "取消订阅电台" else "订阅电台",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        } else MelodiaIconButton(
             onClick = onToggleLike,
             modifier = Modifier.offset(x = 10.dp)
         ) {

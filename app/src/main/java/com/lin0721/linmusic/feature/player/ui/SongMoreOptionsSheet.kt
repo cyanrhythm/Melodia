@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.window.Dialog
 import com.lin0721.linmusic.core.model.getQualityDisplayName
+import com.lin0721.linmusic.core.player.formatSleepTimerRemaining
 import kotlinx.coroutines.launch
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 
@@ -59,6 +60,8 @@ fun SongMoreOptionsSheet(
     currentQuality: String,
     // 本地歌曲未匹配到云端：没有网易 songId，依赖云端数据的操作全部隐藏
     isLocalOnly: Boolean,
+    // 播客节目：专辑、歌手、收藏到歌单、心动模式、相似歌曲、下载、音质、小歌词都不适用，整项隐藏
+    isPodcast: Boolean = false,
     showMiniLyric: Boolean = true,
     onToggleMiniLyric: (Boolean) -> Unit,
     onToggleLike: () -> Unit,
@@ -160,35 +163,38 @@ fun SongMoreOptionsSheet(
             }
 
             if (!isLocalOnly) {
-                // 1. 专辑信息项
-                OptionRow(
-                    icon = Icons.Rounded.Album,
-                    text = "专辑: $albumName",
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                            onAlbumClick()
+                if (!isPodcast) {
+                    // 1. 专辑信息项
+                    OptionRow(
+                        icon = Icons.Rounded.Album,
+                        text = "专辑: $albumName",
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                                onAlbumClick()
+                            }
                         }
-                    }
-                )
+                    )
 
-                // 2. 歌手信息项
-                OptionRow(
-                    icon = Icons.Rounded.Person,
-                    text = "歌手: $artist",
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                            onArtistClick()
+                    // 2. 歌手信息项
+                    OptionRow(
+                        icon = Icons.Rounded.Person,
+                        text = "歌手: $artist",
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                                onArtistClick()
+                            }
                         }
-                    }
-                )
+                    )
 
+
+                }
 
                 // 3. 收藏到歌单
-                OptionRow(
+                if (!isPodcast) OptionRow(
                     icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
                     text = "收藏到歌单",
                     onClick = {
@@ -203,7 +209,7 @@ fun SongMoreOptionsSheet(
 
             // 4. 心动模式：开=以当前歌曲为种子开启，关=恢复开启前的队列
             // 本地歌曲无法作为种子开启，但已处于心动模式时仍保留关闭入口
-            if (!isLocalOnly || isIntelligence) {
+            if (!isPodcast && (!isLocalOnly || isIntelligence)) {
                 OptionRow(
                     icon = Icons.Rounded.AutoAwesome,
                     text = if (isIntelligence) "关闭心动模式" else "打开心动模式",
@@ -218,32 +224,35 @@ fun SongMoreOptionsSheet(
             }
 
             if (!isLocalOnly) {
-                // 5. 开始相似歌曲漫游
-                OptionRow(
-                    icon = Icons.Rounded.Explore,
-                    text = "开始相似歌曲漫游",
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                            onStartSimilarRoaming()
+                if (!isPodcast) {
+                    // 5. 开始相似歌曲漫游
+                    OptionRow(
+                        icon = Icons.Rounded.Explore,
+                        text = "开始相似歌曲漫游",
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                                onStartSimilarRoaming()
+                            }
                         }
-                    }
-                )
+                    )
 
-                // 5. 插播相似歌曲
-                OptionRow(
-                    icon = Icons.Rounded.QueueMusic,
-                    text = "插播相似歌曲",
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                            onInsertSimilarSongs()
+                    // 5. 插播相似歌曲
+                    OptionRow(
+                        icon = Icons.Rounded.QueueMusic,
+                        text = "插播相似歌曲",
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                                onInsertSimilarSongs()
+                            }
                         }
-                    }
-                )
+                    )
 
+
+                }
 
                 // 6. 分享
                 OptionRow(
@@ -258,120 +267,122 @@ fun SongMoreOptionsSheet(
                     }
                 )
 
-                // 下载
-                OptionRow(
-                    icon = Icons.Rounded.Download,
-                    text = "下载",
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                            onDownloadClick()
+                if (!isPodcast) {
+                    // 下载
+                    OptionRow(
+                        icon = Icons.Rounded.Download,
+                        text = "下载",
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                                onDownloadClick()
+                            }
                         }
-                    }
-                )
+                    )
 
-                // 7. 音质（带有 VIP Tag）
-                var showQualityDialog by remember { mutableStateOf(false) }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showQualityDialog = true
-                        }
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Tune,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "音质: ${getQualityDisplayName(currentQuality)}",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    // VIP Tag
-                    if (currentQuality == "lossless" || currentQuality == "hires" || currentQuality == "jymaster") {
-                        Box(
-                            modifier = Modifier
-                                .border(1.dp, NeteaseRed, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "VIP",
-                                color = NeteaseRed,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                if (showQualityDialog) {
-                    val qualitySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                    val qualities = listOf(
-                        "standard" to "标准音质",
-                        "exhigh" to "极高音质",
-                        "lossless" to "无损音质 (FLAC)",
-                        "hires" to "Hi-Res 无损",
-                        "jymaster" to "超清母带"
-                    )
-                    ModalBottomSheet(
-                        onDismissRequest = { showQualityDialog = false },
-                        sheetState = qualitySheetState,
-                        containerColor = BackgroundDark,
-                        shape = BottomSheetShape,
-                        dragHandle = { MelodiaDragHandle() }
+                    // 7. 音质（带有 VIP Tag）
+                    var showQualityDialog by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showQualityDialog = true
+                            }
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(start = MelodiaSpacing.lg, end = MelodiaSpacing.lg, bottom = MelodiaSpacing.lg)
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "音质: ${getQualityDisplayName(currentQuality)}",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // VIP Tag
+                        if (currentQuality == "lossless" || currentQuality == "hires" || currentQuality == "jymaster") {
+                            Box(
+                                modifier = Modifier
+                                    .border(1.dp, NeteaseRed, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "VIP",
+                                    color = NeteaseRed,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (showQualityDialog) {
+                        val qualitySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                        val qualities = listOf(
+                            "standard" to "标准音质",
+                            "exhigh" to "极高音质",
+                            "lossless" to "无损音质 (FLAC)",
+                            "hires" to "Hi-Res 无损",
+                            "jymaster" to "超清母带"
+                        )
+                        ModalBottomSheet(
+                            onDismissRequest = { showQualityDialog = false },
+                            sheetState = qualitySheetState,
+                            containerColor = BackgroundDark,
+                            shape = BottomSheetShape,
+                            dragHandle = { MelodiaDragHandle() }
                         ) {
-                            Text(
-                                text = "选择播放音质",
-                                color = Color.White,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(bottom = MelodiaSpacing.md)
-                            )
-                            qualities.forEach { pair ->
-                                val key = pair.first
-                                val label = pair.second
-                                val isSelected = currentQuality == key
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            onQualitySelected(key)
-                                            scope.launch {
-                                                qualitySheetState.hide()
-                                                showQualityDialog = false
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(start = MelodiaSpacing.lg, end = MelodiaSpacing.lg, bottom = MelodiaSpacing.lg)
+                            ) {
+                                Text(
+                                    text = "选择播放音质",
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(bottom = MelodiaSpacing.md)
+                                )
+                                qualities.forEach { pair ->
+                                    val key = pair.first
+                                    val label = pair.second
+                                    val isSelected = currentQuality == key
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onQualitySelected(key)
+                                                scope.launch {
+                                                    qualitySheetState.hide()
+                                                    showQualityDialog = false
+                                                }
                                             }
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = label,
-                                        color = if (isSelected) NeteaseRed else Color.White,
-                                        fontSize = 15.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            tint = NeteaseRed,
-                                            modifier = Modifier.size(20.dp)
+                                            .padding(vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (isSelected) NeteaseRed else Color.White,
+                                            fontSize = 15.sp,
+                                            modifier = Modifier.weight(1f)
                                         )
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = null,
+                                                tint = NeteaseRed,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -382,8 +393,7 @@ fun SongMoreOptionsSheet(
 
                 // 9. 定时关闭
                 val timerText = if (sleepTimerRemaining > 0L) {
-                    val mins = (sleepTimerRemaining + 59999L) / (60 * 1000L)
-                    "定时关闭 (${mins})"
+                    "定时关闭 (${formatSleepTimerRemaining(sleepTimerRemaining)})"
                 } else {
                     "定时关闭"
                 }
@@ -400,7 +410,7 @@ fun SongMoreOptionsSheet(
                 )
 
                 // 10. 播放页小歌词开关
-                Row(
+                if (!isPodcast) Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onToggleMiniLyric(!showMiniLyric) }

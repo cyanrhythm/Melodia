@@ -16,6 +16,7 @@ import com.lin0721.linmusic.feature.home.domain.HomeCard
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.feature.home.domain.ToplistInfo
 import com.lin0721.linmusic.core.network.AppString
+import com.lin0721.linmusic.core.network.OnlineStateProvider
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.toUserMessage
 import com.lin0721.linmusic.core.songlike.LoadLikedSongIdsUseCase
@@ -23,6 +24,8 @@ import com.lin0721.linmusic.core.songlike.SongLikeRepository
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectItem
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectState
 import com.lin0721.linmusic.feature.playlist.domain.SongCollectDelegate
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerController
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerState
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,6 +40,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.QueueItem
+import com.lin0721.linmusic.core.player.PlaySource
+import com.lin0721.linmusic.feature.playlist.data.PlaylistRepository
 
 private const val TAG = "HomeViewModel"
 
@@ -52,7 +57,10 @@ class HomeViewModel(
     private val resourceProvider: ResourceProvider,
     private val loadLikedSongIdsUseCase: LoadLikedSongIdsUseCase,
     private val songLikeRepository: SongLikeRepository,
-    private val songCollectDelegate: SongCollectDelegate
+    private val songCollectDelegate: SongCollectDelegate,
+    private val podcastPlayer: PodcastPlayerController,
+    private val playlistRepository: PlaylistRepository,
+    private val onlineState: OnlineStateProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -72,6 +80,11 @@ class HomeViewModel(
     val likedSongIds: StateFlow<Set<Long>> = songLikeRepository.likedSongIds
     val collectState: StateFlow<PlaylistCollectState> = songCollectDelegate.state
 
+    // 迷你条的播客订阅按钮，状态与全屏播放页共用
+    val podcastState: StateFlow<PodcastPlayerState> = podcastPlayer.state
+
+    fun toggleSubscribe() = podcastPlayer.toggleSubscribe { _toastEvent.emit(it) }
+
     init {
         loadHomeData()
         viewModelScope.launch {
@@ -79,6 +92,16 @@ class HomeViewModel(
         }
         viewModelScope.launch {
             playbackRepository.playlistRecorded.collect { refreshRecentPlaylists() }
+        }
+        // 离线转在线后重新拉取，替换离线时展示的缓存；首页尚未加载成功时走完整加载
+        viewModelScope.launch {
+            var wasOnline = onlineState.isOnline()
+            onlineState.online.collect { online ->
+                if (online && !wasOnline) {
+                    if (_uiState.value is HomeUiState.Success) refreshHomeData() else loadHomeData()
+                }
+                wasOnline = online
+            }
         }
         viewModelScope.launch {
             userProfile.collect { profile ->
@@ -246,6 +269,35 @@ class HomeViewModel(
             playerManager.playQueue(queueItems, index.coerceIn(0, queueItems.size - 1), "每日推荐")
         } else {
             viewModelScope.launch { _toastEvent.emit("每日推荐暂无歌曲") }
+        }
+    }
+
+    // 卡片上直接播放歌单/专辑：先拉详情，歌单还要补全被服务端截断的曲目，再整列起播
+    fun playCollection(id: Long, isAlbum: Boolean) {
+        viewModelScope.launch {
+            val detailFlow = if (isAlbum) playlistRepository.getAlbumDetail(id) else playlistRepository.getPlaylistDetail(id)
+            val detail = detailFlow.first().getOrElse {
+                _toastEvent.emit(it.toUserMessage(resourceProvider))
+                return@launch
+            }
+            val tracks = if (isAlbum) {
+                detail.tracks
+            } else {
+                // 补全失败时退回详情自带的部分曲目，仍可起播
+                playlistRepository.loadAllTracks(detail).first().getOrElse { detail.tracks }
+            }
+            if (tracks.isEmpty()) {
+                _toastEvent.emit("暂无可播放的歌曲")
+                return@launch
+            }
+            val queueItems = tracks.map { QueueItem(it.id, it.name, it.ar.joinToString { ar -> ar.name }, it.al.picUrl) }
+            val kind = if (isAlbum) PlaySource.Kind.ALBUM else PlaySource.Kind.PLAYLIST
+            playerManager.playQueue(
+                queueItems,
+                0,
+                detail.name,
+                PlaySource(kind, detail.id, detail.name, detail.coverImgUrl)
+            )
         }
     }
 

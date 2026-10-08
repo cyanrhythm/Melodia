@@ -57,7 +57,7 @@ fun LoginDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = DesktopColors.Surface
+            color = DesktopColors.PopupSurface
         ) {
             Column(
                 Modifier.width(360.dp).padding(28.dp),

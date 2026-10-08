@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,6 +61,7 @@ import com.lin0721.linmusic.core.ui.theme.TextGray
 import com.lin0721.linmusic.feature.home.ui.ErrorContent
 import com.lin0721.linmusic.feature.home.ui.LoadingIndicator
 import com.lin0721.linmusic.feature.podcast.domain.PodcastProgram
+import com.lin0721.linmusic.feature.podcast.domain.PodcastProgressEntry
 import com.lin0721.linmusic.feature.podcast.domain.PodcastRadioDetail
 import com.lin0721.linmusic.feature.podcast.domain.formatListenerCount
 import com.lin0721.linmusic.feature.podcast.domain.formatProgramDate
@@ -119,7 +121,12 @@ fun RadioDetailScreen(
                     RadioDetailHeader(
                         detail = state.detail,
                         isSubscribing = state.isSubscribing,
-                        onPlayLatest = { viewModel.playAt(0) },
+                        playLabel = when {
+                            state.resumeProgram != null -> "继续播放"
+                            state.sortAscending -> "从头播放"
+                            else -> "播放最新一期"
+                        },
+                        onPlay = { viewModel.playPrimary() },
                         onToggleSubscribe = { viewModel.toggleSubscribe() }
                     )
                 }
@@ -128,11 +135,29 @@ fun RadioDetailScreen(
                     PodcastSectionTitle("全部节目", "${state.detail.programCount} 期")
                 }
 
-                itemsIndexed(
-                    items = state.programs,
-                    key = { index, program -> "${program.id}_$index" }
-                ) { index, program ->
-                    RadioProgramRow(program = program, onClick = { viewModel.playAt(index) })
+                item(key = "sort") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = PodcastEdgePadding, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        PodcastFilterChip("最新优先", !state.sortAscending) { viewModel.setSortAscending(false) }
+                        PodcastFilterChip("最早优先", state.sortAscending) { viewModel.setSortAscending(true) }
+                    }
+                }
+
+                if (state.isReloadingPrograms) {
+                    item(key = "reloading") { SectionLoading() }
+                } else {
+                    itemsIndexed(
+                        items = state.programs,
+                        key = { index, program -> "${program.id}_$index" }
+                    ) { index, program ->
+                        RadioProgramRow(
+                            program = program,
+                            progress = state.progress[program.songId],
+                            onClick = { viewModel.playAt(index) }
+                        )
+                    }
                 }
 
                 if (state.isLoadingMore) {
@@ -177,7 +202,8 @@ fun RadioDetailScreen(
 private fun RadioDetailHeader(
     detail: PodcastRadioDetail,
     isSubscribing: Boolean,
-    onPlayLatest: () -> Unit,
+    playLabel: String,
+    onPlay: () -> Unit,
     onToggleSubscribe: () -> Unit
 ) {
     var descExpanded by remember { mutableStateOf(false) }
@@ -280,7 +306,7 @@ private fun RadioDetailHeader(
                 modifier = Modifier
                     .weight(1f)
                     .height(40.dp)
-                    .pressable(MelodiaPress.Action, shape = CircleShape) { onPlayLatest() }
+                    .pressable(MelodiaPress.Action, shape = CircleShape) { onPlay() }
                     .background(MaterialTheme.colorScheme.primary),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -292,7 +318,7 @@ private fun RadioDetailHeader(
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
-                    text = "播放最新一期",
+                    text = playLabel,
                     color = Color.White,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -365,7 +391,7 @@ private fun RadioDetailHeader(
 
 // 详情页节目行：左侧期号，与主页那种带播放按钮的行区分开
 @Composable
-private fun RadioProgramRow(program: PodcastProgram, onClick: () -> Unit) {
+private fun RadioProgramRow(program: PodcastProgram, progress: PodcastProgressEntry?, onClick: () -> Unit) {
     // 平板 Expanded 断点下行高/封面/字号统一加码，结构不变
     val isExpanded = LocalMelodiaWindowSizeClass.current == MelodiaWindowSizeClass.Expanded
     val coverSize = if (isExpanded) 58.dp else 50.dp
@@ -418,6 +444,21 @@ private fun RadioProgramRow(program: PodcastProgram, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+            when {
+                progress == null -> Unit
+                progress.isFinished -> Text(
+                    text = "已听完",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+                progress.fraction > 0f -> LinearProgressIndicator(
+                    progress = { progress.fraction },
+                    modifier = Modifier.padding(top = 6.dp).fillMaxWidth().height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.White.copy(alpha = 0.16f)
                 )
             }
         }

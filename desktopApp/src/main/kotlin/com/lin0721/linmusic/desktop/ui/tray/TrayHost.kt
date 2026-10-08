@@ -165,7 +165,7 @@ private fun TrayMenuWindow(
                 Modifier.width(MenuWidth)
                     .shadow(8.dp, MenuShape)
                     .clip(MenuShape)
-                    .background(DesktopColors.Surface)
+                    .background(DesktopColors.PopupSurface)
                     .padding(vertical = 4.dp)
             ) {
                 if (header != null) {

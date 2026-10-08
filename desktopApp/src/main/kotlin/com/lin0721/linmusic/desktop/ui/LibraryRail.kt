@@ -1,7 +1,5 @@
 package com.lin0721.linmusic.desktop.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,7 +34,6 @@ import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
 private val RailCoverSize = 48.dp
 
 // 收起态：只保留图标、创建按钮与竖排封面
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryRail(
     viewModel: LibraryViewModel,
@@ -70,7 +67,7 @@ fun LibraryRail(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         items(state.filteredItems, key = { it.id }) { item ->
-                            TooltipArea(tooltip = { TooltipLabel(item.title) }, delayMillis = 400) {
+                            DesktopTooltip(item.title, side = TooltipSide.Right) {
                                 val shape = coverShape(item)
                                 Box(Modifier.clip(shape).pointerHoverIcon(PointerIcon.Hand).clickable { onItemClick(item) }) {
                                     Cover(item.coverUrl, RailCoverSize, shape = shape)

@@ -50,6 +50,7 @@ fun SearchScreen(
     onOpenSidebar: () -> Unit = {},
     onPlaylistClick: (id: Long, isAlbum: Boolean) -> Unit = { _, _ -> },
     onArtistClick: (id: Long) -> Unit = {},
+    onRadioClick: (id: Long) -> Unit = {},
     onPlaylistCategoryClick: (category: String) -> Unit = {},
     onOpenRecognition: () -> Unit = {}
 ) {
@@ -62,7 +63,7 @@ fun SearchScreen(
     val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val currentTrack by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.playerManager.isPlaying.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.playerManager.playWhenReady.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val likedSongIds by viewModel.likedSongIds.collectAsStateWithLifecycle()
     val collectState by viewModel.collectState.collectAsStateWithLifecycle()
@@ -182,6 +183,8 @@ fun SearchScreen(
                         onAlbumClick = { id -> onPlaylistClick(id, true) },
                         onArtistClick = onArtistClick,
                         onPlaylistClick = { id -> onPlaylistClick(id, false) },
+                        onRadioClick = onRadioClick,
+                        onProgramClick = viewModel::playProgram,
                         onExternalSongClick = viewModel::playExternalTrack,
                         onLoadMore = viewModel::loadMore,
                         onLoadMoreExternal = viewModel::loadMoreExternal,

@@ -1,21 +1,15 @@
 package com.lin0721.linmusic.desktop.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,7 +21,6 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.TimerOff
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -35,9 +28,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
@@ -58,12 +50,20 @@ import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.PlaybackController.Companion.CONTEXT_INTELLIGENCE
 import com.lin0721.linmusic.core.player.SimilarRoamingController
-import com.lin0721.linmusic.core.player.domain.LyricLine
+import com.lin0721.linmusic.core.preferences.FullPlayerCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.AboutArtistCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.ArtistAlbumsCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.CommentsPreviewCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.InfoCardEnter
+import com.lin0721.linmusic.desktop.ui.nowplaying.LyricsCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.MusicMemoryCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.SimilarArtistsCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.SongDetailCard
+import com.lin0721.linmusic.desktop.ui.nowplaying.rememberCoverBase
+import com.lin0721.linmusic.desktop.ui.nowplaying.visibleInfoCards
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.desktop.ui.theme.DesktopDimens
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
-
-private val LyricCardHeight = 280.dp
 
 private val HeaderButtonSize = 32.dp
 private val HeaderButtonOffset = 4.dp
@@ -76,12 +76,21 @@ fun NowPlayingPanel(
     playerViewModel: PlayerViewModel,
     hovered: Boolean,
     onClose: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenComments: () -> Unit = {},
+    onOpenLyricsView: () -> Unit = {},
+    onOpenLyricsFullscreen: () -> Unit = {}
 ) {
     val nowPlaying by controller.nowPlaying.collectAsState()
     val track = nowPlaying ?: return
     val detailState by playerViewModel.songDetailState.collectAsState()
     val currentLyricIndex by playerViewModel.currentLyricIndex.collectAsState()
+    val podcast by playerViewModel.podcastState.collectAsState()
+
+    val navigator = LocalDesktopNavigator.current
+    val cardLayout by playerViewModel.fullPlayerCardLayout.collectAsState()
+    val commentsState by playerViewModel.commentsState.collectAsState()
+    val base = rememberCoverBase(track.artworkUri)
 
     val scrollState = rememberScrollState()
     HoverScrollbarBox(scrollState) {
@@ -100,12 +109,48 @@ fun NowPlayingPanel(
                 modifier = Modifier.padding(top = 16.dp)
             )
             NowPlayingArtists(track, playerViewModel, 14.sp)
-            LyricPreviewCard(
-                lines = detailState.lyrics,
-                isLoading = detailState.isLyricsLoading,
-                currentIndex = currentLyricIndex,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            if (!podcast.isPodcast) {
+                val cards = remember(detailState, cardLayout, commentsState) {
+                    visibleInfoCards(detailState, cardLayout, commentsState = commentsState)
+                }
+                for (card in cards) {
+                    key(card) {
+                        InfoCardEnter(Modifier.padding(top = 16.dp)) {
+                            when (card) {
+                                FullPlayerCard.LYRICS -> LyricsCard(
+                                    lines = detailState.lyrics,
+                                    currentIndex = currentLyricIndex,
+                                    base = base,
+                                    onSeek = playerViewModel::seekToTime,
+                                    onOpenFullscreen = onOpenLyricsFullscreen,
+                                    onOpenLyricsView = onOpenLyricsView
+                                )
+                                FullPlayerCard.COMMENTS_PREVIEW -> CommentsPreviewCard(
+                                    state = commentsState,
+                                    onOpen = onOpenComments,
+                                    onRetry = playerViewModel::retryComments
+                                )
+                                FullPlayerCard.SONG_DETAIL -> detailState.songWiki?.let { SongDetailCard(it, detailState.songDetail) }
+                                FullPlayerCard.MUSIC_MEMORY -> detailState.songWiki?.musicMemory?.let { MusicMemoryCard(it) }
+                                FullPlayerCard.ARTIST_ALBUMS -> ArtistAlbumsCard(
+                                    albums = detailState.artistAlbums,
+                                    artistName = detailState.currentArtistItem?.artistName ?: detailState.artistDetail?.name
+                                )
+                                FullPlayerCard.SIMILAR_ARTISTS -> SimilarArtistsCard(detailState.similarArtists)
+                                FullPlayerCard.ABOUT_ARTIST -> AboutArtistCard(
+                                    artists = detailState.artists,
+                                    selectedIndex = detailState.selectedArtistIndex,
+                                    onSelectArtist = playerViewModel::selectArtist,
+                                    onToggleFollow = { artistId ->
+                                        if (navigator.isLoggedIn) playerViewModel.toggleArtistFollow(artistId) else navigator.showMessage("请先登录账号")
+                                    }
+                                )
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -142,6 +187,7 @@ private fun PanelHeader(
 ) {
     val playContext by controller.playContext.collectAsState()
     val sleepRemaining by controller.sleepTimerRemaining.collectAsState()
+    val podcast by playerViewModel.podcastState.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
     val isIntelligence = playContext == CONTEXT_INTELLIGENCE
     val isRoaming = playContext == SimilarRoamingController.CONTEXT_ROAMING
@@ -159,7 +205,11 @@ private fun PanelHeader(
                 )
             }
         }
-        PanelTitle(track, controller, playerViewModel, Modifier.weight(1f))
+        if (podcast.isPodcast) {
+            PodcastPanelTitle(podcast.radioId, podcast.radioName, Modifier.weight(1f))
+        } else {
+            PanelTitle(track, controller, playerViewModel, Modifier.weight(1f))
+        }
         if (sleepActive) {
             Icon(Icons.Rounded.Bedtime, "睡眠定时", tint = DesktopColors.Accent, modifier = Modifier.size(16.dp))
             Text(
@@ -177,10 +227,11 @@ private fun PanelHeader(
                 DropdownMenu(
                     expanded = menuOpen,
                     onDismissRequest = { menuOpen = false },
-                    containerColor = DesktopColors.Surface
+                    containerColor = DesktopColors.PopupSurface
                 ) {
                     val songId = track.songId
-                    MenuItem(
+                    // 播客没有心动模式与相似漫游
+                    if (!podcast.isPodcast) MenuItem(
                         Icons.Rounded.Favorite,
                         if (isIntelligence) "退出心动模式" else "心动模式",
                         enabled = isIntelligence || songId != null
@@ -192,7 +243,7 @@ private fun PanelHeader(
                             playerViewModel.startIntelligenceMode(songId, track.title, track.artist, track.artworkUri.orEmpty())
                         }
                     }
-                    MenuItem(
+                    if (!podcast.isPodcast) MenuItem(
                         Icons.Rounded.Radio,
                         if (isRoaming) "退出相似歌曲漫游" else "相似歌曲漫游",
                         enabled = isRoaming || songId != null
@@ -204,7 +255,7 @@ private fun PanelHeader(
                             playerViewModel.startSimilarSongsRoaming(songId, track.title, track.artist, track.artworkUri.orEmpty())
                         }
                     }
-                    HorizontalDivider(color = DesktopColors.SurfaceLight)
+                    if (!podcast.isPodcast) HorizontalDivider(color = DesktopColors.SurfaceLight)
                     Text(
                         if (sleepActive) "睡眠定时（剩余 ${formatCountdown(sleepRemaining)}）" else "睡眠定时",
                         color = DesktopColors.TextGray,
@@ -227,6 +278,25 @@ private fun PanelHeader(
             }
         }
     }
+}
+
+// 播客节目的面板标题：电台名，点击进入电台详情
+@Composable
+private fun PodcastPanelTitle(radioId: Long, radioName: String, modifier: Modifier) {
+    val navigator = LocalDesktopNavigator.current
+    Text(
+        radioName.ifBlank { "播客" },
+        color = DesktopColors.TextPrimary,
+        fontWeight = FontWeight.Bold,
+        fontSize = 15.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = if (radioId > 0) {
+            modifier.clip(RoundedCornerShape(4.dp)).pointerHoverIcon(PointerIcon.Hand).clickable { navigator.openRadio(radioId) }
+        } else {
+            modifier
+        }
+    )
 }
 
 private class TitleTarget(val isAlbum: Boolean, val id: Long, val name: String)
@@ -276,58 +346,4 @@ private fun MenuItem(
 private fun formatCountdown(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
-}
-
-@Composable
-private fun LyricPreviewCard(
-    lines: List<LyricLine>,
-    isLoading: Boolean,
-    currentIndex: Int,
-    modifier: Modifier
-) {
-    Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DesktopColors.Surface).padding(16.dp)
-    ) {
-        Text("歌词预览", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Box(Modifier.fillMaxWidth().height(LyricCardHeight).padding(top = 8.dp), contentAlignment = Alignment.Center) {
-            when {
-                isLoading -> CircularProgressIndicator(color = DesktopColors.Accent)
-                lines.isEmpty() -> Text("暂无歌词", color = DesktopColors.TextGray, fontSize = 14.sp)
-                else -> LyricList(lines, currentIndex)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LyricList(lines: List<LyricLine>, currentIndex: Int) {
-    val listState = rememberLazyListState()
-    // 当前行滚到卡片约三分之一处，上方保留已唱过的一两行作语境
-    val offsetPx = with(LocalDensity.current) { (LyricCardHeight / 3).roundToPx() }
-    LaunchedEffect(currentIndex, lines) {
-        if (currentIndex in lines.indices) listState.animateScrollToItem(currentIndex, -offsetPx)
-    }
-    HoverScrollbarBox(listState) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            // 底部留白让末尾几行也能滚到定位处
-            contentPadding = PaddingValues(bottom = LyricCardHeight)
-        ) {
-            itemsIndexed(lines) { index, line ->
-                val active = index == currentIndex
-                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Text(
-                        line.text,
-                        color = if (active) DesktopColors.TextPrimary else DesktopColors.TextGray,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = if (active) 18.sp else 16.sp
-                    )
-                    line.translation?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = DesktopColors.TextGray, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    }
 }

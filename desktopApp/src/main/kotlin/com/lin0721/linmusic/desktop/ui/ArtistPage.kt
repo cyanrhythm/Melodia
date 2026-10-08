@@ -37,6 +37,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,7 +80,7 @@ fun ArtistPage(
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(artistId) {
-        viewModel.loadArtistData(artistId)
+        viewModel.loadArtistDataIfNeeded(artistId)
     }
     val uiState by viewModel.uiState.collectAsState()
 
@@ -123,8 +124,8 @@ private fun ArtistContent(
     val blockedIds by viewModel.blockedArtistIds.collectAsState()
     val likedSongIds by viewModel.likedSongIds.collectAsState()
     val collectState by viewModel.collectState.collectAsState()
-    var tab by remember(state.artist.id) { mutableStateOf(ArtistTab.SONGS) }
-    var songTab by remember(state.artist.id) { mutableStateOf(SongTab.HOT) }
+    var tab by rememberSaveable(state.artist.id) { mutableStateOf(ArtistTab.SONGS) }
+    var songTab by rememberSaveable(state.artist.id) { mutableStateOf(SongTab.HOT) }
 
     val actions = rememberTrackActions(
         likedSongIds = likedSongIds,
@@ -324,7 +325,7 @@ private fun HeaderButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun <T> TabBar(
+internal fun <T> TabBar(
     tabs: List<T>,
     selected: T,
     label: (T) -> String,
@@ -381,7 +382,7 @@ private fun AlbumCard(album: ArtistAlbum, onClick: () -> Unit) {
 private fun AboutSection(briefDesc: String, similar: List<ArtistInfo>, onArtistClick: (ArtistInfo) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = ContentPadding, vertical = 8.dp)) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DesktopColors.Surface).padding(20.dp)
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DesktopColors.CardSurface).padding(20.dp)
         ) {
             Text("简介", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(

@@ -42,8 +42,10 @@ fun PlaylistImportTargetSheet(
     onSelectTarget: (Long) -> Unit,
     onCreateAndImport: (String) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = BottomSheetShape,
         dragHandle = { MelodiaDragHandle() }

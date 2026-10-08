@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
 import com.lin0721.linmusic.core.ui.components.SwipeToSkipCover
 import com.lin0721.linmusic.core.ui.theme.RadiusCompact
@@ -40,6 +41,7 @@ private val SidebarToggleGap = 4.dp
 fun FullPlayerCoverArt(
     coverUrl: String,
     playContext: String?,
+    podcastRadioName: String = "",
     onClose: () -> Unit,
     onMoreClick: () -> Unit = {},
     previousCoverUrl: String? = null,
@@ -67,6 +69,7 @@ fun FullPlayerCoverArt(
     ) {
         FullPlayerSourceBar(
             playContext = playContext,
+            podcastRadioName = podcastRadioName,
             onClose = onClose,
             onMoreClick = onMoreClick,
             onToggleSidebarFullscreen = onToggleSidebarFullscreen,
@@ -105,6 +108,7 @@ fun FullPlayerSourceBar(
     onToggleSidebarFullscreen: (() -> Unit)?,
     isSidebarFullscreen: Boolean,
     onFullscreenLyricsClick: (() -> Unit)? = null,
+    podcastRadioName: String = "",
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -168,6 +172,7 @@ fun FullPlayerSourceBar(
                 "每日推荐" -> "播放自" to "每日推荐"
                 "历史日推" -> "播放自" to "历史日推"
                 "intelligence" -> "播放自" to "心动模式"
+                PlaybackController.CONTEXT_PODCAST -> "播放自播客" to podcastRadioName.ifBlank { "播客" }
                 else -> "播放自歌单" to context
             }
             Column(

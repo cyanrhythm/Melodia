@@ -70,7 +70,7 @@ class NewWorksViewModel(
         libraryAlbumIds,
         songLikeRepository.likedSongIds,
         playbackController.nowPlaying,
-        playbackController.isPlaying
+        playbackController.playWhenReady
     ) { albumIds, likedIds, nowPlaying, playing ->
         NewWorksReleaseStatus(albumIds, likedIds, nowPlaying?.songId, playing)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), currentStatus())
@@ -80,7 +80,7 @@ class NewWorksViewModel(
         libraryAlbumIds.value,
         songLikeRepository.likedSongIds.value,
         playbackController.nowPlaying.value?.songId,
-        playbackController.isPlaying.value
+        playbackController.playWhenReady.value
     )
 
     private var cursor: Long = System.currentTimeMillis()

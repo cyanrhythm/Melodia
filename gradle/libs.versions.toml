@@ -24,6 +24,7 @@ coroutinesTest = "1.9.0"
 # 与 Compose Desktop 传递解析出的 kotlinx-coroutines-core 版本保持一致
 coroutinesSwing = "1.10.2"
 jna = "5.17.0"
+jaudiotagger = "3.0.1"
 imageCropper = "4.7.0"
 zxing = "3.5.3"
 bouncycastle = "1.85.2"
@@ -43,6 +44,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutinesSwing" }
 # 桌面端调用 libmpv
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+jaudiotagger = { group = "net.jthink", name = "jaudiotagger", version.ref = "jaudiotagger" }
 # 桌面端 org.json（Android 由系统提供）
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

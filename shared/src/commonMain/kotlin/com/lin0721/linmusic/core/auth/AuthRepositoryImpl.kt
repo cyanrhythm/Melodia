@@ -5,6 +5,7 @@ import com.lin0721.linmusic.core.api.NeteaseApiService
 import com.lin0721.linmusic.core.api.QrCheckRequest
 import com.lin0721.linmusic.core.api.QrCheckResponse
 import com.lin0721.linmusic.core.api.QrKeyResponse
+import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.network.AppError
 import com.lin0721.linmusic.core.network.apiFlow
@@ -12,11 +13,13 @@ import com.lin0721.linmusic.core.network.mapToAppError
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
 
 private const val TAG = "AuthRepositoryImpl"
 
 class AuthRepositoryImpl(
-    private val apiService: NeteaseApiService
+    private val apiService: NeteaseApiService,
+    private val metadataCache: MetadataCache
 ) : AuthRepository {
 
     override fun getAccountInfo(): Flow<Result<AccountInfoResponse>> = apiFlow(
@@ -26,12 +29,13 @@ class AuthRepositoryImpl(
         transform = { it }
     )
 
+    // 调用方无论服务端是否登出成功都会清除本地登录态，离线缓存同步清空
     override fun logout(): Flow<Result<Unit>> = apiFlow(
         request = { apiService.logoutApi() },
         isSuccess = { it.isSuccess },
         code = { it.code },
         transform = { Unit }
-    )
+    ).onCompletion { metadataCache.clearAll() }
 
     override fun getQrKey(): Flow<Result<QrKeyResponse>> = apiFlow(
         request = { apiService.getQrKey() },

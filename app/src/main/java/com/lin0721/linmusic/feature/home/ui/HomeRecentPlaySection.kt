@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.SubcomposeAsyncImage
@@ -36,10 +37,12 @@ import com.lin0721.linmusic.core.ui.theme.RadiusCompact
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.feature.recent.domain.RecentPlaylist
 
-// 紧凑横条列表，固定 3 行；手机 2 列、平板竖屏 3 列、平板横屏 4 列
-private const val MAX_ROWS = 3
-private val RowHeight = 56.dp
-private val ItemGap = 9.dp
+// 紧凑横条列表，不带标题；手机 2 列 4 行、平板竖屏 3 列 3 行、平板横屏 4 列 2 行
+// 手机竖排 4 行，压低行高，避免首屏被这一块占满
+private val RowHeightCompact = 48.dp
+private val RowHeightExpanded = 56.dp
+private val ItemGapCompact = 7.dp
+private val ItemGapExpanded = 9.dp
 
 @Composable
 fun RecentPlaySection(
@@ -51,35 +54,32 @@ fun RecentPlaySection(
 
     val windowSizeClass = LocalMelodiaWindowSizeClass.current
     val orientationClass = LocalMelodiaOrientationClass.current
-    val columns = when {
-        windowSizeClass == MelodiaWindowSizeClass.Expanded && orientationClass == MelodiaOrientationClass.Landscape -> 4
-        windowSizeClass == MelodiaWindowSizeClass.Expanded -> 3
-        else -> 2
+    val (columns, rows) = when {
+        windowSizeClass == MelodiaWindowSizeClass.Expanded && orientationClass == MelodiaOrientationClass.Landscape -> 4 to 2
+        windowSizeClass == MelodiaWindowSizeClass.Expanded -> 3 to 3
+        else -> 2 to 4
     }
 
-    val shownItems = items.take(columns * MAX_ROWS)
+    val isCompact = windowSizeClass == MelodiaWindowSizeClass.Compact
+    val rowHeight = if (isCompact) RowHeightCompact else RowHeightExpanded
+    val itemGap = if (isCompact) ItemGapCompact else ItemGapExpanded
+
+    val shownItems = items.take(columns * rows)
 
     Column(modifier = modifier.fillMaxWidth().padding(top = MelodiaSpacing.sm)) {
-        Text(
-            text = "最近播放",
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = HomeEdgePadding, end = HomeEdgePadding, bottom = 13.dp)
-        )
-
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = HomeEdgePadding),
-            horizontalArrangement = Arrangement.spacedBy(ItemGap),
-            verticalArrangement = Arrangement.spacedBy(ItemGap),
+            horizontalArrangement = Arrangement.spacedBy(itemGap),
+            verticalArrangement = Arrangement.spacedBy(itemGap),
             maxItemsInEachRow = columns
         ) {
             shownItems.forEach { item ->
                 key(item.id) {
                     RecentPlayRow(
                         item = item,
+                        rowHeight = rowHeight,
                         modifier = Modifier
                             .weight(1f)
                             .homeReflowBounds(),
@@ -98,21 +98,22 @@ fun RecentPlaySection(
 @Composable
 private fun RecentPlayRow(
     item: RecentPlaylist,
+    rowHeight: Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Row(
         modifier = modifier
-            .height(RowHeight)
+            .height(rowHeight)
             .pressable(MelodiaPress.Card) { onClick() }
             .clip(RoundedCornerShape(RadiusCompact))
-            .background(Color.White.copy(alpha = 0.08f)),
+            .background(Color.White.copy(alpha = 0.1f)),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SubcomposeAsyncImage(
             model = item.coverUrl.withCoverParam("200y200"),
             contentDescription = null,
-            modifier = Modifier.size(RowHeight),
+            modifier = Modifier.size(rowHeight),
             contentScale = ContentScale.Crop,
             loading = { CoverPlaceholder() },
             error = { CoverPlaceholder() }
@@ -120,9 +121,9 @@ private fun RecentPlayRow(
         Text(
             text = item.name,
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 12.5.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
-            lineHeight = 16.sp,
+            lineHeight = 15.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 9.dp, end = 8.dp)

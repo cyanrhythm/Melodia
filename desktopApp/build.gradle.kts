@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 java {
@@ -28,6 +29,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna)
+    implementation(libs.jaudiotagger)
+    testImplementation(libs.junit)
 }
 
 // 与 Android 端共用发版参数，保证两端版本号一致
@@ -95,6 +98,21 @@ val prepareNativeResources by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("appResources/windows"))
 }
 
+val generateAppInfo by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/appinfo")
+    val version = desktopVersion
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val dir = outputDir.get().asFile.apply { mkdirs() }
+        dir.resolve("app-info.properties").writeText("version=$version" + System.lineSeparator())
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(generateAppInfo)
+}
+
 // jpackage 需要 JDK 17+ 完整版，由工具链自动下载，不影响日常编译所用 JDK
 val packagingJavaHome = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
@@ -143,6 +161,8 @@ afterEvaluate {
             task.name.startsWith("createDistributable") || task.name.startsWith("createReleaseDistributable") ||
             (task.name.startsWith("package") && task.name != "packageReleaseZip")
     }.configureEach { dependsOn(prepareNativeResources) }
+    // gradle run 视为调试环境
+    tasks.named<JavaExec>("run") { jvmArgs("-Dmelodia.debug=true") }
 }
 
 // 免安装版：把发布版程序目录打成 zip

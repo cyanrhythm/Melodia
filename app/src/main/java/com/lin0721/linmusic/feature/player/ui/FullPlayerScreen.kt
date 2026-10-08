@@ -184,8 +184,12 @@ fun FullPlayerScreen(
             else -> artistPickerEntries = artists
         }
     }
-    val cardLayout by viewModel.fullPlayerCardLayout.collectAsStateWithLifecycle()
-    val showMiniLyric by viewModel.showMiniLyric.collectAsStateWithLifecycle()
+    val podcast by viewModel.podcastState.collectAsStateWithLifecycle()
+    // 播客节目没有歌词、歌曲评论与歌手专辑信息，信息卡与小歌词整体不展示
+    val storedCardLayout by viewModel.fullPlayerCardLayout.collectAsStateWithLifecycle()
+    val cardLayout = if (podcast.isPodcast) emptyList() else storedCardLayout
+    val storedShowMiniLyric by viewModel.showMiniLyric.collectAsStateWithLifecycle()
+    val showMiniLyric = storedShowMiniLyric && !podcast.isPodcast
     val connectedDevice = rememberCurrentOutputDevice()
 
     LaunchedEffect(viewModel) {
@@ -537,6 +541,8 @@ fun FullPlayerScreen(
                         title = displayedTitle,
                         artist = displayedArtist,
                         playContext = playContext,
+                        podcast = podcast,
+                        onToggleSubscribe = viewModel::toggleSubscribe,
                         currentLyricIndex = currentLyricIndex,
                         isPlaying = isPlaying,
                         playWhenReady = playWhenReady,
@@ -590,8 +596,8 @@ fun FullPlayerScreen(
                     showTitle = scrollMetrics.showTitleInBar,
                     isPlaying = isPlaying,
                     onTogglePlay = onTogglePlay,
-                    isLiked = songDetailState.isLiked,
-                    onToggleLike = viewModel::toggleLike,
+                    isLiked = if (podcast.isPodcast) podcast.subscribed else songDetailState.isLiked,
+                    onToggleLike = if (podcast.isPodcast) viewModel::toggleSubscribe else viewModel::toggleLike,
                     backgroundColor = colors.base,
                     currentPositionProvider = currentPositionProvider,
                     duration = duration,
@@ -631,6 +637,7 @@ fun FullPlayerScreen(
                 sourceBar = { barModifier ->
                     FullPlayerSourceBar(
                         playContext = playContext,
+                        podcastRadioName = podcast.radioName,
                         onClose = onClose,
                         onMoreClick = { showMoreOptionsSheet = true },
                         onToggleSidebarFullscreen = onToggleSidebarFullscreen,
@@ -662,7 +669,9 @@ fun FullPlayerScreen(
                         artist = displayedArtist,
                         isLiked = songDetailState.isLiked,
                         onToggleLike = viewModel::toggleLike,
-                        onArtistClick = openSongArtist
+                        onArtistClick = openSongArtist,
+                        podcast = podcast,
+                        onToggleSubscribe = viewModel::toggleSubscribe
                     )
                     ProgressSection(
                         currentPositionProvider = currentPositionProvider,
@@ -681,14 +690,15 @@ fun FullPlayerScreen(
                         isRoaming = playContext == "similar_roaming",
                         onDisableRoaming = { viewModel.playerManager.disableRoaming() },
                         isIntelligence = playContext == "intelligence",
-                        onDisableIntelligence = { viewModel.playerManager.disableIntelligence() }
+                        onDisableIntelligence = { viewModel.playerManager.disableIntelligence() },
+                        showModeButtons = !podcast.isPodcast
                     )
                     ActionButtons(
                         onOutputDeviceClick = { showOutputDeviceSheet = true },
                         onQueueClick = { showQueueSheet = true },
                         onShareClick = { shareCurrentSong() },
                         connectedDevice = connectedDevice,
-                        showLyricsControls = true,
+                        showLyricsControls = !podcast.isPodcast,
                         secondaryMode = fullScreenLyricSecondaryMode,
                         hasTranslation = hasTranslation,
                         hasRoma = hasRoma,
@@ -779,6 +789,7 @@ fun FullPlayerScreen(
             sleepTimerRemaining = sleepTimerRemaining,
             activeQuality = activeQuality,
             showMiniLyric = showMiniLyric,
+            isPodcast = podcast.isPodcast,
             onToggleMiniLyric = viewModel::toggleMiniLyric,
             onPlayAtIndex = { viewModel.playerManager.playAtIndex(it) },
             onRemoveAtIndex = { viewModel.playerManager.removeFromQueue(it) },

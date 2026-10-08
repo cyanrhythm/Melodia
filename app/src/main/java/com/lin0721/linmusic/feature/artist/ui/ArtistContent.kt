@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -97,8 +98,8 @@ fun ArtistContent(
 
     var collectSongId by remember { mutableStateOf<Long?>(null) }
     var showBioDialog by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(0) }
-    var musicSubTab by remember { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var musicSubTab by rememberSaveable { mutableStateOf(0) }
     var optionsTrack by remember { mutableStateOf<Track?>(null) }
 
     // 首次切到「全部歌曲」子 Tab 时触发加载

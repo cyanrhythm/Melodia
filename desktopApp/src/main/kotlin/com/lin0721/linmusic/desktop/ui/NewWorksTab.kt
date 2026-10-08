@@ -27,8 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.AddCircleOutline
-import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -314,8 +314,8 @@ private fun ReleaseCard(
                     }) {
                         StateIcon(inLibrary) { added ->
                             Icon(
-                                imageVector = if (added) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline,
-                                contentDescription = if (added) "已添加" else "添加",
+                                imageVector = if (added) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = if (added) "取消收藏" else "收藏",
                                 tint = if (added) DesktopColors.Accent else Color.White,
                                 modifier = Modifier.size(28.dp)
                             )
@@ -366,12 +366,12 @@ private fun ReleaseMenu(
         onDismissRequest = { if (subMenu == SubMenu.None) onDismiss() },
         modifier = Modifier.width(MenuWidth),
         shape = RoundedCornerShape(12.dp),
-        containerColor = DesktopColors.Surface,
+        containerColor = DesktopColors.PopupSurface,
         shadowElevation = 16.dp
     ) {
         MenuEntry(
             if (inLibrary) "从音乐库移除" else "添加到音乐库",
-            if (inLibrary) Icons.Rounded.CheckCircle else Icons.Rounded.AddCircleOutline
+            if (inLibrary) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder
         ) {
             closeAll()
             actions.onToggleLibrary(release)
@@ -390,7 +390,7 @@ private fun ReleaseMenu(
                 modifier = Modifier.width(MenuWidth),
                 offset = DpOffset(MenuWidth - 12.dp, 0.dp),
                 shape = RoundedCornerShape(12.dp),
-                containerColor = DesktopColors.Surface,
+                containerColor = DesktopColors.PopupSurface,
                 shadowElevation = 16.dp
             ) {
                 MenuEntry("新建歌单", Icons.AutoMirrored.Rounded.PlaylistAdd) {
@@ -425,7 +425,7 @@ private fun ReleaseMenu(
                 modifier = Modifier.width(MenuWidth),
                 offset = DpOffset(MenuWidth - 12.dp, 0.dp),
                 shape = RoundedCornerShape(12.dp),
-                containerColor = DesktopColors.Surface,
+                containerColor = DesktopColors.PopupSurface,
                 shadowElevation = 16.dp
             ) {
                 MenuEntry("复制链接", null) {

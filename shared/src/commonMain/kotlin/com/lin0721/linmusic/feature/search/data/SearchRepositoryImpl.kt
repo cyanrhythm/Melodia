@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.feature.search.data
 
+import com.lin0721.linmusic.core.cache.OfflineFallback
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.model.PlaylistDetail
@@ -7,8 +8,11 @@ import com.lin0721.linmusic.core.network.AppError
 import com.lin0721.linmusic.core.network.apiFlow
 import com.lin0721.linmusic.core.network.mapToAppError
 import com.lin0721.linmusic.feature.search.data.dto.CloudSearchRequest
+import com.lin0721.linmusic.feature.podcast.domain.toPodcastPrograms
+import com.lin0721.linmusic.feature.podcast.domain.toPodcastRadios
 import com.lin0721.linmusic.feature.search.data.dto.HighQualityPlaylistRequest
 import com.lin0721.linmusic.feature.search.data.dto.SearchSuggestRequest
+import com.lin0721.linmusic.feature.search.data.dto.VoiceSearchRequest
 import com.lin0721.linmusic.feature.search.domain.HotSearch
 import com.lin0721.linmusic.feature.search.domain.PlaylistCategoryPage
 import com.lin0721.linmusic.feature.search.domain.PlaylistTag
@@ -29,17 +33,41 @@ private const val MAX_ALBUM_SUGGESTIONS = 2
 
 class SearchRepositoryImpl(
     private val apiService: SearchApi,
-    private val contentFilter: ContentFilter
+    private val contentFilter: ContentFilter,
+    private val offline: OfflineFallback
 ) : SearchRepository {
 
-    override fun getDefaultSearchKeyword(): Flow<Result<String>> = apiFlow(
-        request = { apiService.getSearchDefaultKeyword() },
+    override fun getDefaultSearchKeyword(): Flow<Result<String>> =
+        offline.cached("search_default_keyword") {
+            apiFlow(
+                request = { apiService.getSearchDefaultKeyword() },
+                isSuccess = { it.isSuccess && it.data != null },
+                code = { it.code },
+                transform = { it.data!!.showKeyword }
+            )
+        }
+
+    override fun search(keyword: String, type: SearchType, offset: Int, limit: Int): Flow<Result<SearchPageResult>> =
+        if (type == SearchType.PROGRAM) searchPrograms(keyword, offset, limit) else cloudSearch(keyword, type, offset, limit)
+
+    // 节目搜索：独立接口，没有可播放主曲目的节目在映射时丢弃
+    private fun searchPrograms(keyword: String, offset: Int, limit: Int): Flow<Result<SearchPageResult>> = apiFlow(
+        request = { apiService.searchVoices(VoiceSearchRequest(keyword = keyword, offset = offset, limit = limit)) },
         isSuccess = { it.isSuccess && it.data != null },
         code = { it.code },
-        transform = { it.data!!.showKeyword }
+        transform = { response ->
+            val data = response.data!!
+            val raw = data.resources.mapNotNull { it.baseInfo }
+            SearchPageResult(
+                items = raw.toPodcastPrograms().map { SearchResultItem.ProgramItem(it) },
+                totalCount = data.totalCount,
+                hasMore = data.hasMore && data.resources.isNotEmpty(),
+                rawFetchedCount = data.resources.size
+            )
+        }
     )
 
-    override fun search(keyword: String, type: SearchType, offset: Int, limit: Int): Flow<Result<SearchPageResult>> = apiFlow(
+    private fun cloudSearch(keyword: String, type: SearchType, offset: Int, limit: Int): Flow<Result<SearchPageResult>> = apiFlow(
         request = {
             apiService.cloudSearch(CloudSearchRequest(s = keyword, type = type.apiValue, offset = offset, limit = limit))
         },
@@ -90,6 +118,18 @@ class SearchRepositoryImpl(
                         rawFetchedCount = playlists.size
                     )
                 }
+                SearchType.RADIO -> {
+                    val radios = result.djRadios ?: emptyList()
+                    val hasMore = radios.isNotEmpty() && (offset + radios.size < result.djRadiosCount)
+                    SearchPageResult(
+                        radios.toPodcastRadios().map { SearchResultItem.RadioItem(it) },
+                        result.djRadiosCount,
+                        hasMore,
+                        rawFetchedCount = radios.size
+                    )
+                }
+                // 节目由 searchPrograms 处理，不会走到云搜索
+                SearchType.PROGRAM -> SearchPageResult(emptyList(), 0, false, rawFetchedCount = 0)
             }
         }
     )
@@ -151,26 +191,32 @@ class SearchRepositoryImpl(
         Result.failure(e)
     }
 
-    override fun getHotSearches(): Flow<Result<List<HotSearch>>> = apiFlow(
-        request = { apiService.getHotSearchDetail() },
-        isSuccess = { it.isSuccess },
-        code = { it.code },
-        transform = { response ->
-            // 热搜榜偶尔混入 searchWord 为空的运营占位条目，过滤掉避免渲染出空白格子
-            response.data
-                .filter { it.searchWord.isNotBlank() }
-                .map { item ->
-                    HotSearch(
-                        keyword = item.searchWord,
-                        score = item.score,
-                        description = item.content,
-                        iconUrl = item.iconUrl
-                    )
+    override fun getHotSearches(): Flow<Result<List<HotSearch>>> =
+        offline.cached("hot_searches") {
+            apiFlow(
+                request = { apiService.getHotSearchDetail() },
+                isSuccess = { it.isSuccess },
+                code = { it.code },
+                transform = { response ->
+                    // 热搜榜偶尔混入 searchWord 为空的运营占位条目，过滤掉避免渲染出空白格子
+                    response.data
+                        .filter { it.searchWord.isNotBlank() }
+                        .map { item ->
+                            HotSearch(
+                                keyword = item.searchWord,
+                                score = item.score,
+                                description = item.content,
+                                iconUrl = item.iconUrl
+                            )
+                        }
                 }
+            )
         }
-    )
 
-    override fun getPlaylistTags(): Flow<Result<List<PlaylistTag>>> = flow {
+    override fun getPlaylistTags(): Flow<Result<List<PlaylistTag>>> =
+        offline.cached("playlist_tags") { remotePlaylistTags() }
+
+    private fun remotePlaylistTags(): Flow<Result<List<PlaylistTag>>> = flow {
         val (tags, playlists) = coroutineScope {
             val tagsDeferred = async { apiService.getHighQualityTags() }
             val playlistsDeferred = async {

@@ -81,7 +81,10 @@ data class SongRowData(
     val platformTag: String? = null
 )
 
-// 通用歌曲行：Playlist/Artist/Home/Search 共用，compact 控制紧凑尺寸，index 控制是否显示序号列
+// 离线不可播放的歌曲行置灰程度
+private const val DISABLED_ROW_ALPHA = 0.38f
+
+// 通用歌曲行：Playlist/Artist/Home/Search 共用，compact 控制紧凑尺寸，index 控制是否显示序号列，enabled 为假时置灰且不响应点击
 @Composable
 fun SongRow(
     data: SongRowData,
@@ -92,6 +95,7 @@ fun SongRow(
     onClick: () -> Unit,
     onArtistClick: (() -> Unit)? = null,
     showDownloadBadge: Boolean = true,
+    enabled: Boolean = true,
     trailingSlot: @Composable RowScope.() -> Unit = {}
 ) {
     // 平板 Expanded 断点下行高/封面/字号统一加码，结构不变
@@ -131,7 +135,8 @@ fun SongRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .alpha(if (enabled) 1f else DISABLED_ROW_ALPHA)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = MelodiaSpacing.md, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -223,7 +228,7 @@ fun SongRow(
                 fontSize = artistFontSize,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = if (onArtistClick != null) Modifier.clickable { onArtistClick() } else Modifier
+                modifier = if (onArtistClick != null && enabled) Modifier.clickable { onArtistClick() } else Modifier
             )
         }
 

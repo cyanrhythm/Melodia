@@ -45,7 +45,9 @@ fun PlaybackControls(
     isRoaming: Boolean = false,
     onDisableRoaming: () -> Unit = {},
     isIntelligence: Boolean = false,
-    onDisableIntelligence: () -> Unit = {}
+    onDisableIntelligence: () -> Unit = {},
+    // 播客没有随机与循环，隐藏后用等宽占位保持播放键居中
+    showModeButtons: Boolean = true
 ) {
     Row(
         modifier = Modifier
@@ -55,7 +57,7 @@ fun PlaybackControls(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        MelodiaIconButton(
+        if (showModeButtons) MelodiaIconButton(
             onClick = {
                 if (isRoaming) {
                     onDisableRoaming()
@@ -77,7 +79,7 @@ fun PlaybackControls(
                 tint = if (isRoaming || isIntelligence || playMode == PlayMode.SHUFFLE) Color.White else TextGray,
                 modifier = Modifier.size(28.dp)
             )
-        }
+        } else Spacer(Modifier.size(ModeButtonSlot))
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(28.dp),
@@ -127,7 +129,7 @@ fun PlaybackControls(
             }
         }
 
-        MelodiaIconButton(
+        if (showModeButtons) MelodiaIconButton(
             onClick = onToggleRepeat,
             modifier = Modifier.offset(x = 10.dp)
         ) {
@@ -137,6 +139,9 @@ fun PlaybackControls(
                 tint = if (playMode == PlayMode.SINGLE_LOOP) Color.White else TextGray,
                 modifier = Modifier.size(28.dp)
             )
-        }
+        } else Spacer(Modifier.size(ModeButtonSlot))
     }
 }
+
+// 与图标按钮同宽的占位
+private val ModeButtonSlot = 40.dp

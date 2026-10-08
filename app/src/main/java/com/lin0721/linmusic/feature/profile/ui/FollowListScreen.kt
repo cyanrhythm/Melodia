@@ -58,7 +58,7 @@ fun FollowListScreen(
 
     // uid/mode 变化时重新加载，避免复用上一个列表缓存的数据
     LaunchedEffect(uid, mode) {
-        viewModel.load(uid, mode)
+        viewModel.loadIfNeeded(uid, mode)
     }
 
     LaunchedEffect(viewModel) {

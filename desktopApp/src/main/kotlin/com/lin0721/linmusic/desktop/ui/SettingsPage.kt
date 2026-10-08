@@ -65,14 +65,20 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lin0721.linmusic.core.preferences.FullPlayerCardLayout
+import com.lin0721.linmusic.core.log.AppLogger
+import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.AutoStart
 import com.lin0721.linmusic.desktop.platform.CloseAction
+import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
+import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
 import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
 import com.lin0721.linmusic.desktop.platform.HotkeyCombo
 import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
+import com.lin0721.linmusic.desktop.player.cache.AudioCache
 import com.lin0721.linmusic.desktop.platform.win.User32
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import kotlinx.coroutines.Dispatchers
@@ -80,8 +86,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
 import java.awt.event.KeyEvent as AwtKeyEvent
+import java.awt.Desktop
+import java.io.File
+import javax.swing.JFileChooser
 
 // 与 Android 音质设置保持同一组选项
+private val CacheSizeOptions = listOf(500L, 1024L, 2048L, 5120L, 10240L).map { it * 1024 * 1024 }
+
+private val CrossfadeDurationOptionsMs = listOf(1_000, 2_000, 3_000, 4_000, 6_000, 8_000, 10_000, 12_000)
+
 private val QualityOptions = listOf(
     "standard" to "标准音质",
     "exhigh" to "极高音质",
@@ -101,6 +114,8 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val sourcePreferences = remember { koin.get<SourcePreferences>() }
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
     val hotkeys = remember { koin.get<GlobalHotkeys>() }
+    val audioCache = remember { koin.get<AudioCache>() }
+    val navigator = LocalDesktopNavigator.current
     val smtc = remember { koin.get<SmtcSession>() }
     val scope = rememberCoroutineScope()
 
@@ -113,6 +128,20 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val unmEnabledModules by sourcePreferences.unmEnabledModules.collectAsState(initial = UnmModule.ALL_KEYS.toSet())
     val unmModuleOrder by sourcePreferences.unmModuleOrder.collectAsState(initial = UnmModule.ALL_KEYS)
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
+    val logLevelName by settingsPreferences.logLevel.collectAsState(initial = AppLogger.LogLevel.WARN.name)
+    var logBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { logBytes = withContext(Dispatchers.IO) { AppLogger.getLogsSize() } }
+    val streamCacheEnabled by settingsPreferences.streamCacheEnabled.collectAsState(initial = true)
+    val cacheMaxSize by settingsPreferences.audioCacheMaxSize.collectAsState(initial = CacheSizeOptions.first())
+    var cacheUsedBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() } }
+    var imageCacheBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) { imageCacheBytes = withContext(Dispatchers.IO) { DesktopImageLoader.diskCacheSize() } }
+    val crossfadeEnabled by settingsPreferences.crossfadeEnabled.collectAsState(initial = false)
+    val crossfadeDurationMs by settingsPreferences.crossfadeDurationMs.collectAsState(initial = CrossfadePolicy.DEFAULT_DURATION_MS)
+    val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
+    val downloadLyrics by settingsPreferences.downloadLyricsEnabled.collectAsState(initial = true)
+    val cardLayout by settingsPreferences.fullPlayerCardLayout.collectAsState(initial = FullPlayerCardLayout.DEFAULT)
     val closeAction by desktopPreferences.closeAction.collectAsState(initial = CloseAction.TRAY)
     val mediaKeysEnabled by desktopPreferences.mediaKeysEnabled.collectAsState(initial = true)
     val hotkeyMap by desktopPreferences.hotkeys.collectAsState(initial = HotkeyCombo.defaults)
@@ -130,6 +159,14 @@ fun SettingsPage(modifier: Modifier = Modifier) {
             SettingsCard("播放") {
                 SettingRow("在线播放音质") {
                     QualitySelector(quality) { scope.launch { settingsPreferences.saveWifiQuality(it) } }
+                }
+                SettingRow("歌曲淡入淡出", subtitle = "自动切歌时前后两首交叉淡化，手动切歌不受影响") {
+                    SettingSwitch(crossfadeEnabled) { scope.launch { settingsPreferences.saveCrossfadeEnabled(it) } }
+                }
+                if (crossfadeEnabled) {
+                    SettingRow("淡化时长") {
+                        CrossfadeDurationSelector(crossfadeDurationMs) { scope.launch { settingsPreferences.saveCrossfadeDurationMs(it) } }
+                    }
                 }
             }
 
@@ -227,10 +264,74 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                 }
             }
 
+            SettingsCard("缓存") {
+                SettingRow("边听边存", subtitle = "在线播放完整听完的歌曲保存到本地，下次直接播放，离线时也可播放") {
+                    SettingSwitch(streamCacheEnabled) { scope.launch { settingsPreferences.saveStreamCacheEnabled(it) } }
+                }
+                SettingRow("缓存容量上限") {
+                    CacheSizeSelector(cacheMaxSize) { size ->
+                        scope.launch {
+                            settingsPreferences.saveAudioCacheMaxSize(size)
+                            withContext(Dispatchers.IO) { audioCache.evict(size) }
+                            cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() }
+                        }
+                    }
+                }
+                SettingRow("图片缓存", subtitle = "${formatBytes(imageCacheBytes)} / ${formatBytes(DesktopImageLoader.DISK_CACHE_MAX_BYTES)}") {
+                    TextButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { DesktopImageLoader.clear() }
+                            imageCacheBytes = withContext(Dispatchers.IO) { DesktopImageLoader.diskCacheSize() }
+                        }
+                    }) {
+                        Text("清除图片缓存", color = DesktopColors.Accent)
+                    }
+                }
+                SettingRow("已用空间", subtitle = formatBytes(cacheUsedBytes)) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { audioCache.clear() }
+                            cacheUsedBytes = withContext(Dispatchers.IO) { audioCache.totalSize() }
+                        }
+                    }) {
+                        Text("清除缓存", color = DesktopColors.Accent)
+                    }
+                }
+            }
+
+            SettingsCard("下载") {
+                val customFolder = downloadFolder?.takeIf { it.isNotBlank() }
+                SettingRow("下载目录", subtitle = customFolder ?: DesktopPaths.defaultDownloadDir.absolutePath) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (customFolder != null) {
+                            TextButton(onClick = { scope.launch { settingsPreferences.saveDownloadFolderUri(null) } }) {
+                                Text("恢复默认", color = DesktopColors.TextGray)
+                            }
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                val initial = File(customFolder ?: DesktopPaths.defaultDownloadDir.absolutePath)
+                                chooseDirectory(initial)?.let { settingsPreferences.saveDownloadFolderUri(it.absolutePath) }
+                            }
+                        }) {
+                            Text("更改", color = DesktopColors.Accent)
+                        }
+                    }
+                }
+                SettingRow("内嵌歌词", subtitle = "下载时把歌词写入音频文件的标签") {
+                    SettingSwitch(downloadLyrics) { scope.launch { settingsPreferences.saveDownloadLyricsEnabled(it) } }
+                }
+            }
+
             SettingsCard("桌面歌词") {
                 SettingRow("显示桌面歌词") {
                     SettingSwitch(showDesktopLyric) { scope.launch { settingsPreferences.saveShowDesktopLrc(it) } }
                 }
+            }
+
+            SettingsCard("正在播放面板") {
+                Text("拖动调整信息卡片的顺序，关闭开关可隐藏对应卡片", color = DesktopColors.TextGray, fontSize = 12.sp)
+                CardLayoutEditor(cardLayout) { scope.launch { settingsPreferences.saveFullPlayerCardLayout(it) } }
             }
 
             SettingsCard("窗口") {
@@ -245,6 +346,34 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                     }
                 }
                 AutoStartRow()
+            }
+
+            SettingsCard("日志") {
+                SettingRow("日志级别", subtitle = "越详细越利于排查问题，立即生效") {
+                    LogLevelSelector(logLevelName) { level ->
+                        scope.launch {
+                            settingsPreferences.saveLogLevel(level.name)
+                            AppLogger.setLevel(level)
+                        }
+                    }
+                }
+                SettingRow("日志文件", subtitle = "${formatBytes(logBytes)} · ${DesktopPaths.logDir.absolutePath}") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {
+                            if (!openDirectory(DesktopPaths.logDir)) navigator.showMessage("无法打开日志目录")
+                        }) {
+                            Text("打开目录", color = DesktopColors.Accent)
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { AppLogger.clearLogs() }
+                                logBytes = withContext(Dispatchers.IO) { AppLogger.getLogsSize() }
+                            }
+                        }) {
+                            Text("清除", color = DesktopColors.TextGray)
+                        }
+                    }
+                }
             }
 
             SettingsCard("快捷键") {
@@ -265,10 +394,18 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     }
 }
 
+private fun chooseDirectory(initial: File): File? {
+    val chooser = JFileChooser(initial.takeIf { it.isDirectory }).apply {
+        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        dialogTitle = "选择下载目录"
+    }
+    return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+}
+
 @Composable
 private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DesktopColors.Surface).padding(20.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(DesktopColors.CardSurface).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(title, color = DesktopColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -293,7 +430,7 @@ private fun SettingRow(
 }
 
 @Composable
-private fun SettingSwitch(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+internal fun SettingSwitch(checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Switch(
         checked = checked,
         onCheckedChange = onChange,
@@ -308,6 +445,104 @@ private fun SettingSwitch(checked: Boolean, enabled: Boolean = true, onChange: (
 }
 
 @Composable
+private fun LogLevelSelector(currentName: String, onSelect: (AppLogger.LogLevel) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = runCatching { AppLogger.LogLevel.valueOf(currentName) }.getOrDefault(AppLogger.LogLevel.WARN)
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(logLevelLabel(current), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            AppLogger.LogLevel.entries.forEach { level ->
+                DropdownMenuItem(
+                    text = { Text(logLevelLabel(level), color = if (level == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(level)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun logLevelLabel(level: AppLogger.LogLevel): String = when (level) {
+    AppLogger.LogLevel.DEBUG -> "详细"
+    AppLogger.LogLevel.INFO -> "标准"
+    AppLogger.LogLevel.WARN -> "精简"
+    AppLogger.LogLevel.ERROR -> "仅错误"
+}
+
+private fun openDirectory(dir: File): Boolean = try {
+    dir.mkdirs()
+    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+        Desktop.getDesktop().open(dir)
+        true
+    } else {
+        false
+    }
+} catch (_: Exception) {
+    false
+}
+
+@Composable
+private fun CacheSizeSelector(currentBytes: Long, onSelect: (Long) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(formatBytes(currentBytes), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            CacheSizeOptions.forEach { value ->
+                DropdownMenuItem(
+                    text = { Text(formatBytes(value), color = if (value == currentBytes) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    val mb = bytes / (1024.0 * 1024.0)
+    return when {
+        mb >= 1024 -> "%.1f GB".format(java.util.Locale.ROOT, mb / 1024)
+        mb >= 1 -> "%.0f MB".format(java.util.Locale.ROOT, mb)
+        else -> "%.0f KB".format(java.util.Locale.ROOT, bytes / 1024.0)
+    }
+}
+
+@Composable
+private fun CrossfadeDurationSelector(currentMs: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = CrossfadePolicy.normalizeDurationMs(currentMs)
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(formatSeconds(current), color = DesktopColors.TextPrimary)
+            Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+            CrossfadeDurationOptionsMs.forEach { value ->
+                DropdownMenuItem(
+                    text = { Text(formatSeconds(value), color = if (value == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                    onClick = {
+                        expanded = false
+                        onSelect(value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun formatSeconds(ms: Int): String = if (ms % 1000 == 0) "${ms / 1000} 秒" else "${ms / 1000.0} 秒"
+
+@Composable
 private fun QualitySelector(current: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -315,7 +550,7 @@ private fun QualitySelector(current: String, onSelect: (String) -> Unit) {
             Text(QualityOptions.firstOrNull { it.first == current }?.second ?: current, color = DesktopColors.TextPrimary)
             Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.Surface) {
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
             QualityOptions.forEach { (value, label) ->
                 DropdownMenuItem(
                     text = { Text(label, color = if (value == current) DesktopColors.Accent else DesktopColors.TextPrimary) },

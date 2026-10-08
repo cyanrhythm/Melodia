@@ -7,18 +7,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 
-// TooltipArea 统一使用的提示气泡
+// DesktopTooltip 与进度条预览共用的提示气泡
 @Composable
 fun TooltipLabel(text: String) {
     Text(
         text,
         color = DesktopColors.TextPrimary,
         fontSize = 12.sp,
-        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(DesktopColors.SurfaceLight)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(DesktopColors.SurfaceLight)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     )
 }

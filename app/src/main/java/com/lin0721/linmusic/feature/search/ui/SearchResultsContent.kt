@@ -17,7 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,6 +49,8 @@ import com.lin0721.linmusic.core.ui.components.SongRowData
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.source.ExternalTrack
 import com.lin0721.linmusic.core.source.MusicPlatform
+import com.lin0721.linmusic.feature.podcast.domain.PodcastProgram
+import com.lin0721.linmusic.feature.podcast.domain.podcastSubtitle
 import com.lin0721.linmusic.feature.search.domain.SearchResultItem
 import com.lin0721.linmusic.feature.search.domain.SearchType
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +83,8 @@ internal fun SearchResultsContent(
     onAlbumClick: (Long) -> Unit,
     onArtistClick: (Long) -> Unit,
     onPlaylistClick: (Long) -> Unit,
+    onRadioClick: (Long) -> Unit,
+    onProgramClick: (PodcastProgram) -> Unit,
     onExternalSongClick: (ExternalTrack) -> Unit,
     onLoadMore: () -> Unit,
     onLoadMoreExternal: (MusicPlatform) -> Unit,
@@ -136,6 +140,8 @@ internal fun SearchResultsContent(
                             onAlbumClick = onAlbumClick,
                             onArtistClick = onArtistClick,
                             onPlaylistClick = onPlaylistClick,
+                            onRadioClick = onRadioClick,
+                            onProgramClick = onProgramClick,
                             onLoadMore = onLoadMore,
                             onRetry = onRetry,
                             onLikeClick = onLikeClick,
@@ -263,6 +269,8 @@ private fun SearchResultsList(
     onAlbumClick: (Long) -> Unit,
     onArtistClick: (Long) -> Unit,
     onPlaylistClick: (Long) -> Unit,
+    onRadioClick: (Long) -> Unit,
+    onProgramClick: (PodcastProgram) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     onLikeClick: (Long) -> Unit,
@@ -334,8 +342,8 @@ private fun SearchResultsList(
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Favorite,
-                                                contentDescription = "已收藏歌曲",
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "收藏到歌单",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(20.dp)
                                             )
@@ -386,6 +394,29 @@ private fun SearchResultsList(
                                 coverShape = EntityCoverShape.Rounded
                             ),
                             onClick = { onPlaylistClick(item.playlist.id) }
+                        )
+                        is SearchResultItem.RadioItem -> EntityRow(
+                            data = EntityRowData(
+                                id = item.radio.id,
+                                title = item.radio.name,
+                                subtitle = listOfNotNull(
+                                    item.radio.djName.takeIf { it.isNotBlank() },
+                                    item.radio.programCount.takeIf { it > 0 }?.let { "$it 期" }
+                                ).joinToString(" · "),
+                                coverUrl = item.radio.picUrl,
+                                coverShape = EntityCoverShape.Rounded
+                            ),
+                            onClick = { onRadioClick(item.radio.id) }
+                        )
+                        is SearchResultItem.ProgramItem -> EntityRow(
+                            data = EntityRowData(
+                                id = item.program.id,
+                                title = item.program.name,
+                                subtitle = podcastSubtitle(item.program.radioName, item.program.djName),
+                                coverUrl = item.program.coverUrl,
+                                coverShape = EntityCoverShape.Rounded
+                            ),
+                            onClick = { onProgramClick(item.program) }
                         )
                     }
                 }

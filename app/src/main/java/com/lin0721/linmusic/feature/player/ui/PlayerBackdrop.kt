@@ -1,12 +1,12 @@
 package com.lin0721.linmusic.feature.player.ui
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,20 +18,50 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.lin0721.linmusic.core.ui.theme.darken
 import com.lin0721.linmusic.core.ui.theme.saturateIfChromatic
 import com.lin0721.linmusic.core.ui.theme.smoothVerticalGradient
+import kotlin.random.Random
 
 enum class BackdropMode { Collapsed, Immersive }
 
 // 用原生 Modifier.blur 软化光斑（仅沉浸式光斑游走需要模糊漫反射）
 private val BACKDROP_BLUR_RADIUS = 60.dp
+
+// Collapsed 渐隐终点固定，动态改 endY 会让 8-bit 色带边缘每帧爬动
+private const val COLLAPSED_GRADIENT_END_DP = 1100f
+private const val COLLAPSED_GRADIENT_STEPS = 64
+private const val COLLAPSED_FADE_END_FRACTION = 0.8f
+
+// 抖动噪声：白色随机 alpha 平铺，叠在渐变上打散相邻色阶的边界；强度恒定，仅在渐隐终点处蒙版淡出
+private const val NOISE_TILE_PX = 128
+private const val NOISE_MAX_ALPHA = 4
+private const val NOISE_MASK_SOLID_FRACTION = 0.9f
+private const val NOISE_SEED = 20261005
+
+private fun createNoiseBrush(): ShaderBrush {
+    val random = Random(NOISE_SEED)
+    val pixels = IntArray(NOISE_TILE_PX * NOISE_TILE_PX) {
+        (random.nextInt(NOISE_MAX_ALPHA + 1) shl 24) or 0x00FFFFFF
+    }
+    val bitmap = Bitmap.createBitmap(pixels, NOISE_TILE_PX, NOISE_TILE_PX, Bitmap.Config.ARGB_8888)
+    return ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+}
 
 // 单一色相的模糊光斑：深色底 + lighten/darken 变体，Immersive 背景与歌词预览卡共用
 // fill 必须是明显压暗过的变体，不能直接传未处理的 base——base 现在取自 Vibrant
@@ -81,20 +111,32 @@ fun PlayerBackdrop(
     when (mode) {
         BackdropMode.Collapsed -> {
             val density = LocalDensity.current
-            val infiniteTransition = rememberInfiniteTransition(label = "bg_breathe")
-            val gradientEndYDp by infiniteTransition.animateFloat(
-                initialValue = 1050f,
-                targetValue = 1150f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(8000, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "gradient_end"
-            )
-            val gradientEndY = with(density) { gradientEndYDp.dp.toPx() }
+            val gradientEndY = with(density) { COLLAPSED_GRADIENT_END_DP.dp.toPx() }
 
             // base 本身已偏深且明度有上限，直接铺底不再压暗
             val fillColor = base
+            val gradientBrush = remember(fillColor, gradientEndY) {
+                Brush.smoothVerticalGradient(
+                    from = fillColor,
+                    to = Color.Transparent,
+                    startY = 0f,
+                    endY = gradientEndY,
+                    fadeEndFraction = COLLAPSED_FADE_END_FRACTION,
+                    steps = COLLAPSED_GRADIENT_STEPS
+                )
+            }
+            // 开启抖动打散 8-bit 色阶，消除大面积暗色渐变的条纹
+            val ditherPaint = remember { Paint().apply { asFrameworkPaint().isDither = true } }
+            val noiseBrush = remember { createNoiseBrush() }
+            val noiseMaskBrush = remember(gradientEndY) {
+                Brush.verticalGradient(
+                    0f to Color.Black,
+                    NOISE_MASK_SOLID_FRACTION to Color.Black,
+                    1f to Color.Transparent,
+                    startY = 0f,
+                    endY = gradientEndY * COLLAPSED_FADE_END_FRACTION
+                )
+            }
 
             Box(
                 modifier = modifier
@@ -105,16 +147,19 @@ fun PlayerBackdrop(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
+                        // 独立离屏层，渐变与噪声的合成结果缓存，不逐帧重绘
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                         .drawBehind {
-                            drawRect(
-                                brush = Brush.smoothVerticalGradient(
-                                    from = fillColor,
-                                    to = Color.Transparent,
-                                    startY = 0f,
-                                    endY = gradientEndY,
-                                    fadeEndFraction = 0.8f
-                                )
-                            )
+                            drawIntoCanvas { canvas ->
+                                gradientBrush.applyTo(size, ditherPaint, 1f)
+                                canvas.drawRect(0f, 0f, size.width, size.height, ditherPaint)
+                            }
+                            drawIntoCanvas { canvas ->
+                                canvas.saveLayer(Rect(0f, 0f, size.width, size.height), Paint())
+                                drawRect(brush = noiseBrush)
+                                drawRect(brush = noiseMaskBrush, blendMode = BlendMode.DstIn)
+                                canvas.restore()
+                            }
                         }
                 )
                 content()

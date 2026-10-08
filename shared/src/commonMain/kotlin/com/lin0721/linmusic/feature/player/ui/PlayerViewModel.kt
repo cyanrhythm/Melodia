@@ -25,6 +25,8 @@ import com.lin0721.linmusic.core.songlike.SongLikeRepository
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectItem
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectState
 import com.lin0721.linmusic.feature.playlist.domain.SongCollectDelegate
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerController
+import com.lin0721.linmusic.feature.podcast.ui.PodcastPlayerState
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.feature.player.data.PlayerRepository
 import com.lin0721.linmusic.core.player.PlaybackController
@@ -114,7 +116,8 @@ class PlayerViewModel(
     private val settingsPreferences: SettingsPreferences,
     private val resourceProvider: ResourceProvider,
     private val songDownloadManager: SongDownloader,
-    private val lyricsResolver: LyricsResolver
+    private val lyricsResolver: LyricsResolver,
+    private val podcastPlayer: PodcastPlayerController
 ) : ViewModel() {
 
     // 监听 WiFi 下的播放音质设置
@@ -243,6 +246,11 @@ class PlayerViewModel(
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
     val collectState: StateFlow<PlaylistCollectState> = songCollectDelegate.state
+
+    // 播客节目的电台订阅状态；非播客播放时 isPodcast 为假
+    val podcastState: StateFlow<PodcastPlayerState> = podcastPlayer.state
+
+    fun toggleSubscribe() = podcastPlayer.toggleSubscribe { _toastEvent.emit(it) }
 
     private var currentSongId: Long = -1L
 

@@ -36,7 +36,8 @@ fun HomeContent(
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onIntelligenceClick: () -> Unit,
-    onRoamingClick: () -> Unit
+    onRoamingClick: () -> Unit,
+    onDailyPlay: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val feed = (uiState as? HomeUiState.Success)?.data
@@ -73,12 +74,13 @@ fun HomeContent(
                             }
 
                             item(key = FOR_YOU_KEY) {
-                                ForYouSection(
+                                HomeHighlightsSection(
                                     modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                                     dailySongs = data.dailySongs,
                                     toplists = data.toplistItems,
                                     recommendPlaylists = data.recommendPlaylists,
-                                    onDailyRecommendClick = { onPlaylistClick(-1L, false) },
+                                    onDailyOpen = { onPlaylistClick(-1L, false) },
+                                    onDailyPlay = onDailyPlay,
                                     onHotlistClick = { onPlaylistClick(it, false) },
                                     onIntelligenceClick = onIntelligenceClick,
                                     onRadarClick = { onPlaylistClick(it, false) },
