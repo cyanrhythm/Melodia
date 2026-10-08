@@ -28,11 +28,15 @@ internal class FakeAuthRepository : AuthRepository {
 
     // 每次 getAccountInfo 依次取一个结果，取完后一直返回最后一个
     var accountResults: List<Result<AccountInfoResponse>> = listOf(Result.failure(AppError.NetworkError))
+    var sendCaptchaResult: Result<Unit> = Result.success(Unit)
+    var loginResult: Result<String> = Result.success("MUSIC_U=abc")
     var refreshResult: Result<List<String>> = Result.success(emptyList())
 
     var accountCalls = 0
     var logoutCalls = 0
     var refreshCalls = 0
+    val sentPhones = mutableListOf<String>()
+    val loginAttempts = mutableListOf<Pair<String, String>>()
 
     override fun getAccountInfo(): Flow<Result<AccountInfoResponse>> = flow {
         val result = accountResults[minOf(accountCalls, accountResults.lastIndex)]
@@ -48,6 +52,16 @@ internal class FakeAuthRepository : AuthRepository {
     override fun getQrKey(): Flow<Result<QrKeyResponse>> = flow { emit(Result.failure(AppError.NetworkError)) }
 
     override fun checkQrStatus(key: String): Flow<Result<QrCheckResponse>> = flow { emit(Result.failure(AppError.NetworkError)) }
+
+    override fun sendCaptcha(phone: String): Flow<Result<Unit>> = flow {
+        sentPhones += phone
+        emit(sendCaptchaResult)
+    }
+
+    override fun loginByCaptcha(phone: String, captcha: String): Flow<Result<String>> = flow {
+        loginAttempts += phone to captcha
+        emit(loginResult)
+    }
 
     override fun refreshLogin(): Flow<Result<List<String>>> = flow {
         refreshCalls++
