@@ -60,7 +60,10 @@ class AuthRepositoryImpl(
         val body = response.body()
         when {
             body == null -> emit(Result.failure(AppError.NetworkError))
-            body.code != 200 -> emit(Result.failure(AppError.BizError(body.code, body.message)))
+            body.code != 200 -> {
+                AppLogger.w(TAG, "手机验证码登录失败 code=${body.code} message=${body.message}")
+                emit(Result.failure(AppError.BizError(body.code, body.message)))
+            }
             else -> {
                 val cookies = mergeCookies(null, response.headers().values("Set-Cookie"))
                 if (cookies.isEmpty()) {
