@@ -524,7 +524,8 @@ fun WindowScope.MelodiaDesktopApp(
                                 state = dockState,
                                 hasTrack = hasTrack,
                                 open = dockOpen,
-                                overlay = dockOverlay,
+                                // 全屏歌词开着时面板改由上层的浮层承载
+                                overlay = if (lyricsView.isOpen) null else dockOverlay,
                                 audioOutput = mpvController,
                                 downloader = downloader,
                                 onCloseOverlay = { dockOverlay = null },
@@ -565,6 +566,22 @@ fun WindowScope.MelodiaDesktopApp(
                         desktopPreferences = desktopPreferences,
                         isFullscreen = isFullscreen
                     )
+                    // 全屏歌词盖住了右侧栏，队列、设备等面板在它之上浮出
+                    val floatingOverlay = dockOverlay
+                    if (lyricsView.isOpen && dockOpen && floatingOverlay != null) {
+                        FloatingDockPanel(
+                            overlay = floatingOverlay,
+                            controller = playbackController,
+                            playerViewModel = playerViewModel,
+                            playlistComments = playlistComments,
+                            audioOutput = mpvController,
+                            downloader = downloader,
+                            onClose = { dockOverlay = null },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(DesktopDimens.PaneGap)
+                                .width(dockWidthPref.coerceIn(DesktopDimens.NowPlayingMinWidth, DesktopDimens.NowPlayingMaxWidth))
+                                .fillMaxHeight()
+                        )
+                    }
                 }
                 val volume = mpvController?.volume?.collectAsState()?.value
                 AnimatedVisibility(

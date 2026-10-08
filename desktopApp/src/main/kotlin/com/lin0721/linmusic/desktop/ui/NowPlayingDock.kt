@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -246,6 +247,31 @@ fun NowPlayingDock(
                     }
                 }
             }
+        }
+    }
+}
+
+// 全屏歌词之上浮出的面板：与右侧栏里的覆盖面板内容相同，各自独立组合
+@Composable
+fun FloatingDockPanel(
+    overlay: DockOverlay,
+    controller: PlaybackController,
+    playerViewModel: PlayerViewModel,
+    playlistComments: CommentsHost?,
+    audioOutput: AudioOutputControl?,
+    downloader: DesktopSongDownloader?,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(DesktopDimens.PaneRadius)
+    val playerCommentsHost = remember(playerViewModel) { playerViewModel.asCommentsHost() }
+    Box(modifier.shadow(16.dp, shape).clip(shape).background(DesktopColors.Pane)) {
+        when (overlay) {
+            DockOverlay.Comments -> CommentsPanel(host = playerCommentsHost, onClose = onClose)
+            DockOverlay.PlaylistComments -> playlistComments?.let { CommentsPanel(host = it, onClose = onClose) }
+            DockOverlay.Queue -> PlayQueuePanel(controller = controller, onClose = onClose)
+            DockOverlay.Devices -> audioOutput?.let { AudioDevicePanel(control = it, onClose = onClose) }
+            DockOverlay.Downloads -> downloader?.let { DownloadsPanel(downloader = it, onClose = onClose) }
         }
     }
 }
