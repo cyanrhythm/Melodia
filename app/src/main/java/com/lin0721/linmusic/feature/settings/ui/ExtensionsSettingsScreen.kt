@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.LocalBottomOverlayInset
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.core.ui.components.BottomTabCatalog
 import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
@@ -38,10 +39,12 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
     val showLockscreen by viewModel.showLockscreen.collectAsStateWithLifecycle()
     val carMode by viewModel.carMode.collectAsStateWithLifecycle()
     val showCreateEntry by viewModel.showCreateEntry.collectAsStateWithLifecycle()
+    val bottomTabOrder by viewModel.bottomTabOrder.collectAsStateWithLifecycle()
     val playerPageMode by viewModel.playerPageMode.collectAsStateWithLifecycle()
     val sidePlayerPinned by viewModel.sidePlayerPinned.collectAsStateWithLifecycle()
 
     var showPlayerModeSheet by remember { mutableStateOf(false) }
+    var showTabOrderSheet by remember { mutableStateOf(false) }
     val playerModeLabel = PlayerPageModes.firstOrNull { it.first == playerPageMode }?.second ?: "自动"
     val playerModeSubtitle = when (playerPageMode) {
         SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN -> "全屏式：点击展开，返回直接收起"
@@ -78,6 +81,14 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
 
             item {
                 SettingsGroupCard(SettingsSubMenu.EXTENSIONS.sectionTitles[2]) {
+                    SettingsRow(
+                        title = "底栏排序",
+                        subtitle = bottomTabOrder.joinToString(" / ") { id ->
+                            BottomTabCatalog.firstOrNull { it.id == id }?.label ?: id
+                        },
+                        onClick = { showTabOrderSheet = true }
+                    )
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                     SettingsSwitchRow(
                         title = "显示底栏创建入口",
                         subtitle = "关闭后可在「我的」页面通过右上角按钮创建歌单",
@@ -153,6 +164,17 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
                     }
                 }
             }
+        }
+
+        if (showTabOrderSheet) {
+            BottomTabOrderSheet(
+                currentOrder = bottomTabOrder,
+                onSave = { order ->
+                    viewModel.updateBottomTabOrder(order)
+                    showTabOrderSheet = false
+                },
+                onDismiss = { showTabOrderSheet = false }
+            )
         }
     }
 }

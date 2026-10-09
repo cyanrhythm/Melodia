@@ -68,6 +68,8 @@ class SettingsPreferences(
         private val KEY_CAR_MODE = booleanPreferencesKey("car_mode")
         // 底栏是否显示创建歌单快捷入口，默认 true
         private val KEY_SHOW_CREATE_ENTRY = booleanPreferencesKey("show_create_entry")
+        // 底栏「我的/推荐/搜索」展示顺序（逗号分隔的 tab id），默认 我的,推荐,搜索
+        private val KEY_BOTTOM_TAB_ORDER = stringPreferencesKey("bottom_tab_order")
         // 平板点击播放条时播放页直接全屏展开，默认 false（侧栏展开）
         private val KEY_PANEL_DEFAULT_FULLSCREEN = booleanPreferencesKey("panel_default_fullscreen")
         private val KEY_PLAYER_PAGE_MODE = stringPreferencesKey("player_page_mode")
@@ -362,6 +364,17 @@ class SettingsPreferences(
     suspend fun saveShowCreateEntry(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_SHOW_CREATE_ENTRY] = enabled
+        }
+    }
+
+    // 底栏 tab 展示顺序 Flow
+    val bottomTabOrder: Flow<List<String>> = dataStore.data.map { prefs ->
+        BottomTabOrder.decode(prefs[KEY_BOTTOM_TAB_ORDER])
+    }
+
+    suspend fun saveBottomTabOrder(order: List<String>) {
+        dataStore.edit { prefs ->
+            prefs[KEY_BOTTOM_TAB_ORDER] = BottomTabOrder.encode(order)
         }
     }
 

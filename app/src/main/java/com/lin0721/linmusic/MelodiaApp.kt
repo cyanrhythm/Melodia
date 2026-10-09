@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -63,6 +64,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.map
+import com.lin0721.linmusic.core.ui.components.BottomTabCatalog
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectSheet
 import com.lin0721.linmusic.core.ui.components.ProfileSidebar
 import com.lin0721.linmusic.core.ui.components.ToastManager
@@ -125,6 +128,16 @@ fun MelodiaApp() {
     val viewModel: HomeViewModel = koinViewModel()
     val settingsPreferences: SettingsPreferences = koinInject()
     val showCreateEntry by settingsPreferences.showCreateEntry.collectAsStateWithLifecycle(initialValue = true)
+    // null 表示 DataStore 还没读出持久化顺序：先不搭建主界面，避免用默认顺序决定冷启动落地页
+    val tabOrderFlow = remember(settingsPreferences) {
+        settingsPreferences.bottomTabOrder.map { it as List<String>? }
+    }
+    val bottomTabOrderState by tabOrderFlow.collectAsStateWithLifecycle(initialValue = null)
+    val bottomTabOrder = bottomTabOrderState
+    if (bottomTabOrder == null) {
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+        return
+    }
     val playerPageMode by settingsPreferences.playerPageMode
         .collectAsStateWithLifecycle(initialValue = SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
     val sidePlayerPinned by settingsPreferences.sidePlayerPinned.collectAsStateWithLifecycle(initialValue = true)
@@ -167,8 +180,10 @@ fun MelodiaApp() {
     }
 
     val playerSheet = rememberMelodiaPlayerSheetState()
-    // 冷启动默认落在音乐库 tab（底栏顺序同步为音乐库优先）
-    val navigation = rememberMelodiaNavigationState(initialTab = Screen.Library)
+    // 冷启动落在用户「底栏排序」的第一个 tab
+    val navigation = rememberMelodiaNavigationState(
+        initialTab = BottomTabCatalog.firstOrNull { it.id == bottomTabOrder.firstOrNull() }?.screen ?: Screen.Home
+    )
     val sidebar = rememberMelodiaSidebarState(SidebarWidth)
 
     var showCreateSheet by remember { mutableStateOf(false) }
@@ -510,6 +525,7 @@ fun MelodiaApp() {
                             onNavigate = { navigation.openTab(it) },
                             onCreateClick = { showCreateSheet = !showCreateSheet },
                             showCreateEntry = showCreateEntry,
+                            tabOrder = bottomTabOrder,
                             onOverlayHeightChanged = { bottomOverlayHeight = it }
                         )
 

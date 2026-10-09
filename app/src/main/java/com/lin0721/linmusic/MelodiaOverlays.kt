@@ -28,6 +28,7 @@ import androidx.media3.common.MediaItem
 import com.lin0721.linmusic.core.download.ui.DownloadProgressBanner
 import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.ui.components.CustomToast
+import com.lin0721.linmusic.core.preferences.BottomTabOrder
 import com.lin0721.linmusic.core.ui.components.MelodiaNavigationBar
 import com.lin0721.linmusic.core.ui.components.MiniPlayerCard
 import com.lin0721.linmusic.core.ui.components.MiniPlayerLikeMode
@@ -87,6 +88,7 @@ fun MelodiaBottomOverlay(
     onNavigate: (Screen) -> Unit,
     onCreateClick: () -> Unit,
     showCreateEntry: Boolean = true,
+    tabOrder: List<String> = BottomTabOrder.DEFAULT,
     onOverlayHeightChanged: (Dp) -> Unit = {}
 ) {
     val density = LocalDensity.current
@@ -172,6 +174,7 @@ fun MelodiaBottomOverlay(
                                     onCreateClick = onCreateClick,
                                     isCreateMenuOpen = showCreateSheet,
                                     showCreateEntry = showCreateEntry,
+                                    tabOrder = tabOrder,
                                     expanded = true,
                                     modifier = Modifier
                                         .then(
@@ -262,7 +265,8 @@ fun MelodiaBottomOverlay(
                             onNavigate = onNavigate,
                             onCreateClick = onCreateClick,
                             isCreateMenuOpen = showCreateSheet,
-                            showCreateEntry = showCreateEntry
+                            showCreateEntry = showCreateEntry,
+                            tabOrder = tabOrder
                         )
                     }
                 }
