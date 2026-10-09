@@ -849,6 +849,7 @@ private fun LibrarySortAndFilterBar(
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = when (sortOrder) {
+                    LibrarySortOrder.SERVER -> "云同步"
                     LibrarySortOrder.RECENTLY_PLAYED -> "最近播放"
                     LibrarySortOrder.NAME -> "字母排序"
                     LibrarySortOrder.CUSTOM -> "自定义"
