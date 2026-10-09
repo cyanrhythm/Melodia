@@ -73,7 +73,20 @@ data class SongUrlItem(
     // VIP歌曲或者无版权时收费标识，freeTrialInfo 不为空表示可能只能试听
     val freeTrialInfo: FreeTrialInfo? = null,
     val freeTrialPrivilege: FreeTrialPrivilege? = null,
+    val time: Long = 0,
 )
+
+// 判断音频是否属于试听片段或口播提示音
+val SongUrlItem.isTrialAudio: Boolean
+    get() {
+        val playUrl = url
+        if (playUrl.isNullOrBlank()) return true
+        if (playUrl.contains("musicrep-ts", ignoreCase = true)) return true
+        if (freeTrialInfo != null) return true
+        if ((freeTrialPrivilege?.cannotListenReason ?: 0) != 0) return true
+        if (time in 1..60_000L) return true
+        return false
+    }
 
 @Serializable
 data class FreeTrialInfo(
