@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.PlatformTextStyle
@@ -48,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.MediaItem
 import com.lin0721.linmusic.Screen
+import com.lin0721.linmusic.core.preferences.BottomTabOrder
 import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.player.rememberQueueItemCoverUrl
 import com.lin0721.linmusic.core.ui.interaction.pressable
@@ -479,6 +481,15 @@ fun MiniPlayerProgress(
 
 //底部导航栏。expanded=true 时用于平板宽屏下的独立悬浮卡片（圆角、不贴屏幕边缘），
 //expanded=false 时是手机上贴底通栏的现状实现
+// 底栏三个可排序 tab 的展示定义；顺序由设置页「底栏排序」控制，创建入口不参与排序
+data class BottomTabSpec(val id: String, val label: String, val icon: ImageVector, val screen: Screen)
+
+val BottomTabCatalog: List<BottomTabSpec> = listOf(
+    BottomTabSpec(BottomTabOrder.HOME, "推荐", Icons.Default.Explore, Screen.Home),
+    BottomTabSpec(BottomTabOrder.SEARCH, "搜索", Icons.Default.Search, Screen.Search),
+    BottomTabSpec(BottomTabOrder.LIBRARY, "我的", Icons.Default.LibraryMusic, Screen.Library)
+)
+
 @Composable
 fun MelodiaNavigationBar(
     currentScreen: Screen,
@@ -486,6 +497,7 @@ fun MelodiaNavigationBar(
     onCreateClick: () -> Unit,
     isCreateMenuOpen: Boolean,
     showCreateEntry: Boolean = true,
+    tabOrder: List<String> = BottomTabOrder.DEFAULT,
     expanded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -520,9 +532,12 @@ fun MelodiaNavigationBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val navItems = buildList {
-                add(Triple("我的", Icons.Default.LibraryMusic, Screen.Library))
-                add(Triple("推荐", Icons.Default.Explore, Screen.Home))
-                add(Triple("搜索", Icons.Default.Search, Screen.Search))
+                val tabById = BottomTabCatalog.associateBy { it.id }
+                BottomTabOrder.normalize(tabOrder).forEach { id ->
+                    tabById[id]?.let { spec ->
+                        add(Triple(spec.label, spec.icon, spec.screen))
+                    }
+                }
                 if (showCreateEntry) {
                     add(Triple("创建", if (isCreateMenuOpen) Icons.Rounded.Close else Icons.Default.AddBox, null))
                 }
