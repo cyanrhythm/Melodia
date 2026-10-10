@@ -95,6 +95,30 @@ class FollowListViewModel(
         load()
     }
 
+    fun toggleFollow(targetUid: Long) {
+        val state = _uiState.value as? FollowListUiState.Success ?: return
+        val user = state.users.firstOrNull { it.uid == targetUid } ?: return
+        val targetFollowed = !user.isFollowedByMe
+        viewModelScope.launch {
+            val request = if (targetFollowed) {
+                profileRepository.followUser(targetUid)
+            } else {
+                profileRepository.unfollowUser(targetUid)
+            }
+            request.first()
+                .onSuccess {
+                    val latest = _uiState.value as? FollowListUiState.Success ?: return@onSuccess
+                    _uiState.value = latest.copy(
+                        users = latest.users.map { if (it.uid == targetUid) it.copy(isFollowedByMe = targetFollowed) else it }
+                    )
+                    _toastEvent.emit(if (targetFollowed) "关注成功" else "已取消关注")
+                }
+                .onFailure { error ->
+                    _toastEvent.emit(error.message ?: if (targetFollowed) "关注失败" else "取消关注失败")
+                }
+        }
+    }
+
     fun loadMore() {
         val state = _uiState.value as? FollowListUiState.Success ?: return
         if (!state.hasMore || state.isLoadingMore) return

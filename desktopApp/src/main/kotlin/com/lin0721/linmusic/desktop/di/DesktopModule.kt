@@ -1,6 +1,7 @@
 package com.lin0721.linmusic.desktop.di
 
 import com.lin0721.linmusic.core.auth.LoginViewModel
+import com.lin0721.linmusic.core.auth.SessionMonitor
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
@@ -50,6 +51,8 @@ import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastToplistViewModel
 import com.lin0721.linmusic.feature.podcast.ui.RadioDetailViewModel
+import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
+import com.lin0721.linmusic.feature.recent.ui.RecentPlayViewModel
 import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
 import com.lin0721.linmusic.core.source.AudioSourceProvider
 import com.lin0721.linmusic.core.source.SourcePreferences
@@ -94,6 +97,7 @@ val desktopPlatformModule = module {
     single { UserPreferences(store(PreferencesStores.USER)) }
     single { SettingsPreferences(store(PreferencesStores.SETTINGS), streamCacheDefault = true) }
     single { SourcePreferences(store(PreferencesStores.SOURCE)) }
+    single { SessionMonitor(get(), get()) }
     single { SearchHistoryPreferences(store(PreferencesStores.SEARCH_HISTORY)) }
     single { PlaybackPreferences(store(PreferencesStores.PLAYBACK)) }
     single { PodcastProgressPreferences(store(PreferencesStores.PODCAST)) }
@@ -161,7 +165,9 @@ val desktopViewModelModule = module {
     factoryOf(::RadioDetailViewModel)
     singleOf(::NewWorksViewModel)
     singleOf(::LibraryViewModel)
-    singleOf(::ProfileViewModel)
+    factoryOf(::RecentPlayViewModel)
+    factoryOf(::ProfileViewModel)
+    factoryOf(::FollowListViewModel)
     single {
         SearchViewModel(
             repository = get(),

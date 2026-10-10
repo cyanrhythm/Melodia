@@ -114,22 +114,20 @@ fun PlayQueuePanel(
     }
 
     if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            shape = AlertDialogDefaults.shape,
-            containerColor = DesktopColors.PopupSurface,
-            title = { Text("清空播放队列", color = DesktopColors.TextPrimary) },
-            text = { Text("确定要清空播放队列吗？当前播放的歌曲会保留。", color = DesktopColors.TextGray, fontSize = 13.sp) },
-            confirmButton = {
-                TextButton(onClick = {
+        DesktopDialog(
+            title = "清空播放队列",
+            onDismiss = { showClearConfirm = false },
+            width = 340.dp,
+            actions = {
+                DialogButton("取消", { showClearConfirm = false })
+                DialogButton("清空", {
                     showClearConfirm = false
                     controller.clearQueue()
-                }) { Text("清空", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("取消", color = DesktopColors.TextGray) }
+                }, primary = true)
             }
-        )
+        ) {
+            Text("确定要清空播放队列吗？当前播放的歌曲会保留。", color = DesktopColors.TextGray, fontSize = 13.sp)
+        }
     }
 
     Column(modifier.fillMaxSize().padding(top = 16.dp)) {

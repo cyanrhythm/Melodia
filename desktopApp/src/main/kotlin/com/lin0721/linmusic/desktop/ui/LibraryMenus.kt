@@ -67,9 +67,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.LibraryViewMode
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.library.ui.LibrarySortOrder
+import org.koin.core.context.GlobalContext
 import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
 
 private const val PLAYLIST_NAME_MAX_LENGTH = 40
@@ -104,7 +106,7 @@ private fun viewModeLabel(mode: LibraryViewMode): String = when (mode) {
 
 // 音乐库内弹出的菜单统一样式：与触发按钮右缘对齐，保证落在音乐库范围内
 @Composable
-private fun LibraryPopupMenu(
+internal fun LibraryPopupMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     anchorWidth: Dp,
@@ -116,9 +118,9 @@ private fun LibraryPopupMenu(
         onDismissRequest = onDismissRequest,
         modifier = Modifier.width(menuWidth),
         offset = DpOffset(anchorWidth - menuWidth, MenuGap),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(6.dp),
         containerColor = DesktopColors.PopupSurface,
-        shadowElevation = 16.dp,
+        shadowElevation = 12.dp,
         content = content
     )
 }
@@ -180,7 +182,7 @@ internal fun LibrarySortViewMenu(
 }
 
 @Composable
-private fun MenuHeader(text: String, trailing: String? = null) {
+internal fun MenuHeader(text: String, trailing: String? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, color = DesktopColors.TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         if (trailing != null) {
@@ -191,25 +193,21 @@ private fun MenuHeader(text: String, trailing: String? = null) {
 }
 
 @Composable
-private fun SortOption(order: LibrarySortOrder, selected: Boolean, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = {
-            Text(
-                sortLabel(order),
-                fontSize = 14.sp,
-                color = DesktopColors.TextPrimary,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-            )
-        },
-        trailingIcon = if (selected) {
-            { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(18.dp)) }
+private fun SortOption(order: LibrarySortOrder, selected: Boolean, onClick: () -> Unit) =
+    MenuOption(sortLabel(order), selected, onClick)
+
+@Composable
+internal fun MenuOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    SimpleMenuItem(
+        text = label,
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 4.dp),
+        selected = selected,
+        trailing = if (selected) {
+            { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
         } else {
             null
-        },
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(8.dp))
-            .background(if (selected) DesktopColors.SurfaceLight.copy(alpha = 0.5f) else Color.Transparent),
-        contentPadding = PaddingValues(horizontal = 10.dp)
+        }
     )
 }
 
@@ -261,24 +259,23 @@ internal fun LibraryCreateButton(viewModel: LibraryViewModel, pill: Boolean) {
             LibraryIconButton(Icons.Rounded.Add, "创建", filled = true) { menuOpen = true }
         }
         LibraryPopupMenu(menuOpen, { menuOpen = false }, anchorWidth, CreateMenuWidth) {
-            DropdownMenuItem(
-                text = { Text("创建歌单", fontSize = 14.sp, color = DesktopColors.TextPrimary) },
-                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null, tint = DesktopColors.TextGray, modifier = Modifier.size(20.dp)) },
+            SimpleMenuItem(
+                text = "创建歌单",
+                icon = Icons.Rounded.PlaylistAdd,
+                modifier = Modifier.padding(horizontal = 4.dp),
                 onClick = {
                     menuOpen = false
                     dialogOpen = true
-                },
-                modifier = Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(8.dp)),
-                contentPadding = PaddingValues(horizontal = 10.dp)
+                }
             )
         }
     }
     if (dialogOpen) {
         CreatePlaylistDialog(
             onDismiss = { dialogOpen = false },
-            onCreate = { name ->
+            onCreate = { name, isPrivate ->
                 dialogOpen = false
-                viewModel.createPlaylist(name) { id, playlistName -> navigator.openPlaylist(id, playlistName) }
+                viewModel.createPlaylist(name, isPrivate) { id, playlistName -> navigator.openPlaylist(id, playlistName) }
             },
             onEmptyName = { navigator.showMessage(EMPTY_NAME_MESSAGE) }
         )
@@ -286,56 +283,52 @@ internal fun LibraryCreateButton(viewModel: LibraryViewModel, pill: Boolean) {
 }
 
 @Composable
-internal fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit, onEmptyName: () -> Unit) {
+internal fun CreatePlaylistDialog(
+    onDismiss: () -> Unit,
+    onCreate: (name: String, isPrivate: Boolean) -> Unit,
+    onEmptyName: () -> Unit,
+    // 仅创建后顺带加歌的入口不支持隐私选项
+    showPrivacy: Boolean = true
+) {
+    val settingsPreferences = remember { GlobalContext.get().get<SettingsPreferences>() }
+    val defaultPrivate by settingsPreferences.defaultPlaylistPrivate.collectAsState(initial = false)
     var name by remember { mutableStateOf("") }
+    var isPrivate by remember(defaultPrivate) { mutableStateOf(defaultPrivate) }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     val submit = {
         val trimmed = name.trim()
-        if (trimmed.isEmpty()) onEmptyName() else onCreate(trimmed)
+        if (trimmed.isEmpty()) onEmptyName() else onCreate(trimmed, showPrivacy && isPrivate)
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("新建歌单", color = DesktopColors.TextPrimary) },
-        text = {
-            Column(Modifier.width(320.dp)) {
-                Text(
-                    "请输入新歌单的名称：",
-                    color = DesktopColors.TextGray,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(PLAYLIST_NAME_MAX_LENGTH) },
-                    placeholder = { Text("歌单名称", fontSize = 14.sp) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = DesktopColors.TextPrimary,
-                        unfocusedBorderColor = DesktopColors.SurfaceLight,
-                        cursorColor = DesktopColors.TextPrimary
-                    ),
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-                        .onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
-                                submit()
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = submit) {
-                Text("创建", color = DesktopColors.TextPrimary, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = DesktopColors.TextGray) }
+    DesktopDialog(
+        title = "新建歌单",
+        onDismiss = onDismiss,
+        width = 360.dp,
+        actions = {
+            DialogButton("取消", onDismiss)
+            DialogButton("创建", submit, primary = true)
         }
-    )
+    ) {
+        DialogTextField(
+            value = name,
+            onValueChange = { name = it.take(PLAYLIST_NAME_MAX_LENGTH) },
+            placeholder = "歌单名称",
+            focusRequester = focusRequester,
+            onEnter = submit
+        )
+        if (showPrivacy) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("设为隐私歌单", color = DesktopColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("仅自己可见", color = DesktopColors.TextGray, fontSize = 11.sp)
+                }
+                SettingSwitch(isPrivate) { isPrivate = it }
+            }
+        }
+    }
 }
+

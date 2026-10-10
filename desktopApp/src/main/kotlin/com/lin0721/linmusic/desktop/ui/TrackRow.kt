@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -22,8 +24,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -61,6 +74,21 @@ import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 // 离线不可播放的歌曲行置灰程度
 private const val DISABLED_ROW_ALPHA = 0.38f
 
+// 与歌单页表头的“添加日期”列同宽
+internal val ADDED_COLUMN_WIDTH = 120.dp
+
+internal val DangerColor = Color(0xFFFF6B6B)
+
+// 行内长按拖动排序：偏移与手势回调由列表页的 QueueReorderState 驱动
+@Immutable
+class TrackReorder(
+    val dragging: Boolean,
+    val offsetY: Float,
+    val onDragStart: () -> Unit,
+    val onDrag: (Float) -> Unit,
+    val onDragEnd: () -> Unit
+)
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TrackRow(
@@ -70,7 +98,13 @@ fun TrackRow(
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
     actions: TrackActions? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    // 非 null 时在专辑后多一列“添加日期”（歌单页专用）
+    addedAtText: String? = null,
+    // 非 null 时整行可长按拖动
+    reorder: TrackReorder? = null,
+    // 无 actions 时行尾的自定义操作（推荐区的添加按钮）
+    trailingAction: (@Composable () -> Unit)? = null
 ) {
     val navigator = LocalDesktopNavigator.current
     val density = LocalDensity.current
@@ -80,11 +114,35 @@ fun TrackRow(
     var contextMenuOffset by remember { mutableStateOf<DpOffset?>(null) }
     var moreMenuOpen by remember { mutableStateOf(false) }
     val isLiked = actions != null && track.id in actions.likedSongIds
+    val currentDragStart by rememberUpdatedState(reorder?.onDragStart)
+    val currentDrag by rememberUpdatedState(reorder?.onDrag)
+    val currentDragEnd by rememberUpdatedState(reorder?.onDragEnd)
+    val dragging = reorder?.dragging == true
+    val lifted = reorder != null && (dragging || reorder.offsetY != 0f)
+    val rowShape = RoundedCornerShape(4.dp)
 
-    Box(modifier.fillMaxWidth().alpha(if (enabled) 1f else DISABLED_ROW_ALPHA).onSizeChanged { rowHeightPx = it.height }) {
+    Box(
+        modifier.fillMaxWidth()
+            .then(
+                if (lifted && reorder != null) {
+                    Modifier.zIndex(1f).graphicsLayer { translationY = reorder.offsetY }
+                        .then(if (dragging) Modifier.shadow(8.dp, rowShape) else Modifier)
+                } else {
+                    Modifier
+                }
+            )
+            .alpha(if (enabled) 1f else DISABLED_ROW_ALPHA)
+            .onSizeChanged { rowHeightPx = it.height }
+    ) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-                .background(if (hovered || contextMenuOffset != null || moreMenuOpen) DesktopColors.PaneHover else Color.Transparent)
+            Modifier.fillMaxWidth().clip(rowShape)
+                .background(
+                    when {
+                        dragging -> DesktopColors.Surface
+                        hovered || contextMenuOffset != null || moreMenuOpen -> DesktopColors.PaneHover
+                        else -> Color.Transparent
+                    }
+                )
                 .onPointerEvent(PointerEventType.Enter) { hovered = true }
                 .onPointerEvent(PointerEventType.Exit) { hovered = false }
                 .onPointerEvent(PointerEventType.Press) { event ->
@@ -97,16 +155,43 @@ fun TrackRow(
                         onPlay()
                     }
                 }
+                .then(
+                    if (reorder != null) {
+                        Modifier.pointerInput(Unit) {
+                            detectLongPressReorder(
+                                onDragStart = { currentDragStart?.invoke() },
+                                onDrag = { delta -> currentDrag?.invoke(delta) },
+                                onDragEnd = { currentDragEnd?.invoke() }
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "${index + 1}",
-                color = if (isCurrent) DesktopColors.Accent else DesktopColors.TextGray,
-                fontSize = 14.sp,
-                textAlign = TextAlign.End,
-                modifier = Modifier.width(32.dp)
-            )
+            if (enabled && hovered && !dragging) {
+                Box(
+                    Modifier.width(32.dp).height(32.dp).pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onPlay),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        "播放${track.name}",
+                        tint = DesktopColors.TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            } else {
+                Text(
+                    "${index + 1}",
+                    color = if (isCurrent) DesktopColors.Accent else DesktopColors.TextGray,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(32.dp)
+                )
+            }
             Cover(track.al.picUrl, 40.dp, modifier = Modifier.padding(start = 16.dp))
             Column(Modifier.weight(0.45f).padding(start = 12.dp)) {
                 Text(
@@ -132,6 +217,16 @@ fun TrackRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(0.35f).padding(horizontal = 12.dp)
             )
+            if (addedAtText != null) {
+                Text(
+                    addedAtText,
+                    color = DesktopColors.TextGray,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(ADDED_COLUMN_WIDTH)
+                )
+            }
             if (actions != null) {
                 // 已喜欢的红心常亮，其余仅悬停时出现
                 val showLike = hovered || isLiked
@@ -157,6 +252,7 @@ fun TrackRow(
                 textAlign = TextAlign.End,
                 modifier = Modifier.width(48.dp)
             )
+            if (actions == null) trailingAction?.invoke()
             if (actions != null) {
                 Box {
                     IconButton(
@@ -201,53 +297,62 @@ private fun TrackMenu(
     val navigator = LocalDesktopNavigator.current
     val isLiked = track.id in actions.likedSongIds
     val artists = track.ar.filter { it.id > 0 }
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        offset = offset,
-        containerColor = DesktopColors.PopupSurface
-    ) {
-        TrackMenuItem(Icons.AutoMirrored.Rounded.QueueMusic, "下一首播放") {
+    DesktopMenu(expanded = expanded, onDismiss = onDismiss, offset = offset) {
+        MenuItem("下一首播放", icon = Icons.AutoMirrored.Rounded.QueueMusic, onClick = {
             onDismiss()
             actions.onPlayNext(track)
-        }
-        TrackMenuItem(Icons.AutoMirrored.Rounded.PlaylistAdd, "收藏到歌单") {
-            onDismiss()
-            actions.onCollect(track)
-        }
-        TrackMenuItem(
-            if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-            if (isLiked) "取消喜欢" else "喜欢"
-        ) {
-            onDismiss()
-            actions.onToggleLike(track)
-        }
-        artists.forEach { artist ->
-            TrackMenuItem(Icons.Rounded.Person, if (artists.size > 1) "查看歌手：${artist.name}" else "查看歌手") {
-                onDismiss()
-                navigator.openArtist(artist.id, artist.name)
+        })
+        if (navigator.isLoggedIn) {
+            SubMenuItem("收藏到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onOpen = { actions.onPrepareCollect(track) }) {
+                CollectSubmenuContent(track, actions, onDismiss)
             }
+        } else {
+            MenuItem("收藏到歌单", icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = {
+                onDismiss()
+                navigator.showMessage("请先登录账号")
+            })
         }
-        TrackMenuItem(Icons.Rounded.Download, "下载") {
-            onDismiss()
-            actions.onDownload(track)
+        MenuItem(
+            if (isLiked) "取消喜欢" else "喜欢",
+            icon = if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+            onClick = {
+                onDismiss()
+                actions.onToggleLike(track)
+            }
+        )
+        MenuDivider()
+        when {
+            artists.size > 1 -> SubMenuItem("查看歌手", icon = Icons.Rounded.Person) {
+                artists.forEach { artist ->
+                    SimpleMenuItem(artist.name, onClick = {
+                        onDismiss()
+                        navigator.openArtist(artist.id, artist.name)
+                    })
+                }
+            }
+            artists.size == 1 -> MenuItem("查看歌手", icon = Icons.Rounded.Person, onClick = {
+                onDismiss()
+                navigator.openArtist(artists[0].id, artists[0].name)
+            })
         }
         if (track.al.id > 0) {
-            TrackMenuItem(Icons.Rounded.Album, "查看专辑") {
+            MenuItem("查看专辑", icon = Icons.Rounded.Album, onClick = {
                 onDismiss()
                 navigator.openAlbum(track.al.id, track.al.name)
-            }
+            })
+        }
+        MenuItem("下载", icon = Icons.Rounded.Download, onClick = {
+            onDismiss()
+            actions.onDownload(track)
+        })
+        actions.onRemove?.let { remove ->
+            MenuDivider()
+            MenuItem("从歌单中删除", icon = Icons.Rounded.Delete, danger = true, onClick = {
+                onDismiss()
+                remove(track)
+            })
         }
     }
-}
-
-@Composable
-private fun TrackMenuItem(icon: ImageVector, text: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
-        onClick = onClick
-    )
 }
 
 private val LinkStyles = TextLinkStyles(hoveredStyle = SpanStyle(color = DesktopColors.TextPrimary, textDecoration = TextDecoration.Underline))

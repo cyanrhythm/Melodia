@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.toUserMessage
-import com.lin0721.linmusic.core.player.PlayerManager
+import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.feature.recent.data.RecentRepository
 import com.lin0721.linmusic.feature.recent.domain.RecentSong
@@ -20,7 +20,7 @@ private const val TAG = "RecentPlayViewModel"
 
 class RecentPlayViewModel(
     private val recentRepository: RecentRepository,
-    val playerManager: PlayerManager,
+    val playerManager: PlaybackController,
     private val resourceProvider: ResourceProvider
 ) : ViewModel() {
 

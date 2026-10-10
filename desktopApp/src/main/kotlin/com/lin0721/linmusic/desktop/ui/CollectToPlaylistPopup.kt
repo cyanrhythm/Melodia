@@ -335,6 +335,7 @@ private fun CollectInput(
                 cursorBrush = SolidColor(DesktopColors.TextPrimary),
                 modifier = Modifier.fillMaxWidth()
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                    .trackTextInputFocus()
                     .onPreviewKeyEvent { event ->
                         if (onSubmit != null && event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
                             onSubmit()

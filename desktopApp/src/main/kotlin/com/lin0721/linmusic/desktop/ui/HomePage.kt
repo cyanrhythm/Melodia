@@ -313,7 +313,13 @@ private fun LazyListScope.homeItems(
     }
     if (data.dailySongs.isNotEmpty()) {
         item(key = "daily") {
-            Box(reflow()) { DailySpotlight(data.dailySongs) { viewModel.playDailySong() } }
+            Box(reflow()) {
+                DailySpotlight(
+                    songs = data.dailySongs,
+                    onOpen = { onPlaylistClick(DAILY_RECOMMEND_ID, DAILY_RECOMMEND_NAME) },
+                    onPlay = { viewModel.playDailySong() }
+                )
+            }
         }
     }
     // 服务端货架已含推荐歌单，仅在货架缺失时兜底展示
@@ -433,9 +439,9 @@ private fun RecentTile(
     }
 }
 
-// 每日推荐聚焦卡：底色取自首曲封面并压暗。桌面端没有日推列表页，卡片与播放钮都直接起播
+// 每日推荐聚焦卡：底色取自首曲封面并压暗。卡片进入每日推荐列表，播放钮直接起播
 @Composable
-private fun DailySpotlight(songs: List<DailySong>, onPlay: () -> Unit) {
+private fun DailySpotlight(songs: List<DailySong>, onOpen: () -> Unit, onPlay: () -> Unit) {
     val coverUrl = songs.firstOrNull()?.al?.picUrl.orEmpty()
     var baseColor by remember { mutableStateOf(FallbackCoverPalette.base) }
     LaunchedEffect(coverUrl) {
@@ -462,7 +468,7 @@ private fun DailySpotlight(songs: List<DailySong>, onPlay: () -> Unit) {
         SectionTitle("今日为你推荐", horizontalPadding = 0)
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(containerColor)
-                .clickable(onClick = onPlay).padding(16.dp),
+                .clickable(onClick = onOpen).padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Cover(coverUrl, SpotlightCoverSize, shape = RoundedCornerShape(4.dp))
