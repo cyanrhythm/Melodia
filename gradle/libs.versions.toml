@@ -25,6 +25,8 @@ coroutinesTest = "1.9.0"
 coroutinesSwing = "1.10.2"
 jna = "5.17.0"
 jaudiotagger = "3.0.1"
+# Linux 系统媒体控制（MPRIS over D-Bus）
+dbusJava = "5.1.1"
 imageCropper = "4.7.0"
 zxing = "3.5.3"
 bouncycastle = "1.85.2"
@@ -47,6 +49,9 @@ kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-co
 # 桌面端调用 libmpv
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jaudiotagger = { group = "net.jthink", name = "jaudiotagger", version.ref = "jaudiotagger" }
+# D-Bus：MPRIS 的底层传输，用纯 Java unixsocket 实现，无需原生 libdbus
+dbus-java-core = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbusJava" }
+dbus-java-transport = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
 # 桌面端 org.json（Android 由系统提供）
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

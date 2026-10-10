@@ -31,6 +31,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna)
     implementation(libs.jaudiotagger)
+    // Linux 系统媒体控制：MPRIS over D-Bus（纯 Java 传输，不依赖原生 libdbus）
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport)
     // 平台能力契约的编译期校验（校验平台覆盖度与模块注册完整性）
     ksp(project(":processor"))
     testImplementation(libs.junit)
