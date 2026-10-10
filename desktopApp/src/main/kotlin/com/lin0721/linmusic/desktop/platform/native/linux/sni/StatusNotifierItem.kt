@@ -39,9 +39,6 @@ interface StatusNotifierItem : DBusInterface, Properties {
         const val PROP_ICON_PIXMAP = "IconPixmap"
         const val PROP_MENU = "Menu"
         const val PROP_TOOL_TIP = "ToolTip"
-
-        // 自绘菜单：告诉宿主右键走 ContextMenu 回调而不是 DBusMenu
-        const val NO_DBUS_MENU = "/NO_DBUSMENU"
     }
 }
 

@@ -5,12 +5,15 @@ import com.lin0721.linmusic.desktop.platform.native.AwtTrayIcon
 import com.lin0721.linmusic.desktop.platform.native.DesktopPlatform
 import com.lin0721.linmusic.desktop.platform.native.PlatformImpl
 import com.lin0721.linmusic.desktop.platform.native.TrayIntegration
+import com.lin0721.linmusic.desktop.platform.native.TrayMenuModel
 import com.lin0721.linmusic.desktop.platform.native.UiScale
 import com.lin0721.linmusic.desktop.platform.native.linux.WaylandOutputInfo
 import com.lin0721.linmusic.desktop.platform.native.linux.parseWaylandInfo
 import com.lin0721.linmusic.desktop.platform.native.linux.readWaylandInfo
 import com.lin0721.linmusic.desktop.platform.native.linux.sni.DBusNameOwner
+import com.lin0721.linmusic.desktop.platform.native.linux.sni.DbusMenu
 import com.lin0721.linmusic.desktop.platform.native.linux.sni.IconPixmap
+import com.lin0721.linmusic.desktop.platform.native.linux.sni.SniDbusMenu
 import com.lin0721.linmusic.desktop.platform.native.linux.sni.SniToolTip
 import com.lin0721.linmusic.desktop.platform.native.linux.sni.StatusNotifierItem
 import com.lin0721.linmusic.desktop.platform.native.linux.sni.StatusNotifierWatcher
@@ -39,7 +42,12 @@ private const val SNI_STATUS = "Active"
 class LinuxTrayIntegration : TrayIntegration {
 
     private var item: SniItem? = null
+    private var menu: SniDbusMenu? = null
     private var fallback: AwtTrayIcon? = null
+
+    // 菜单内容可能先于 SNI 安装送达；先缓存，安装时一次性应用
+    @Volatile
+    private var pendingMenu: TrayMenuModel? = null
 
     // 与应用同生命周期的会话总线连接；SNI 注册失败时保持未使用状态
     private val connection: DBusConnection? by lazy {
@@ -109,17 +117,28 @@ class LinuxTrayIntegration : TrayIntegration {
                 onActivate = onActivate,
                 onContextMenu = onContextMenu
             )
-            // 先导出对象再向 Watcher 注册：宿主收到注册后会立刻读取属性
+            val dbusMenu = SniDbusMenu()
+            pendingMenu?.let { dbusMenu.update(it) }
+            // 先导出对象再向 Watcher 注册：宿主收到注册后会立刻读属性、解析 Menu 指向的菜单
             conn.exportObject(StatusNotifierItem.OBJECT_PATH, sniItem)
+            conn.exportObject(DbusMenu.OBJECT_PATH, dbusMenu)
             conn.getRemoteObject(
                 StatusNotifierWatcher.BUS_NAME,
                 "/StatusNotifierWatcher",
                 StatusNotifierWatcher::class.java
             ).RegisterStatusNotifierItem(conn.uniqueName)
             item = sniItem
+            menu = dbusMenu
             AppLogger.i(TAG, "SNI 已注册：${conn.uniqueName}${StatusNotifierItem.OBJECT_PATH}")
             true
         }.onFailure { AppLogger.w(TAG, "SNI 注册失败", it) }.getOrDefault(false)
+    }
+
+    override fun updateMenu(menu: TrayMenuModel) {
+        pendingMenu = menu
+        val server = this.menu ?: return
+        server.update(menu)
+        runCatching { connection?.sendMessage(server.layoutUpdatedSignal()) }
     }
 
     override fun updateTooltip(tooltip: String) {
@@ -133,7 +152,11 @@ class LinuxTrayIntegration : TrayIntegration {
         if (item != null) {
             runCatching { connection?.unExportObject(StatusNotifierItem.OBJECT_PATH) }
         }
+        if (menu != null) {
+            runCatching { connection?.unExportObject(DbusMenu.OBJECT_PATH) }
+        }
         item = null
+        menu = null
         fallback?.uninstall()
         fallback = null
     }
@@ -176,7 +199,7 @@ internal class SniItem(
             StatusNotifierItem.PROP_ICON_NAME -> "" as A
             StatusNotifierItem.PROP_ITEM_IS_MENU -> false as A
             StatusNotifierItem.PROP_WINDOW_ID -> 0 as A
-            StatusNotifierItem.PROP_MENU -> Variant(StatusNotifierItem.NO_DBUS_MENU, "o") as A
+            StatusNotifierItem.PROP_MENU -> Variant(DbusMenu.OBJECT_PATH, "o") as A
             StatusNotifierItem.PROP_ICON_PIXMAP -> Variant(pixmaps, "a(iiay)") as A
             StatusNotifierItem.PROP_TOOL_TIP -> Variant(toolTipStruct(), "(sa(iiay)ss)") as A
             else -> null as A
@@ -196,7 +219,7 @@ internal class SniItem(
                 StatusNotifierItem.PROP_ICON_NAME to Variant(""),
                 StatusNotifierItem.PROP_ITEM_IS_MENU to Variant(false),
                 StatusNotifierItem.PROP_WINDOW_ID to Variant(0),
-                StatusNotifierItem.PROP_MENU to Variant(StatusNotifierItem.NO_DBUS_MENU, "o"),
+                StatusNotifierItem.PROP_MENU to Variant(DbusMenu.OBJECT_PATH, "o"),
                 StatusNotifierItem.PROP_ICON_PIXMAP to Variant(pixmaps, "a(iiay)"),
                 StatusNotifierItem.PROP_TOOL_TIP to Variant(toolTipStruct(), "(sa(iiay)ss)")
             )

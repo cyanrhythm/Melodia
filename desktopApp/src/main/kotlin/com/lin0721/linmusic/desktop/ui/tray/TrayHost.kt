@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.lin0721.linmusic.desktop.platform.native.TrayIntegration
+import com.lin0721.linmusic.desktop.platform.native.TrayMenuModel
+import com.lin0721.linmusic.desktop.platform.native.TrayMenuNode
 import com.lin0721.linmusic.desktop.ui.ProvideUiScale
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import java.awt.GraphicsEnvironment
@@ -99,8 +101,42 @@ fun TrayHost(
         tray.updateTooltip(tooltip.take(TOOLTIP_MAX_LENGTH))
     }
 
+    // 菜单内容变化时同步给平台层：Linux 由托盘宿主用原生样式渲染 DBusMenu，
+    // 指纹只包含标签/勾选等可见内容，回调取最新一次组合的值
+    val menuFingerprint = menuFingerprint(header, entries)
+    val currentEntries by rememberUpdatedState(entries)
+    LaunchedEffect(menuFingerprint) {
+        tray.updateMenu(
+            TrayMenuModel(
+                header = header,
+                nodes = currentEntries.map { entry ->
+                    when (entry) {
+                        is TrayMenuEntry.Action ->
+                            TrayMenuNode.Action(entry.label, onSelect = entry.onClick)
+                        is TrayMenuEntry.Toggle ->
+                            TrayMenuNode.Toggle(entry.label, entry.checked, onSelect = { entry.onChange(!entry.checked) })
+                        TrayMenuEntry.Divider -> TrayMenuNode.Separator
+                    }
+                }
+            )
+        )
+    }
+
     menuAnchor?.let { anchor ->
         TrayMenuWindow(anchor, header, entries, onDismiss = { menuAnchor = null })
+    }
+}
+
+// 菜单可见内容的指纹：标签、勾选状态与顺序（回调与实例身份不参与比较）
+private fun menuFingerprint(header: String?, entries: List<TrayMenuEntry>): String = buildString {
+    append(header)
+    entries.forEach { entry ->
+        append('\n')
+        when (entry) {
+            is TrayMenuEntry.Action -> append("A:").append(entry.label)
+            is TrayMenuEntry.Toggle -> append("T:").append(entry.label).append(':').append(entry.checked)
+            TrayMenuEntry.Divider -> append("D")
+        }
     }
 }
 

@@ -24,6 +24,10 @@ interface TrayIntegration {
 
     fun updateTooltip(tooltip: String)
 
+    // 菜单内容更新。Linux 会发布成 DBusMenu 交给托盘宿主用原生样式渲染；
+    // Windows 忽略（菜单仍由 Compose 绘制，点击也不经过平台层）
+    fun updateMenu(menu: TrayMenuModel)
+
     fun uninstall()
 
     companion object {
