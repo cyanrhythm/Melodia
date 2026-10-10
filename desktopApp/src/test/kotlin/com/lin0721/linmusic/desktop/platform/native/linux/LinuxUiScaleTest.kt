@@ -43,6 +43,16 @@ class LinuxUiScaleTest {
     }
 
     @Test
+    fun `解析物理高度与逻辑原点`() {
+        val byName = parseWaylandInfo(waylandInfoSample)
+        assertEquals(listOf(2160, 2160), byName.map { it.physicalHeight })
+        assertEquals(listOf(1440, 1440), byName.map { it.logicalHeight })
+        // 样例中 DP-3 的逻辑原点为 (0,0)、DP-2 为 (2560,0)（解析按 wl_output 出现顺序）
+        assertEquals(listOf(2560, 0), byName.map { it.logicalX })
+        assertEquals(listOf(0, 0), byName.map { it.logicalY })
+    }
+
+    @Test
     fun `非当前模式不会被当成物理尺寸`() {
         val text = """
             interface: 'wl_output',                                  version:  4, name: 5
