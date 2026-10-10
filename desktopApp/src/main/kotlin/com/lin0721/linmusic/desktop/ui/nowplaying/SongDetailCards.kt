@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.Track
 import com.lin0721.linmusic.desktop.ui.LocalDesktopNavigator
+import com.lin0721.linmusic.desktop.ui.DesktopDialog
+import com.lin0721.linmusic.desktop.ui.DialogButton
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import com.lin0721.linmusic.feature.player.domain.SongMusicMemory
 import com.lin0721.linmusic.feature.player.domain.SongWikiCreatorRole
@@ -111,29 +113,27 @@ private fun DetailRowView(row: DetailRow, onClick: (() -> Unit)?) {
 // 制作信息：按角色分组展示词曲编曲等
 @Composable
 private fun CreatorsDialog(roles: List<SongWikiCreatorRole>, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("制作信息", color = DesktopColors.TextPrimary) },
-        text = {
-            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                roles.forEach { role ->
-                    Row(verticalAlignment = Alignment.Top) {
-                        Text(role.roleName, color = LabelColor, fontSize = 14.sp, modifier = Modifier.width(LabelWidth))
-                        Text(
-                            role.artistNames.joinToString(" / "),
-                            color = DesktopColors.TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+    DesktopDialog(
+        title = "制作信息",
+        onDismiss = onDismiss,
+        width = 360.dp,
+        actions = { DialogButton("关闭", onDismiss, primary = true) }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            roles.forEach { role ->
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(role.roleName, color = LabelColor, fontSize = 13.sp, modifier = Modifier.width(LabelWidth))
+                    Text(
+                        role.artistNames.joinToString(" / "),
+                        color = DesktopColors.TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭", color = DesktopColors.TextPrimary) } }
-    )
+        }
+    }
 }
 
 // 回忆坐标：首次听到的时间与累计播放次数

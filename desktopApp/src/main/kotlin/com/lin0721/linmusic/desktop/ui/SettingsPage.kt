@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.AlertDialog
@@ -136,6 +137,7 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val crossfadeDurationMs by settingsPreferences.crossfadeDurationMs.collectAsState(initial = CrossfadePolicy.DEFAULT_DURATION_MS)
     val downloadFolder by settingsPreferences.downloadFolderUri.collectAsState(initial = null)
     val downloadLyrics by settingsPreferences.downloadLyricsEnabled.collectAsState(initial = true)
+    val defaultPlaylistPrivate by settingsPreferences.defaultPlaylistPrivate.collectAsState(initial = false)
     val cardLayout by settingsPreferences.fullPlayerCardLayout.collectAsState(initial = FullPlayerCardLayout.DEFAULT)
     val closeAction by desktopPreferences.closeAction.collectAsState(initial = CloseAction.TRAY)
     val mediaKeysEnabled by desktopPreferences.mediaKeysEnabled.collectAsState(initial = true)
@@ -318,6 +320,12 @@ fun SettingsPage(modifier: Modifier = Modifier) {
                 }
             }
 
+            SettingsCard("歌单") {
+                SettingRow("新建歌单默认设为隐私", subtitle = "创建歌单对话框中的隐私开关以此为初始值") {
+                    SettingSwitch(defaultPlaylistPrivate) { scope.launch { settingsPreferences.saveDefaultPlaylistPrivate(it) } }
+                }
+            }
+
             SettingsCard("桌面歌词") {
                 SettingRow("显示桌面歌词") {
                     SettingSwitch(showDesktopLyric) { scope.launch { settingsPreferences.saveShowDesktopLrc(it) } }
@@ -448,10 +456,15 @@ private fun LogLevelSelector(currentName: String, onSelect: (AppLogger.LogLevel)
             Text(logLevelLabel(current), color = DesktopColors.TextPrimary)
             Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }, width = 168.dp) {
             AppLogger.LogLevel.entries.forEach { level ->
-                DropdownMenuItem(
-                    text = { Text(logLevelLabel(level), color = if (level == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                SimpleMenuItem(
+                    text = logLevelLabel(level),
+                    trailing = if (level == current) {
+                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
+                    } else {
+                        null
+                    },
                     onClick = {
                         expanded = false
                         onSelect(level)
@@ -489,10 +502,15 @@ private fun CacheSizeSelector(currentBytes: Long, onSelect: (Long) -> Unit) {
             Text(formatBytes(currentBytes), color = DesktopColors.TextPrimary)
             Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }, width = 168.dp) {
             CacheSizeOptions.forEach { value ->
-                DropdownMenuItem(
-                    text = { Text(formatBytes(value), color = if (value == currentBytes) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                SimpleMenuItem(
+                    text = formatBytes(value),
+                    trailing = if (value == currentBytes) {
+                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
+                    } else {
+                        null
+                    },
                     onClick = {
                         expanded = false
                         onSelect(value)
@@ -521,10 +539,15 @@ private fun CrossfadeDurationSelector(currentMs: Int, onSelect: (Int) -> Unit) {
             Text(formatSeconds(current), color = DesktopColors.TextPrimary)
             Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }, width = 168.dp) {
             CrossfadeDurationOptionsMs.forEach { value ->
-                DropdownMenuItem(
-                    text = { Text(formatSeconds(value), color = if (value == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                SimpleMenuItem(
+                    text = formatSeconds(value),
+                    trailing = if (value == current) {
+                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
+                    } else {
+                        null
+                    },
                     onClick = {
                         expanded = false
                         onSelect(value)
@@ -545,10 +568,15 @@ private fun QualitySelector(current: String, onSelect: (String) -> Unit) {
             Text(QualityOptions.firstOrNull { it.first == current }?.second ?: current, color = DesktopColors.TextPrimary)
             Icon(Icons.Rounded.ArrowDropDown, null, tint = DesktopColors.TextGray)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = DesktopColors.PopupSurface) {
+        DesktopMenu(expanded = expanded, onDismiss = { expanded = false }, width = 168.dp) {
             QualityOptions.forEach { (value, label) ->
-                DropdownMenuItem(
-                    text = { Text(label, color = if (value == current) DesktopColors.Accent else DesktopColors.TextPrimary) },
+                SimpleMenuItem(
+                    text = label,
+                    trailing = if (value == current) {
+                        { Icon(Icons.Rounded.Check, null, tint = DesktopColors.Accent, modifier = Modifier.size(16.dp)) }
+                    } else {
+                        null
+                    },
                     onClick = {
                         expanded = false
                         onSelect(value)
@@ -687,6 +715,7 @@ private fun HotkeyRecorder(
     onInvalid: (String) -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
+    HoldTextInputFocus(isRecording)
     LaunchedEffect(isRecording) {
         if (isRecording) focusRequester.requestFocus()
     }
@@ -760,54 +789,30 @@ private fun DesktopServerUrlInput(
     }
 
     if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = {
-                Text(
-                    text = "配置换源服务接口",
-                    color = DesktopColors.TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "填写 UNM Utils 服务的基础访问 URL（末尾无需斜杠）：",
-                        color = DesktopColors.TextGray,
-                        fontSize = 12.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("例如 https://your-unm-server.com", color = DesktopColors.TextGray) }
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        DesktopDialog(
+            title = "配置换源服务接口",
+            onDismiss = { showDialog = false },
+            width = 440.dp,
+            actions = {
+                DialogButton("清空", {
+                    text = ""
+                    onReset()
+                    showDialog = false
+                }, danger = true)
+                DialogButton("取消", { showDialog = false })
+                DialogButton("保存", {
                     onSave(text.trim())
                     showDialog = false
-                }) {
-                    Text("保存", color = DesktopColors.Accent)
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        text = ""
-                        onReset()
-                        showDialog = false
-                    }) {
-                        Text("清空", color = DesktopColors.Accent)
-                    }
-                    TextButton(onClick = { showDialog = false }) {
-                        Text("取消", color = DesktopColors.TextGray)
-                    }
-                }
+                }, primary = true)
             }
-        )
+        ) {
+            Text(
+                text = "填写 UNM Utils 服务的基础访问 URL（末尾无需斜杠）：",
+                color = DesktopColors.TextGray,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            DialogTextField(value = text, onValueChange = { text = it }, placeholder = "例如 https://your-unm-server.com")
+        }
     }
 }

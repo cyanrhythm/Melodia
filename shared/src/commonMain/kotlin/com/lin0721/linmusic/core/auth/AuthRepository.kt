@@ -19,4 +19,7 @@ interface AuthRepository {
 
     // 轮询二维码扫码状态，803 成功时 QrCheckResponse.cookies 携带解析好的登录 Cookie
     fun checkQrStatus(key: String): Flow<Result<QrCheckResponse>>
+
+    // 刷新登录态，成功时返回响应里的原始 Set-Cookie，由调用方并入已存 Cookie
+    fun refreshLogin(): Flow<Result<List<String>>>
 }

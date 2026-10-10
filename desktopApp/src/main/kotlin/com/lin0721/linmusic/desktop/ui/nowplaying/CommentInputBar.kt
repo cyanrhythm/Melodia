@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import com.lin0721.linmusic.desktop.ui.trackTextInputFocus
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -115,7 +116,7 @@ fun CommentInputBar(
                     unfocusedBorderColor = DesktopColors.SurfaceLight,
                     cursorColor = DesktopColors.TextPrimary
                 ),
-                modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { event ->
+                modifier = Modifier.weight(1f).focusRequester(focusRequester).trackTextInputFocus().onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.Enter && !event.isShiftPressed) {
                         submit()
                         true

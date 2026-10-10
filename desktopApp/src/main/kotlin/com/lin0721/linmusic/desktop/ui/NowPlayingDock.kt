@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -53,6 +54,7 @@ enum class DockOverlay {
     Queue,
     Devices,
     Comments,
+    PlaylistComments,
     Downloads
 }
 
@@ -125,6 +127,7 @@ fun NowPlayingDock(
     downloader: DesktopSongDownloader?,
     onCloseOverlay: () -> Unit,
     onOpenComments: () -> Unit,
+    playlistComments: CommentsHost?,
     onOpenLyricsView: () -> Unit,
     onOpenLyricsFullscreen: () -> Unit,
     onOpenChange: (Boolean) -> Unit,
@@ -137,6 +140,7 @@ fun NowPlayingDock(
     val hoverSource = remember { MutableInteractionSource() }
     val hovered by hoverSource.collectIsHoveredAsState()
     val collapsed = hasTrack && !open
+    val playerCommentsHost = remember(playerViewModel) { playerViewModel.asCommentsHost() }
 
     // 停留一小段时间才预览，避免鼠标掠过窗口边缘时误触
     LaunchedEffect(hovered, collapsed) {
@@ -194,7 +198,12 @@ fun NowPlayingDock(
                         onOpenLyricsFullscreen = onOpenLyricsFullscreen
                     )
                     OverlayLayer(visible = open && overlay == DockOverlay.Comments) { modifier ->
-                        CommentsPanel(playerViewModel = playerViewModel, onClose = onCloseOverlay, modifier = modifier)
+                        CommentsPanel(host = playerCommentsHost, onClose = onCloseOverlay, modifier = modifier)
+                    }
+                    if (playlistComments != null) {
+                        OverlayLayer(visible = open && overlay == DockOverlay.PlaylistComments) { modifier ->
+                            CommentsPanel(host = playlistComments, onClose = onCloseOverlay, modifier = modifier)
+                        }
                     }
                     OverlayLayer(visible = open && overlay == DockOverlay.Queue) { modifier ->
                         PlayQueuePanel(controller = controller, onClose = onCloseOverlay, modifier = modifier)
@@ -238,6 +247,31 @@ fun NowPlayingDock(
                     }
                 }
             }
+        }
+    }
+}
+
+// 全屏歌词之上浮出的面板：与右侧栏里的覆盖面板内容相同，各自独立组合
+@Composable
+fun FloatingDockPanel(
+    overlay: DockOverlay,
+    controller: PlaybackController,
+    playerViewModel: PlayerViewModel,
+    playlistComments: CommentsHost?,
+    audioOutput: AudioOutputControl?,
+    downloader: DesktopSongDownloader?,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(DesktopDimens.PaneRadius)
+    val playerCommentsHost = remember(playerViewModel) { playerViewModel.asCommentsHost() }
+    Box(modifier.shadow(16.dp, shape).clip(shape).background(DesktopColors.Pane)) {
+        when (overlay) {
+            DockOverlay.Comments -> CommentsPanel(host = playerCommentsHost, onClose = onClose)
+            DockOverlay.PlaylistComments -> playlistComments?.let { CommentsPanel(host = it, onClose = onClose) }
+            DockOverlay.Queue -> PlayQueuePanel(controller = controller, onClose = onClose)
+            DockOverlay.Devices -> audioOutput?.let { AudioDevicePanel(control = it, onClose = onClose) }
+            DockOverlay.Downloads -> downloader?.let { DownloadsPanel(downloader = it, onClose = onClose) }
         }
     }
 }

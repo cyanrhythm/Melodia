@@ -7,6 +7,7 @@ import com.lin0721.linmusic.core.download.DownloadTrackInfo
 import com.lin0721.linmusic.core.download.SongDownloader
 import com.lin0721.linmusic.core.download.data.DownloadApi
 import com.lin0721.linmusic.core.download.data.SongDownloadUrlRequest
+import com.lin0721.linmusic.core.download.data.isTrialAudio
 import com.lin0721.linmusic.core.download.satisfies
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
@@ -359,7 +360,7 @@ class DesktopSongDownloader(
         val item = response.data
         val url = item?.url
         if (!response.isSuccess || url.isNullOrBlank()) throw NonRetryableException("获取下载链接失败")
-        if (item.freeTrialInfo != null) throw NonRetryableException("该音质仅支持试听，需要 VIP 或购买后才能完整下载")
+        if (item.isTrialAudio) throw NonRetryableException("该音质仅支持试听，需要 VIP 或购买后才能完整下载")
         val encodeType = (item.type ?: item.encodeType)?.lowercase()
         // 无权限时服务端会静默降级为压缩格式
         if (level in LOSSLESS_AND_ABOVE && encodeType in COMPRESSED_ENCODE_TYPES) {

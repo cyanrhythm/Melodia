@@ -13,6 +13,7 @@ import com.lin0721.linmusic.core.download.yearFromEpochMillis
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.userartist.UserArtistRepository
 import com.lin0721.linmusic.feature.create.data.CreateRepository
+import com.lin0721.linmusic.feature.create.data.playlistPrivacyOf
 import com.lin0721.linmusic.core.userplaylist.UserPlaylistRepository
 import com.lin0721.linmusic.feature.library.data.LibraryRepository
 import com.lin0721.linmusic.core.player.PlaybackController
@@ -472,9 +473,9 @@ class LibraryViewModel(
     }
 
     // onCreated 在创建成功后回调新歌单的 id 与名称，供调用方跳转
-    fun createPlaylist(name: String, onCreated: ((id: Long, name: String) -> Unit)? = null) {
+    fun createPlaylist(name: String, isPrivate: Boolean = false, onCreated: ((id: Long, name: String) -> Unit)? = null) {
         viewModelScope.launch {
-            createRepository.createPlaylist(name).collect { result ->
+            createRepository.createPlaylist(name, playlistPrivacyOf(isPrivate)).collect { result ->
                 result.onSuccess { playlist ->
                     loadLibraryData()
                     _toastEvent.emit("歌单创建成功！")

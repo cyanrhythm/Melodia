@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.lin0721.linmusic.core.download.data.DownloadApi
 import com.lin0721.linmusic.core.download.data.SongDownloadUrlRequest
+import com.lin0721.linmusic.core.download.data.isTrialAudio
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
@@ -155,7 +156,7 @@ class SongDownloadWorker(
             if (!response.isSuccess || url.isNullOrBlank()) {
                 return fail("获取下载链接失败", "获取下载链接失败，code=${response.code}")
             }
-            if (item.freeTrialInfo != null) {
+            if (item.isTrialAudio) {
                 return fail("该音质仅支持试听，需要 VIP/购买后才能完整下载", "仅试听版本")
             }
 

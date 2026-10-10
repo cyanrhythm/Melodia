@@ -34,13 +34,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.awt.awtEventOrNull
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.WindowState
 import com.lin0721.linmusic.core.auth.LoginViewModel
+import com.lin0721.linmusic.core.auth.SessionMonitor
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.download.DownloadTrackInfo
 import com.lin0721.linmusic.core.download.SongDownloader
@@ -68,6 +77,9 @@ import com.lin0721.linmusic.feature.music.ui.StyleDetailViewModel
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
+import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
+import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
+import com.lin0721.linmusic.feature.recent.ui.RecentPlayViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastCategoryViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
@@ -76,7 +88,9 @@ import com.lin0721.linmusic.feature.podcast.ui.RadioDetailViewModel
 import com.lin0721.linmusic.feature.search.ui.DiscoveryUiState
 import com.lin0721.linmusic.feature.search.ui.PlaylistCategoryViewModel
 import com.lin0721.linmusic.feature.search.ui.SearchViewModel
+import com.lin0721.linmusic.desktop.platform.SilentPlaybackController
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
@@ -88,15 +102,21 @@ import org.koin.core.context.GlobalContext
 private val ChromeEnter = fadeIn(tween(CHROME_ANIM_MS)) + expandVertically(tween(CHROME_ANIM_MS))
 private val ChromeExit = fadeOut(tween(CHROME_ANIM_MS)) + shrinkVertically(tween(CHROME_ANIM_MS))
 
+// AWT 把鼠标侧键报告为第 4、5 键
+private const val MOUSE_BUTTON_BACK = 4
+private const val MOUSE_BUTTON_FORWARD = 5
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun WindowScope.MelodiaDesktopApp(
     windowState: WindowState,
     fullscreen: FullscreenState,
     lyricsView: LyricsViewState,
+    searchFocusRequests: Flow<Unit>,
     onClose: () -> Unit
 ) {
     val koin = remember { GlobalContext.get() }
+    val focusManager = LocalFocusManager.current
     val homeViewModel = remember { koin.get<HomeViewModel>() }
     val musicViewModel = remember { koin.get<MusicViewModel>() }
     val podcastViewModel = remember { koin.get<PodcastHomeViewModel>() }
@@ -114,6 +134,7 @@ fun WindowScope.MelodiaDesktopApp(
     val downloadLevel by settingsPreferences.wifiQuality.collectAsState(initial = "standard")
     val showDesktopLyric by settingsPreferences.showDesktopLrc.collectAsState(initial = false)
     val mpvController = playbackController as? MpvPlaybackController
+    val silentController = playbackController as? SilentPlaybackController
 
     val backStack = remember { BackStack(DesktopRoute.Home) }
     val userProfile by homeViewModel.userProfile.collectAsState()
@@ -121,6 +142,8 @@ fun WindowScope.MelodiaDesktopApp(
     var homeTab by rememberSaveable { mutableStateOf(HOME_TAB_ALL) }
     var showNewWorks by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    // 歌词界面被“后退”收起后，“前进”可把它重新打开；有新的导航或歌词被重新打开后失效
+    var lyricsReopenable by remember { mutableStateOf(false) }
     val isMaximized = windowState.placement == WindowPlacement.Maximized
     val isFullscreen = fullscreen.isFullscreen
     val nowPlaying by playbackController.nowPlaying.collectAsState()
@@ -172,6 +195,42 @@ fun WindowScope.MelodiaDesktopApp(
             setDockOpen(true)
         }
     }
+    var playlistComments by remember { mutableStateOf<CommentsHost?>(null) }
+    val toggleCommentsPanel: (CommentsHost) -> Unit = { host ->
+        if (dockOpen && dockOverlay == DockOverlay.PlaylistComments && playlistComments === host) {
+            dockOverlay = null
+        } else {
+            playlistComments = host
+            dockOverlay = DockOverlay.PlaylistComments
+            setDockOpen(true)
+        }
+    }
+    // 歌单评论属于所在页面，离开该页就收起
+    LaunchedEffect(backStack.currentEntry.id) {
+        if (dockOverlay == DockOverlay.PlaylistComments) dockOverlay = null
+    }
+    LaunchedEffect(backStack.currentEntry.id) { lyricsReopenable = false }
+    LaunchedEffect(lyricsView.isOpen) { if (lyricsView.isOpen) lyricsReopenable = false }
+    val canGoBack = lyricsView.isOpen || backStack.canGoBack
+    val canGoForward = lyricsReopenable || backStack.canGoForward
+    val navigateBack: () -> Unit = {
+        if (lyricsView.isOpen) {
+            lyricsView.close()
+            lyricsReopenable = true
+        } else {
+            backStack.back()
+        }
+    }
+    val navigateForward: () -> Unit = {
+        if (lyricsReopenable && !lyricsView.isOpen) lyricsView.open() else backStack.forward()
+    }
+    val goHomeAll: () -> Unit = {
+        lyricsView.close()
+        homeTab = HOME_TAB_ALL
+        showNewWorks = false
+        backStack.navigate(DesktopRoute.Home)
+    }
+    val isHomeAll = backStack.current == DesktopRoute.Home && homeTab == HOME_TAB_ALL && !showNewWorks && !lyricsView.isOpen
     val searchInput by searchViewModel.inputState.collectAsState()
     val discovery by searchViewModel.discoveryState.collectAsState()
     val defaultKeyword = (discovery as? DiscoveryUiState.Success)?.defaultKeyword.orEmpty()
@@ -183,6 +242,8 @@ fun WindowScope.MelodiaDesktopApp(
         openPlaylist = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name)) },
         openAlbum = { id, name -> backStack.navigate(DesktopRoute.Playlist(id, name, isAlbum = true)) },
         openRadio = { id -> backStack.navigate(DesktopRoute.Radio(id)) },
+        openProfile = { uid -> backStack.navigate(DesktopRoute.Profile(uid)) },
+        openFollowList = { uid, mode -> backStack.navigate(DesktopRoute.FollowList(uid, mode)) },
         openPodcastSubscribed = { backStack.navigate(DesktopRoute.PodcastSubscribed) },
         openPodcastToplist = { backStack.navigate(DesktopRoute.PodcastToplist) },
         openPodcastCategory = { id, name -> backStack.navigate(DesktopRoute.PodcastCategory(id, name)) },
@@ -199,7 +260,10 @@ fun WindowScope.MelodiaDesktopApp(
             )
             navigatorMessages.tryEmit("已加入下载队列")
         },
-        showMessage = { navigatorMessages.tryEmit(it) }
+        showMessage = { navigatorMessages.tryEmit(it) },
+        goBack = backStack::back,
+        toggleCommentsPanel = toggleCommentsPanel,
+        isCommentsPanelOpen = { host -> dockOpen && dockOverlay == DockOverlay.PlaylistComments && playlistComments === host }
     )
 
     val saveableStateHolder = rememberSaveableStateHolder()
@@ -214,8 +278,22 @@ fun WindowScope.MelodiaDesktopApp(
     val liveEntryIds = backStack.liveEntryIds
     LaunchedEffect(liveEntryIds) { frameHost.reconcile() }
 
+    // 登录失效时本地登录态已被清掉，这里提示并直接打开登录框
+    val sessionMonitor = remember { koin.get<SessionMonitor>() }
+    LaunchedEffect(sessionMonitor) {
+        sessionMonitor.watch {
+            navigatorMessages.tryEmit("登录已过期，请重新登录")
+            showLogin = true
+        }
+    }
+
+    // 播放组件加载失败时启动就提示一次，之后每次尝试播放再提示
+    LaunchedEffect(silentController) {
+        if (silentController != null) snackbarHostState.showSnackbar(SilentPlaybackController.UNAVAILABLE_MESSAGE)
+    }
+
     LaunchedEffect(Unit) {
-        val playbackMessages = mpvController?.messages ?: emptyFlow()
+        val playbackMessages = mpvController?.messages ?: silentController?.messages ?: emptyFlow()
         val downloadMessages = downloader?.messages ?: emptyFlow()
         merge(
             homeViewModel.toastEvent,
@@ -245,6 +323,18 @@ fun WindowScope.MelodiaDesktopApp(
             Modifier.fillMaxSize().background(DesktopColors.WindowBackground)
                 .onPointerEvent(PointerEventType.Enter) { lyricsView.pointerInWindow = true }
                 .onPointerEvent(PointerEventType.Exit) { lyricsView.pointerInWindow = false }
+                // 鼠标侧键与浏览器一致：后退键返回，前进键前进；不消费事件，子组件照常响应
+                .onPointerEvent(PointerEventType.Press, PointerEventPass.Initial) { event ->
+                    when (event.awtEventOrNull?.button) {
+                        MOUSE_BUTTON_BACK -> navigateBack()
+                        MOUSE_BUTTON_FORWARD -> navigateForward()
+                    }
+                }
+                // Esc 先让输入框放弃焦点，窗口级快捷键随即恢复；不消费，输入框自己的 Esc 逻辑照常
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) focusManager.clearFocus()
+                    false
+                }
         ) {
             Column(Modifier.fillMaxSize()) {
                 // 全屏或歌词沉浸态时收起自绘标题栏，Esc 或底栏按钮退出
@@ -253,7 +343,12 @@ fun WindowScope.MelodiaDesktopApp(
                     enter = ChromeEnter,
                     exit = ChromeExit
                 ) { TitleBar(
-                    backStack = backStack,
+                    canGoBack = canGoBack,
+                    canGoForward = canGoForward,
+                    onBack = navigateBack,
+                    onForward = navigateForward,
+                    isHomeAll = isHomeAll,
+                    onHomeClick = goHomeAll,
                     isMaximized = isMaximized,
                     userProfile = userProfile,
                     searchQuery = searchInput.query,
@@ -265,6 +360,7 @@ fun WindowScope.MelodiaDesktopApp(
                         searchViewModel.updateQuery(query)
                     },
                     onSearchFocused = openSearch,
+                    searchFocusRequests = searchFocusRequests,
                     onSearchSubmit = {
                         openSearch()
                         searchViewModel.searchWithKeyword(searchInput.query.ifBlank { defaultKeyword })
@@ -275,6 +371,8 @@ fun WindowScope.MelodiaDesktopApp(
                     downloadsOpen = dockOpen && dockOverlay == DockOverlay.Downloads,
                     onDownloadsClick = downloader?.let { { toggleOverlay(DockOverlay.Downloads) } },
                     onLoginClick = { showLogin = true },
+                    onProfileClick = { userProfile?.let { backStack.navigate(DesktopRoute.Profile(it.uid)) } },
+                    onRecentClick = { backStack.navigate(DesktopRoute.RecentPlay) },
                     onSettingsClick = { backStack.navigate(DesktopRoute.Settings) },
                     onLogoutClick = homeViewModel::logout,
                     onMinimize = { windowState.isMinimized = true },
@@ -286,7 +384,8 @@ fun WindowScope.MelodiaDesktopApp(
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val available = maxWidth - DesktopDimens.PaneGap * 2
                     // 无曲目时下载面板也要能打开，右侧栏只承载它
-                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads
+                    val hasTrack = nowPlaying != null || dockOverlay == DockOverlay.Downloads ||
+                        dockOverlay == DockOverlay.PlaylistComments
                     // 侧栏最宽不超过固定上限，且尽量给中间内容区留出 CenterMinWidth；
                     // 两侧互相让位时，音乐库按正在播放栏的记忆宽度算，正在播放栏按音乐库的实际占用算
                     val dockStaticOccupied = when {
@@ -424,6 +523,20 @@ fun WindowScope.MelodiaDesktopApp(
                                                 name = route.name,
                                                 viewModel = frameHost.viewModelFor(entry.id, PodcastCategoryViewModel::class, { emptyFlow() }) { koin.get() }
                                             )
+                                            DesktopRoute.RecentPlay -> RecentPlayPage(
+                                                viewModel = frameHost.viewModelFor(entry.id, RecentPlayViewModel::class, { emptyFlow() }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            is DesktopRoute.Profile -> ProfilePage(
+                                                uid = route.uid,
+                                                viewModel = frameHost.viewModelFor(entry.id, ProfileViewModel::class, { it.toastEvent }) { koin.get() },
+                                                controller = playbackController
+                                            )
+                                            is DesktopRoute.FollowList -> FollowListPage(
+                                                uid = route.uid,
+                                                mode = route.mode,
+                                                viewModel = frameHost.viewModelFor(entry.id, FollowListViewModel::class, { it.toastEvent }) { koin.get() }
+                                            )
                                             DesktopRoute.Settings -> SettingsPage()
                                             DesktopRoute.Search -> SearchPage(
                                                 viewModel = searchViewModel,
@@ -440,11 +553,13 @@ fun WindowScope.MelodiaDesktopApp(
                                 state = dockState,
                                 hasTrack = hasTrack,
                                 open = dockOpen,
-                                overlay = dockOverlay,
+                                // 全屏歌词开着时面板改由上层的浮层承载
+                                overlay = if (lyricsView.isOpen) null else dockOverlay,
                                 audioOutput = mpvController,
                                 downloader = downloader,
                                 onCloseOverlay = { dockOverlay = null },
                                 onOpenComments = { toggleOverlay(DockOverlay.Comments) },
+                                playlistComments = playlistComments,
                                 onOpenLyricsView = lyricsView::open,
                                 onOpenLyricsFullscreen = lyricsView::openWithFullscreen,
                                 onOpenChange = setDockOpen,
@@ -480,6 +595,22 @@ fun WindowScope.MelodiaDesktopApp(
                         desktopPreferences = desktopPreferences,
                         isFullscreen = isFullscreen
                     )
+                    // 全屏歌词盖住了右侧栏，队列、设备等面板在它之上浮出
+                    val floatingOverlay = dockOverlay
+                    if (lyricsView.isOpen && dockOpen && floatingOverlay != null) {
+                        FloatingDockPanel(
+                            overlay = floatingOverlay,
+                            controller = playbackController,
+                            playerViewModel = playerViewModel,
+                            playlistComments = playlistComments,
+                            audioOutput = mpvController,
+                            downloader = downloader,
+                            onClose = { dockOverlay = null },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(DesktopDimens.PaneGap)
+                                .width(dockWidthPref.coerceIn(DesktopDimens.NowPlayingMinWidth, DesktopDimens.NowPlayingMaxWidth))
+                                .fillMaxHeight()
+                        )
+                    }
                 }
                 val volume = mpvController?.volume?.collectAsState()?.value
                 AnimatedVisibility(
