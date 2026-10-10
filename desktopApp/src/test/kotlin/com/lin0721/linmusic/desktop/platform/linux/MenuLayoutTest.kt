@@ -47,17 +47,37 @@ class MenuLayoutTest {
         )
         val children = built.root.children.map { it.value as MenuLayoutItem }
 
-        assertEquals(listOf(1, 2, 3), children.map { it.id })
-        assertEquals("播放", children[0].properties.getValue(DbusMenu.ITEM_LABEL).value)
-        assertEquals(true, children[0].properties.getValue(DbusMenu.ITEM_ENABLED).value)
-        assertEquals(DbusMenu.TOGGLE_CHECKMARK, children[1].properties.getValue(DbusMenu.ITEM_TOGGLE_TYPE).value)
-        assertEquals(1, children[1].properties.getValue(DbusMenu.ITEM_TOGGLE_STATE).value)
-        assertEquals(DbusMenu.TYPE_SEPARATOR, children[2].properties.getValue(DbusMenu.ITEM_TYPE).value)
+        // 无曲目时头部行仍然占位（仅隐藏），保证 id 分配稳定
+        assertEquals(listOf(1, 2, 3, 4, 5), children.map { it.id })
+        assertEquals(false, children[0].properties.getValue(DbusMenu.ITEM_VISIBLE).value)
+        assertEquals("播放", children[2].properties.getValue(DbusMenu.ITEM_LABEL).value)
+        assertEquals(true, children[2].properties.getValue(DbusMenu.ITEM_ENABLED).value)
+        assertEquals(DbusMenu.TOGGLE_CHECKMARK, children[3].properties.getValue(DbusMenu.ITEM_TOGGLE_TYPE).value)
+        assertEquals(1, children[3].properties.getValue(DbusMenu.ITEM_TOGGLE_STATE).value)
+        assertEquals(DbusMenu.TYPE_SEPARATOR, children[4].properties.getValue(DbusMenu.ITEM_TYPE).value)
 
-        built.callbacks.getValue(1).invoke()
-        built.callbacks.getValue(2).invoke()
+        built.callbacks.getValue(3).invoke()
+        built.callbacks.getValue(4).invoke()
         assertTrue(played)
         assertTrue(toggled)
+    }
+
+    @Test
+    fun `有无正在播放行时条目 id 保持一致`() {
+        val nodes = listOf(
+            action("显示主窗口"),
+            TrayMenuNode.Separator,
+            TrayMenuNode.Toggle("桌面歌词", checked = true) {},
+            action("退出"),
+        )
+        val withHeader = buildMenuLayout(model(header = "正在播放：某曲 - 某歌手", nodes = nodes))
+        val withoutHeader = buildMenuLayout(model(header = null, nodes = nodes))
+
+        // 宿主按 id 复用菜单项：结构必须一致，头部行只通过 visible 隐藏
+        assertEquals(withHeader.callbacks.keys, withoutHeader.callbacks.keys)
+        assertEquals(withHeader.root.children.size, withoutHeader.root.children.size)
+        val hiddenHeader = (withoutHeader.root.children.first().value as MenuLayoutItem).properties
+        assertEquals(false, hiddenHeader.getValue(DbusMenu.ITEM_VISIBLE).value)
     }
 
     @Test
@@ -66,9 +86,11 @@ class MenuLayoutTest {
         var clicked = 0
         val revision = server.update(model(nodes = listOf(action("显示主窗口") { clicked++ })))
 
-        server.Event(1, DbusMenu.EVENT_CLICKED, Variant(0, "i"), UInt32(0))
+        // 头部行占位后，第一个动作项的 id 为 3
+        server.Event(3, DbusMenu.EVENT_CLICKED, Variant(0, "i"), UInt32(0))
         assertEquals(1, clicked)
-        // 未登记的 id（如分隔线）不回调
+        // 未登记的 id（如分隔线/头部行）不回调
+        server.Event(1, DbusMenu.EVENT_CLICKED, Variant(0, "i"), UInt32(0))
         server.Event(99, DbusMenu.EVENT_CLICKED, Variant(0, "i"), UInt32(0))
         assertEquals(1, clicked)
 

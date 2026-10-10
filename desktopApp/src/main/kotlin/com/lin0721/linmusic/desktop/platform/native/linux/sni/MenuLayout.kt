@@ -18,10 +18,18 @@ internal fun buildMenuLayout(model: TrayMenuModel): BuiltMenu {
     val callbacks = mutableMapOf<Int, () -> Unit>()
     var nextId = 1
 
-    if (!model.header.isNullOrBlank()) {
-        children += menuChild(MenuLayoutItem(nextId++, labelProps(model.header, enabled = false), emptyArray()))
-        children += menuChild(MenuLayoutItem(nextId++, separatorProps(), emptyArray()))
-    }
+    // “正在播放”行始终占位（无曲目时用 visible=false 隐藏）：
+    // 宿主按 id 复用菜单项，结构变化会让后续所有条目错位（实测 Plasma 会把标签与勾选套到别的行上）
+    val header = model.header?.takeIf { it.isNotBlank() }
+    children += menuChild(
+        MenuLayoutItem(
+            nextId++,
+            labelProps(header.orEmpty(), enabled = false, visible = header != null),
+            emptyArray(),
+        )
+    )
+    children += menuChild(MenuLayoutItem(nextId++, separatorProps(header != null), emptyArray()))
+
     for (node in model.nodes) {
         when (node) {
             is TrayMenuNode.Action -> {
@@ -49,10 +57,10 @@ internal fun escapeMenuLabel(label: String): String = label.replace("_", "__")
 
 private fun menuChild(item: MenuLayoutItem): Variant<*> = Variant(item, MenuLayoutItem.SIGNATURE)
 
-private fun labelProps(label: String, enabled: Boolean): Map<String, Variant<*>> = mapOf(
+private fun labelProps(label: String, enabled: Boolean, visible: Boolean = true): Map<String, Variant<*>> = mapOf(
     DbusMenu.ITEM_LABEL to Variant(escapeMenuLabel(label), "s"),
     DbusMenu.ITEM_ENABLED to Variant(enabled, "b"),
-    DbusMenu.ITEM_VISIBLE to Variant(true, "b"),
+    DbusMenu.ITEM_VISIBLE to Variant(visible, "b"),
 )
 
 private fun toggleProps(label: String, checked: Boolean): Map<String, Variant<*>> = mapOf(
@@ -63,8 +71,10 @@ private fun toggleProps(label: String, checked: Boolean): Map<String, Variant<*>
     DbusMenu.ITEM_TOGGLE_STATE to Variant(if (checked) 1 else 0, "i"),
 )
 
-private fun separatorProps(): Map<String, Variant<*>> =
-    mapOf(DbusMenu.ITEM_TYPE to Variant(DbusMenu.TYPE_SEPARATOR, "s"))
+private fun separatorProps(visible: Boolean = true): Map<String, Variant<*>> = buildMap {
+    put(DbusMenu.ITEM_TYPE, Variant(DbusMenu.TYPE_SEPARATOR, "s"))
+    if (!visible) put(DbusMenu.ITEM_VISIBLE, Variant(false, "b"))
+}
 
 // 导出的 com.canonical.dbusmenu 对象：布局按 id 索引，宿主点击时按 id 找到回调。
 // 内容更新只推进版本号，由调用方广播 LayoutUpdated 让宿主重新拉取。
