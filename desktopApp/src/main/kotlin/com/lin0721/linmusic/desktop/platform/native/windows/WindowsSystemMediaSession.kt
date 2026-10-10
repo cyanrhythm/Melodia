@@ -20,6 +20,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import com.lin0721.linmusic.desktop.platform.native.DesktopPlatform
+import com.lin0721.linmusic.desktop.platform.native.PlatformImpl
 
 private const val TAG = "SmtcSession"
 
@@ -36,6 +38,7 @@ private const val SEEK_DETECT_THRESHOLD_MS = 1_500L
 private data class Metadata(val title: String, val artist: String, val album: String, val cover: String)
 
 // 系统媒体传输控制会话；DLL 调用统一在单独线程执行，保证 WinRT 套间一致
+@PlatformImpl(DesktopPlatform.WINDOWS)
 class WindowsSystemMediaSession : SystemMediaSession {
 
     private var library: SmtcLibrary? = null

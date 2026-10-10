@@ -29,7 +29,7 @@ import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopLibraryPreferences
 import com.lin0721.linmusic.desktop.platform.DesktopOnlineStateProvider
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
-import com.lin0721.linmusic.desktop.platform.DesktopPaths
+import com.lin0721.linmusic.desktop.platform.native.AppPaths
 import com.lin0721.linmusic.desktop.platform.DesktopResourceProvider
 import com.lin0721.linmusic.desktop.platform.SilentPlaybackController
 import com.lin0721.linmusic.desktop.platform.download.DesktopDownloadPreferences
@@ -86,7 +86,7 @@ private fun createPlaybackController(
     SilentPlaybackController()
 }
 
-private fun store(name: String) = PreferencesStores.get(DesktopPaths.preferencesFile(name))
+private fun store(name: String) = PreferencesStores.get(AppPaths.current.preferencesFile(name))
 
 val desktopPlatformModule = module {
     single { UserPreferences(store(PreferencesStores.USER)) }
@@ -105,10 +105,10 @@ val desktopPlatformModule = module {
     single<OnlineStateProvider> { DesktopOnlineStateProvider() }
     single {
         val userPreferences = get<UserPreferences>()
-        MetadataCache(DesktopPaths.metadataCacheDir) { userPreferences.userProfile.first()?.uid ?: 0L }
+        MetadataCache(AppPaths.current.metadataCacheDir) { userPreferences.userProfile.first()?.uid ?: 0L }
     }
     single { DesktopDownloadPreferences(store(DesktopDownloadPreferences.STORE_NAME)) }
-    single { AudioCache(DesktopPaths.audioCacheDir) }
+    single { AudioCache(AppPaths.current.audioCacheDir) }
     single<CachedAudioIndex> {
         val downloadPreferences = get<DesktopDownloadPreferences>()
         val audioCache = get<AudioCache>()
@@ -123,13 +123,13 @@ val desktopPlatformModule = module {
             playbackRepository = get(),
             settingsPreferences = get(),
             downloadPreferences = get(),
-            tempDir = DesktopPaths.downloadTempDir,
-            defaultDir = DesktopPaths.defaultDownloadDir
+            tempDir = AppPaths.current.downloadTempDir,
+            defaultDir = AppPaths.current.defaultDownloadDir
         )
     }
     single<SongDownloader> { get<DesktopSongDownloader>() }
     single<PlaybackController> { createPlaybackController(get(), get(), get(), get(), get(), get()) }
-    single { AmllLyricsClient(LyricsCache(DesktopPaths.localCacheDir)) }
+    single { AmllLyricsClient(LyricsCache(AppPaths.current.cacheDir)) }
     // 桌面第一版没有本地音乐，只取在线歌词
     single {
         val amllLyricsClient = get<AmllLyricsClient>()

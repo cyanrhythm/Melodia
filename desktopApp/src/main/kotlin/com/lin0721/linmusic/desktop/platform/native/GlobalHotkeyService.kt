@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 // 全局快捷键服务：Windows 用 RegisterHotKey + WM_HOTKEY，
 // 其他平台暂用 no-op（X11 XGrabKey / Wayland 另行实现）。
+@RequireAllPlatforms
 interface GlobalHotkeyService {
 
     var onAction: ((HotkeyAction) -> Unit)?
@@ -23,4 +24,11 @@ interface GlobalHotkeyService {
     fun pause()
 
     fun resume()
+
+    // 把 AWT 键码与修饰键状态翻译成本平台可注册的组合。
+    // 返回 null 表示该按键在本平台不支持，调用方据此提示用户。
+    //
+    // 之所以放在服务上而不是 UI 里：各平台的键码空间不同（Windows 用虚拟键码，X11 用 keysym），
+    // 转换规则属平台细节，UI 只负责把 AWT 事件交出去。
+    fun toHotkeyCombo(awtKeyCode: Int, ctrl: Boolean, alt: Boolean, shift: Boolean): HotkeyCombo?
 }

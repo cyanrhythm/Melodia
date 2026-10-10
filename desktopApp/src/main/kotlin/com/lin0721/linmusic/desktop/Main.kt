@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 import com.lin0721.linmusic.desktop.platform.DesktopCacheMigration
 import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
 import com.lin0721.linmusic.desktop.platform.DesktopLogging
-import com.lin0721.linmusic.desktop.platform.DesktopPaths
+import com.lin0721.linmusic.desktop.platform.native.AppPaths
 import com.lin0721.linmusic.desktop.platform.SingleInstance
 import org.jetbrains.skia.Image
 import org.koin.core.context.startKoin
@@ -76,7 +76,7 @@ fun main() {
     DesktopImageLoader.install()
     // 已有实例则唤起它并退出
     val activationRequests = Channel<Unit>(Channel.CONFLATED)
-    if (!SingleInstance(DesktopPaths.dataDir).acquire { activationRequests.trySend(Unit) }) {
+    if (!SingleInstance(AppPaths.current.dataDir).acquire { activationRequests.trySend(Unit) }) {
         exitProcess(0)
     }
     // 须先于缓存对象创建

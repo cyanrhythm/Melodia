@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.desktop.player.mpv
 
+import com.lin0721.linmusic.desktop.platform.native.NativeLibraryLocator
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.NativeLibrary
@@ -26,24 +27,24 @@ internal interface LibMpv : Library {
     fun mpv_error_string(error: Int): String?
 
     companion object {
-        // Windows 下 libmpv 的文件名；其他平台的 soname 随发行版而异，见 candidatesFor
-        private const val WINDOWS_LIBRARY_NAME = "libmpv-2"
         private val OPTIONS = mapOf(Library.OPTION_STRING_ENCODING to "UTF-8")
 
-        private val osName = System.getProperty("os.name").orEmpty()
-        private val isWindows = osName.startsWith("Windows", ignoreCase = true)
-        private val isMac = osName.startsWith("Mac", ignoreCase = true)
-
+        // 库名与搜索路径的差异由平台定位器给出，本类不含平台判断
         fun load(): LibMpv {
+            val locator = NativeLibraryLocator.current
             // Compose 在开发运行与安装包里都会通过该属性给出平台资源目录，原生库放在那里
             val resourcesDir = System.getProperty("compose.application.resources.dir")
-            if (isWindows) {
-                resourcesDir?.let { NativeLibrary.addSearchPath(WINDOWS_LIBRARY_NAME, it) }
-                return Native.load(WINDOWS_LIBRARY_NAME, LibMpv::class.java, OPTIONS)
+
+            // 部分平台需先把资源目录注册进 JNA 搜索路径
+            val searchRoot = locator.searchPathRoot(resourcesDir)
+            val searchName = locator.searchPathLibraryName()
+            if (searchRoot != null && searchName != null) {
+                NativeLibrary.addSearchPath(searchName, searchRoot)
             }
-            // 非 Windows：优先加载随包分发的 .so/.dylib，再回退系统库；逐个候选尝试，取第一个成功的
+
+            // 逐个候选尝试，取第一个加载成功的
             var lastError: UnsatisfiedLinkError? = null
-            for (name in candidatesFor(resourcesDir)) {
+            for (name in locator.candidates(resourcesDir)) {
                 try {
                     return Native.load(name, LibMpv::class.java, OPTIONS)
                 } catch (e: UnsatisfiedLinkError) {
@@ -51,21 +52,6 @@ internal interface LibMpv : Library {
                 }
             }
             throw lastError ?: UnsatisfiedLinkError("未找到 libmpv")
-        }
-
-        private fun candidatesFor(resourcesDir: String?): List<String> = buildList {
-            if (resourcesDir != null) {
-                if (isMac) {
-                    add("$resourcesDir/libmpv.2.dylib")
-                    add("$resourcesDir/libmpv.dylib")
-                } else {
-                    add("$resourcesDir/libmpv.so.2")
-                    add("$resourcesDir/libmpv.so")
-                }
-            }
-            // 系统库：JNA 会把 “mpv” 映射为 libmpv.so / libmpv.dylib
-            add("mpv")
-            if (isMac) add("libmpv.2.dylib") else add("libmpv.so.2")
         }
     }
 }

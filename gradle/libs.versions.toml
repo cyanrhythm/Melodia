@@ -34,6 +34,8 @@ taglib = "1.0.5"
 orgJson = "20230227"
 room = "2.8.5"
 ksp = "2.3.12"
+# KSP API 与 ksp 插件版本保持同一代（2.3.x 对应 Kotlin 2.2.x）
+kspApi = "2.3.12"
 
 [libraries]
 bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
@@ -107,6 +109,8 @@ taglib = { group = "io.github.kyant0", name = "taglib", version.ref = "taglib" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+# KSP API（供 desktopApp 的平台契约处理器编写）
+ksp-api = { group = "com.google.devtools.ksp", name = "symbol-processing-api", version.ref = "kspApi" }
 # 图片裁剪（歌单封面裁正方形）
 android-image-cropper = { group = "com.vanniktech", name = "android-image-cropper", version.ref = "imageCropper" }
 

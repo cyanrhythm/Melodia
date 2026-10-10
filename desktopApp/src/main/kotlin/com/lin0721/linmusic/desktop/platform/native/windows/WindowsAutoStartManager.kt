@@ -1,11 +1,14 @@
 package com.lin0721.linmusic.desktop.platform.native.windows
 
 import com.lin0721.linmusic.desktop.platform.native.AutoStartManager
+import com.lin0721.linmusic.desktop.platform.native.DesktopPlatform
+import com.lin0721.linmusic.desktop.platform.native.PlatformImpl
 
 private const val RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
 private const val VALUE_NAME = "Melodia"
 
 // 开机自启以注册表 Run 项为准；阻塞调用，需在 IO 线程执行
+@PlatformImpl(DesktopPlatform.WINDOWS)
 class WindowsAutoStartManager : AutoStartManager {
 
     // jpackage 启动器注入的 exe 路径，开发环境运行时为空

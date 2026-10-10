@@ -5,10 +5,13 @@ import com.lin0721.linmusic.desktop.platform.native.DesktopLyricBehavior
 import com.lin0721.linmusic.desktop.platform.native.windows.winapi.User32
 import com.sun.jna.Native
 import java.awt.Window
+import com.lin0721.linmusic.desktop.platform.native.DesktopPlatform
+import com.lin0721.linmusic.desktop.platform.native.PlatformImpl
 
 private const val TAG = "DesktopLyric"
 
 // 锁定后加 WS_EX_TRANSPARENT，鼠标事件直接穿透到下层窗口
+@PlatformImpl(DesktopPlatform.WINDOWS)
 class WindowsDesktopLyricBehavior : DesktopLyricBehavior {
 
     override fun setClickThrough(window: Window, enabled: Boolean) {

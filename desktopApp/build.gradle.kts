@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 java {
@@ -30,6 +31,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.jna)
     implementation(libs.jaudiotagger)
+    // 平台能力契约的编译期校验（校验平台覆盖度与模块注册完整性）
+    ksp(project(":processor"))
     testImplementation(libs.junit)
 }
 

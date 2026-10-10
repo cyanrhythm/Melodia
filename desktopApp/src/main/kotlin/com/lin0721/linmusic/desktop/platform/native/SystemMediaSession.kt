@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 // 系统媒体控制会话：Windows 走 SMTC，Linux 后续走 MPRIS over D-Bus。
 // 实现分别位于 platform/windows 与 platform/linux，由 PlatformModule 按平台选择。
+@RequireAllPlatforms
 interface SystemMediaSession {
 
     val available: StateFlow<Boolean>

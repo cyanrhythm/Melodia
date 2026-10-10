@@ -10,6 +10,8 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.IntByReference
 import java.awt.Window
 import java.util.concurrent.ConcurrentHashMap
+import com.lin0721.linmusic.desktop.platform.native.DesktopPlatform
+import com.lin0721.linmusic.desktop.platform.native.PlatformImpl
 
 private const val TAG = "WindowChrome"
 
@@ -21,6 +23,7 @@ private interface WndProc : Callback {
 private class Subclass(val previous: Pointer?, val proc: WndProc)
 
 // 无边框窗口的系统圆角、边框色与最小化/还原/显示/隐藏动画；非 Windows 11 上调用无副作用
+@PlatformImpl(DesktopPlatform.WINDOWS)
 class WindowsWindowDecoration : WindowDecoration {
 
     private val isWindows = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
