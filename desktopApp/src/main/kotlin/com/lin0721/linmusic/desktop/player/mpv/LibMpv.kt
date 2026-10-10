@@ -31,6 +31,8 @@ internal interface LibMpv : Library {
 
         // 库名与搜索路径的差异由平台定位器给出，本类不含平台判断
         fun load(): LibMpv {
+            // mpv 要求进程 LC_NUMERIC 为 "C"，否则 mpv_create 返回空句柄
+            MpvLocale.ensureNumericLocaleC()
             val locator = NativeLibraryLocator.current
             // Compose 在开发运行与安装包里都会通过该属性给出平台资源目录，原生库放在那里
             val resourcesDir = System.getProperty("compose.application.resources.dir")
