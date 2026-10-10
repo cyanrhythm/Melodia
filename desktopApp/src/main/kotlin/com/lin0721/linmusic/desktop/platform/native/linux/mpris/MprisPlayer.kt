@@ -76,9 +76,15 @@ interface MprisPlayer : DBusInterface, Properties {
         const val PROP_SHUFFLE = "Shuffle"
         const val PROP_CAN_SEEK = "CanSeek"
         const val PROP_CAN_PLAY = "CanPlay"
+        // KDE(libkmpris) 的 PlayPause/Pause 会先读 CanPause；缺省会被当成 false 并直接短路，
+        // 表现为媒体卡片里点暂停无反应（连 D-Bus 调用都不会发出）
+        const val PROP_CAN_PAUSE = "CanPause"
+        const val PROP_CAN_STOP = "CanStop"
         const val PROP_CAN_GO_NEXT = "CanGoNext"
         const val PROP_CAN_GO_PREVIOUS = "CanGoPrevious"
         const val PROP_CAN_CONTROL = "CanControl"
+        const val PROP_MINIMUM_RATE = "MinimumRate"
+        const val PROP_MAXIMUM_RATE = "MaximumRate"
     }
 }
 

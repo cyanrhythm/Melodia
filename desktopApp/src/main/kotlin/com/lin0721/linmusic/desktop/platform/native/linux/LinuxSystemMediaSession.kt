@@ -10,6 +10,7 @@ import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisLoopStatus
 import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisMetadata
 import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisPlaybackStatus
 import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisPlayer
+import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisRoot
 import com.lin0721.linmusic.desktop.ui.sizedCoverUrl
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import kotlinx.coroutines.coroutineScope
@@ -82,8 +83,11 @@ class LinuxSystemMediaSession : SystemMediaSession {
         val ok = try {
             worker.submit<Boolean> {
                 val conn = DBusConnectionBuilder.forSessionBus().build()
-                conn.requestBusName(MprisPlayer.BUS_NAME)
+                // 先导出对象再抢名字：KDE 的 Mpris2SourceModel 监听 NameOwnerChanged，
+                // 名称一出现就立即 GetAll；若此时对象尚未导出，首次抓取会失败，
+                // 该播放器会被直接丢弃且不再重试（媒体中心永远不显示）
                 conn.exportObject(MprisPlayer.OBJECT_PATH, MprisObject())
+                conn.requestBusName(MprisPlayer.BUS_NAME)
                 connection = conn
                 true
             }.get(INIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -229,10 +233,40 @@ class LinuxSystemMediaSession : SystemMediaSession {
         conn.sendMessage(MprisPlayer.PropertiesChanged(MprisPlayer.OBJECT_PATH, changed))
     }
 
+    // MPRIS 的 LoopStatus/Shuffle 组合映射到播放器的三种模式；
+    // 控制器只暴露 toggle 接口，这里按当前模式选择正确的切换动作。
+    private fun setLoopStatus(controller: PlaybackController, status: String) {
+        // 本项目没有"不循环"模式，"None" 按最接近的列表循环处理
+        val target = if (status == MprisLoopStatus.TRACK) PlayMode.SINGLE_LOOP else PlayMode.LIST_LOOP
+        switchPlayMode(controller, target)
+    }
+
+    private fun setShuffle(controller: PlaybackController, enabled: Boolean) {
+        switchPlayMode(controller, if (enabled) PlayMode.SHUFFLE else PlayMode.LIST_LOOP)
+    }
+
+    private fun switchPlayMode(controller: PlaybackController, target: PlayMode) {
+        val current = controller.playMode.value
+        if (current == target) return
+        when (target) {
+            PlayMode.SINGLE_LOOP -> controller.toggleRepeat()
+            PlayMode.LIST_LOOP -> if (current == PlayMode.SHUFFLE) controller.toggleShuffle() else controller.toggleRepeat()
+            PlayMode.SHUFFLE -> controller.toggleShuffle()
+        }
+    }
+
     // 导出的 MPRIS 对象：属性读自 state，方法调用投递到 commands
-    private inner class MprisObject : MprisPlayer {
+    private inner class MprisObject : MprisPlayer, MprisRoot {
 
         override fun isRemote(): Boolean = false
+
+        // 两个接口都带默认实现，须显式 override 消歧
+        override fun getObjectPath(): String = MprisPlayer.OBJECT_PATH
+
+        // CanQuit / CanRaise 为 false：仅实现空操作满足规范
+        override fun Raise() = Unit
+
+        override fun Quit() = Unit
 
         override fun Next() = emit { it.playNext() }
         override fun Previous() = emit { it.skipToPrevious() }
@@ -251,41 +285,83 @@ class LinuxSystemMediaSession : SystemMediaSession {
         }
 
         @Suppress("UNCHECKED_CAST")
-        override fun <A : Any?> Get(iface: String, prop: String): A = when (prop) {
-            MprisPlayer.PROP_PLAYBACK_STATUS -> state.playbackStatus as A
-            MprisPlayer.PROP_POSITION -> state.positionMicros as A
-            MprisPlayer.PROP_RATE -> 1.0 as A
-            MprisPlayer.PROP_VOLUME -> state.volume as A
-            // Metadata 是 a{sv}，须显式包装：bare Map 无法被 dbus-java 序列化
-            MprisPlayer.PROP_METADATA -> Variant(state.metadata, "a{sv}") as A
-            MprisPlayer.PROP_LOOP_STATUS -> state.loopStatus as A
-            MprisPlayer.PROP_SHUFFLE -> state.shuffle as A
-            MprisPlayer.PROP_CAN_SEEK,
-            MprisPlayer.PROP_CAN_PLAY,
-            MprisPlayer.PROP_CAN_GO_NEXT,
-            MprisPlayer.PROP_CAN_GO_PREVIOUS,
-            MprisPlayer.PROP_CAN_CONTROL -> true as A
+        override fun <A : Any?> Get(iface: String, prop: String): A = when (iface) {
+            MprisPlayer.PLAYER_INTERFACE -> when (prop) {
+                MprisPlayer.PROP_PLAYBACK_STATUS -> state.playbackStatus as A
+                MprisPlayer.PROP_POSITION -> state.positionMicros as A
+                MprisPlayer.PROP_RATE -> 1.0 as A
+                MprisPlayer.PROP_VOLUME -> state.volume as A
+                // Metadata 是 a{sv}，须显式包装：bare Map 无法被 dbus-java 序列化
+                MprisPlayer.PROP_METADATA -> Variant(state.metadata, "a{sv}") as A
+                MprisPlayer.PROP_LOOP_STATUS -> state.loopStatus as A
+                MprisPlayer.PROP_SHUFFLE -> state.shuffle as A
+                MprisPlayer.PROP_CAN_SEEK,
+                MprisPlayer.PROP_CAN_PLAY,
+                MprisPlayer.PROP_CAN_PAUSE,
+                MprisPlayer.PROP_CAN_STOP,
+                MprisPlayer.PROP_CAN_GO_NEXT,
+                MprisPlayer.PROP_CAN_GO_PREVIOUS,
+                MprisPlayer.PROP_CAN_CONTROL -> true as A
+                MprisPlayer.PROP_MINIMUM_RATE,
+                MprisPlayer.PROP_MAXIMUM_RATE -> 1.0 as A
+                else -> null as A
+            }
+            MprisRoot.ROOT_INTERFACE -> when (prop) {
+                MprisRoot.PROP_IDENTITY -> MprisRoot.IDENTITY as A
+                MprisRoot.PROP_DESKTOP_ENTRY -> MprisRoot.DESKTOP_ENTRY as A
+                MprisRoot.PROP_CAN_QUIT,
+                MprisRoot.PROP_CAN_RAISE,
+                MprisRoot.PROP_HAS_TRACK_LIST,
+                MprisRoot.PROP_FULLSCREEN,
+                MprisRoot.PROP_CAN_SET_FULLSCREEN -> false as A
+                MprisRoot.PROP_SUPPORTED_URI_SCHEMES,
+                MprisRoot.PROP_SUPPORTED_MIME_TYPES -> emptyList<String>() as A
+                else -> null as A
+            }
             else -> null as A
         }
 
-        override fun GetAll(iface: String): Map<String, Variant<*>> = mapOf(
-            MprisPlayer.PROP_PLAYBACK_STATUS to Variant(state.playbackStatus),
-            MprisPlayer.PROP_POSITION to Variant(state.positionMicros),
-            MprisPlayer.PROP_RATE to Variant(1.0),
-            MprisPlayer.PROP_VOLUME to Variant(state.volume),
-            MprisPlayer.PROP_METADATA to Variant(state.metadata, "a{sv}"),
-            MprisPlayer.PROP_LOOP_STATUS to Variant(state.loopStatus),
-            MprisPlayer.PROP_SHUFFLE to Variant(state.shuffle),
-            MprisPlayer.PROP_CAN_SEEK to Variant(true),
-            MprisPlayer.PROP_CAN_PLAY to Variant(true),
-            MprisPlayer.PROP_CAN_GO_NEXT to Variant(true),
-            MprisPlayer.PROP_CAN_GO_PREVIOUS to Variant(true),
-            MprisPlayer.PROP_CAN_CONTROL to Variant(true),
-        )
+        override fun GetAll(iface: String): Map<String, Variant<*>> = when (iface) {
+            MprisPlayer.PLAYER_INTERFACE -> mapOf(
+                MprisPlayer.PROP_PLAYBACK_STATUS to Variant(state.playbackStatus),
+                MprisPlayer.PROP_POSITION to Variant(state.positionMicros),
+                MprisPlayer.PROP_RATE to Variant(1.0),
+                MprisPlayer.PROP_VOLUME to Variant(state.volume),
+                MprisPlayer.PROP_METADATA to Variant(state.metadata, "a{sv}"),
+                MprisPlayer.PROP_LOOP_STATUS to Variant(state.loopStatus),
+                MprisPlayer.PROP_SHUFFLE to Variant(state.shuffle),
+                MprisPlayer.PROP_CAN_SEEK to Variant(true),
+                MprisPlayer.PROP_CAN_PLAY to Variant(true),
+                MprisPlayer.PROP_CAN_PAUSE to Variant(true),
+                MprisPlayer.PROP_CAN_STOP to Variant(true),
+                MprisPlayer.PROP_CAN_GO_NEXT to Variant(true),
+                MprisPlayer.PROP_CAN_GO_PREVIOUS to Variant(true),
+                MprisPlayer.PROP_CAN_CONTROL to Variant(true),
+                MprisPlayer.PROP_MINIMUM_RATE to Variant(1.0),
+                MprisPlayer.PROP_MAXIMUM_RATE to Variant(1.0),
+            )
+            MprisRoot.ROOT_INTERFACE -> mapOf(
+                MprisRoot.PROP_CAN_QUIT to Variant(false),
+                MprisRoot.PROP_CAN_RAISE to Variant(false),
+                MprisRoot.PROP_HAS_TRACK_LIST to Variant(false),
+                MprisRoot.PROP_IDENTITY to Variant(MprisRoot.IDENTITY),
+                MprisRoot.PROP_DESKTOP_ENTRY to Variant(MprisRoot.DESKTOP_ENTRY),
+                MprisRoot.PROP_FULLSCREEN to Variant(false),
+                MprisRoot.PROP_CAN_SET_FULLSCREEN to Variant(false),
+                // 空数组须显式标注 as，否则 dbus-java 无法推断元素类型
+                MprisRoot.PROP_SUPPORTED_URI_SCHEMES to Variant(emptyList<String>(), "as"),
+                MprisRoot.PROP_SUPPORTED_MIME_TYPES to Variant(emptyList<String>(), "as"),
+            )
+            else -> emptyMap()
+        }
 
         override fun <A : Any?> Set(iface: String, prop: String, value: A) {
-            // 目前只接受音量写入，其余由播放器自身状态驱动
-            if (prop == MprisPlayer.PROP_VOLUME && value is Double) state.volume = value
+            if (iface != MprisPlayer.PLAYER_INTERFACE) return
+            when (prop) {
+                MprisPlayer.PROP_VOLUME -> if (value is Double) state.volume = value
+                MprisPlayer.PROP_LOOP_STATUS -> if (value is String) emit { setLoopStatus(it, value) }
+                MprisPlayer.PROP_SHUFFLE -> if (value is Boolean) emit { setShuffle(it, value) }
+            }
         }
 
         private fun emit(action: (PlaybackController) -> Unit) {
