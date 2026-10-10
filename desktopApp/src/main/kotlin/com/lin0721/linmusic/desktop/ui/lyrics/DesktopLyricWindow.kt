@@ -30,6 +30,8 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.desktop.platform.native.UiScale
+import com.lin0721.linmusic.desktop.ui.ProvideUiScale
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.native.DesktopLyricBehavior
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
@@ -47,6 +49,10 @@ private val PillShape = RoundedCornerShape(15.dp)
 
 private val WindowSize = DpSize(1000.dp, 96.dp)
 
+// 窗口几何按 AWT 像素换算（逻辑尺寸 × 桌面缩放）；内容缩放由 ProvideUiScale 统一注入
+private val ScaledWindowSize: DpSize
+    get() = DpSize(WindowSize.width * UiScale.current.factor, WindowSize.height * UiScale.current.factor)
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun DesktopLyricWindow(
@@ -60,12 +66,12 @@ fun DesktopLyricWindow(
 ) {
     // 默认放在屏幕下方约五分之四高度处，水平居中
     val windowState = rememberWindowState(
-        size = WindowSize,
+        size = ScaledWindowSize,
         position = remember {
             val screen = Toolkit.getDefaultToolkit().screenSize
             WindowPosition(
-                ((screen.width - WindowSize.width.value) / 2).dp,
-                (screen.height * 0.8f - WindowSize.height.value).dp
+                ((screen.width - ScaledWindowSize.width.value) / 2).dp,
+                (screen.height * 0.8f - ScaledWindowSize.height.value).dp
             )
         }
     )
@@ -95,23 +101,25 @@ fun DesktopLyricWindow(
                 ?: "${track.title} - ${track.artist}"
         }
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            WindowDraggableArea(
-                Modifier.clip(PillShape).background(PillBackground)
-                    .onPointerEvent(PointerEventType.Press) { event ->
-                        // 与 Android 一致：双击关闭
-                        if (event.awtEventOrNull?.clickCount == 2) onHide()
-                    }
-            ) {
-                Text(
-                    text,
-                    color = parseColor(colorHex),
-                    fontSize = (textSize * DESKTOP_TEXT_SCALE).sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+        ProvideUiScale {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                WindowDraggableArea(
+                    Modifier.clip(PillShape).background(PillBackground)
+                        .onPointerEvent(PointerEventType.Press) { event ->
+                            // 与 Android 一致：双击关闭
+                            if (event.awtEventOrNull?.clickCount == 2) onHide()
+                        }
+                ) {
+                    Text(
+                        text,
+                        color = parseColor(colorHex),
+                        fontSize = (textSize * DESKTOP_TEXT_SCALE).sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     }

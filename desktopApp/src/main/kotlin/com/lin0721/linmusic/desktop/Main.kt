@@ -46,6 +46,8 @@ import com.lin0721.linmusic.desktop.platform.native.SystemMediaSession
 import com.lin0721.linmusic.desktop.platform.native.WindowDecoration
 import com.lin0721.linmusic.desktop.platform.MIN_WINDOW_HEIGHT
 import com.lin0721.linmusic.desktop.platform.MIN_WINDOW_WIDTH
+import com.lin0721.linmusic.desktop.platform.native.UiScale
+import com.lin0721.linmusic.desktop.ui.ProvideUiScale
 import com.lin0721.linmusic.desktop.platform.WindowBounds
 import com.lin0721.linmusic.desktop.platform.currentScreenBounds
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
@@ -82,6 +84,7 @@ import org.jetbrains.skia.Image
 import org.koin.core.context.startKoin
 import kotlin.system.exitProcess
 import java.awt.Dimension
+import kotlin.math.roundToInt
 
 private const val VOLUME_STEP = 5
 private const val SEEK_STEP_MS = 5_000L
@@ -126,8 +129,12 @@ fun main() {
     // 系统媒体卡片可用时由它接管媒体键，否则回退全局热键
     val smtcActive = smtc.start()
     val savedWindow = runBlocking { desktopPreferences.loadWindow() }
-    val restoredBounds = savedWindow.bounds
-    val restoredPosition = restoredBounds?.takeIf { it.isReachableOn(currentScreenBounds()) }
+    // 旧版本以像素保存、现已改按逻辑坐标换算；恢复时夹紧到屏幕内，避免升级后窗口落在屏外
+    val screens = currentScreenBounds()
+    val restoredBounds = savedWindow.bounds?.takeIf { it.isReachableOn(screens) }?.clampInto(screens)
+    val restoredPosition = restoredBounds
+    // 桌面缩放探测（Linux 分数缩放下 AWT 恒为 1.0）；窗口几何按逻辑坐标存取，此处换算像素
+    val uiScale = UiScale.current.factor
 
     application {
         val scope = rememberCoroutineScope()
@@ -249,8 +256,13 @@ fun main() {
 
         val windowState = rememberWindowState(
             placement = if (savedWindow.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
-            size = restoredBounds?.let { DpSize(it.width.dp, it.height.dp) } ?: DEFAULT_WINDOW_SIZE,
-            position = restoredPosition?.let { WindowPosition(it.x.dp, it.y.dp) } ?: WindowPosition(Alignment.Center)
+            // 持久化的是逻辑坐标，交给 AWT 前按桌面缩放换算成像素
+            size = restoredBounds?.let {
+                DpSize((it.width * uiScale).dp, (it.height * uiScale).dp)
+            } ?: DpSize(DEFAULT_WINDOW_SIZE.width * uiScale, DEFAULT_WINDOW_SIZE.height * uiScale),
+            position = restoredPosition?.let {
+                WindowPosition((it.x * uiScale).dp, (it.y * uiScale).dp)
+            } ?: WindowPosition(Alignment.Center)
         )
         val fullscreen = rememberFullscreenState(windowState)
         val lyricsView = rememberLyricsViewState(fullscreen)
@@ -283,7 +295,10 @@ fun main() {
             }
         ) {
             LaunchedEffect(Unit) {
-                window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+                window.minimumSize = Dimension(
+                    (MIN_WINDOW_WIDTH * uiScale).roundToInt(),
+                    (MIN_WINDOW_HEIGHT * uiScale).roundToInt()
+                )
             }
             // 全屏不记；最小化时系统会把窗口挪到屏外，同样不记
             LaunchedEffect(windowState) {
@@ -296,8 +311,16 @@ fun main() {
                         if (snapshot.minimized) return@collect
                         val bounds = snapshot.awtBounds
                         when (snapshot.placement) {
-                            WindowPlacement.Floating ->
-                                desktopPreferences.saveWindow(WindowBounds(bounds.x, bounds.y, bounds.width, bounds.height), false)
+                            // AWT 像素换算回逻辑坐标后持久化
+                            WindowPlacement.Floating -> desktopPreferences.saveWindow(
+                                WindowBounds(
+                                    (bounds.x / uiScale).roundToInt(),
+                                    (bounds.y / uiScale).roundToInt(),
+                                    (bounds.width / uiScale).roundToInt(),
+                                    (bounds.height / uiScale).roundToInt()
+                                ),
+                                false
+                            )
                             WindowPlacement.Maximized -> desktopPreferences.saveWindow(null, true)
                             WindowPlacement.Fullscreen -> Unit
                         }
@@ -314,14 +337,16 @@ fun main() {
                 maximized = windowState.placement != WindowPlacement.Floating,
                 decoration = windowDecoration
             )
-            MelodiaDesktopTheme {
-                MelodiaDesktopApp(
-                    windowState = windowState,
-                    fullscreen = fullscreen,
-                    lyricsView = lyricsView,
-                    searchFocusRequests = searchFocusRequests.receiveAsFlow(),
-                    onClose = closeMainWindow
-                )
+            ProvideUiScale {
+                MelodiaDesktopTheme {
+                    MelodiaDesktopApp(
+                        windowState = windowState,
+                        fullscreen = fullscreen,
+                        lyricsView = lyricsView,
+                        searchFocusRequests = searchFocusRequests.receiveAsFlow(),
+                        onClose = closeMainWindow
+                    )
+                }
             }
         }
 
