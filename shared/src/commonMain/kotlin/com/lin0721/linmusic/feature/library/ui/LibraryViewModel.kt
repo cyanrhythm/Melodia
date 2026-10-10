@@ -66,7 +66,7 @@ enum class LibraryPlaylistOwnerFilter {
 }
 
 enum class LibrarySortOrder {
-    DEFAULT, RECENTLY_PLAYED, NAME, CUSTOM
+    RECENTLY_PLAYED, NAME, CUSTOM
 }
 
 class LibraryViewModel(
@@ -199,7 +199,8 @@ class LibraryViewModel(
 
     private fun getSortOrderFromPrefs(): LibrarySortOrder {
         val raw = libraryPreferences.sortOrderName()
-        return raw?.let { runCatching { LibrarySortOrder.valueOf(it) }.getOrNull() } ?: LibrarySortOrder.DEFAULT
+        return raw?.let { runCatching { LibrarySortOrder.valueOf(it) }.getOrNull() }
+            ?: LibrarySortOrder.RECENTLY_PLAYED
     }
 
     private fun saveSortOrderToPrefs(order: LibrarySortOrder) {
@@ -403,8 +404,6 @@ class LibraryViewModel(
         val customOrderMap = customPlaylistOrder.mapIndexed { index, id -> id to index }.toMap()
 
         val sortedUnpinned = when (sort) {
-            // 服务端顺序：不参与任何重排，原样保留接口返回的排列（网页端同款）
-            LibrarySortOrder.DEFAULT -> unpinnedItems
             LibrarySortOrder.RECENTLY_PLAYED -> {
                 unpinnedItems.sortedWith(
                     compareByDescending<LibraryItem> { it.lastPlayTime }

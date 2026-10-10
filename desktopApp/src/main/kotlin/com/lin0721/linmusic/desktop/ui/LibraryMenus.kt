@@ -84,7 +84,6 @@ private val MenuGap = 6.dp
 internal const val SEARCH_ANIMATION_MS = 220
 
 internal fun sortLabel(order: LibrarySortOrder): String = when (order) {
-    LibrarySortOrder.DEFAULT -> "默认"
     LibrarySortOrder.RECENTLY_PLAYED -> "最近播放"
     LibrarySortOrder.NAME -> "字母排序"
     LibrarySortOrder.CUSTOM -> "自定义"

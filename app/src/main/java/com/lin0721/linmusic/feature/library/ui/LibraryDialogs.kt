@@ -148,7 +148,6 @@ fun LibrarySortMenuSheet(
             )
 
             val sortOptions = listOf(
-                LibrarySortOrder.DEFAULT to "默认",
                 LibrarySortOrder.RECENTLY_PLAYED to "最近播放",
                 LibrarySortOrder.NAME to "字母排序",
                 LibrarySortOrder.CUSTOM to "自定义"
