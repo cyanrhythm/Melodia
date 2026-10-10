@@ -35,6 +35,8 @@ import com.lin0721.linmusic.desktop.ui.ProvideUiScale
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.platform.native.DesktopLyricBehavior
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.awt.Toolkit
 
 private const val TAG = "DesktopLyric"
@@ -86,7 +88,10 @@ fun DesktopLyricWindow(
         focusable = false,
         resizable = false
     ) {
-        LaunchedEffect(locked, visible) { if (visible) lyricBehavior.setClickThrough(window, locked) }
+        // 穿透设置可能因等窗口映射而短暂重试，放到 IO 线程执行
+        LaunchedEffect(locked, visible) {
+            if (visible) withContext(Dispatchers.IO) { lyricBehavior.setClickThrough(window, locked) }
+        }
 
         val nowPlaying by controller.nowPlaying.collectAsState()
         val detailState by playerViewModel.songDetailState.collectAsState()
