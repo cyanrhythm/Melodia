@@ -81,10 +81,11 @@ abstract class CmakeDllTask @Inject constructor(private val execOps: ExecOperati
     }
 }
 
+// 原生源码按平台分目录：native-src/<platform>/<module>，编译任务与产物同样按平台区分
 val buildSmtc by tasks.registering(CmakeDllTask::class) {
     onlyIf { System.getProperty("os.name").startsWith("Windows") }
-    sourceDir.set(layout.projectDirectory.dir("native-src/smtc"))
-    cmakeBuildDir.set(layout.buildDirectory.dir("smtc"))
+    sourceDir.set(layout.projectDirectory.dir("native-src/windows/smtc"))
+    cmakeBuildDir.set(layout.buildDirectory.dir("native/windows/smtc"))
     dllName.set("melodia_smtc.dll")
     outputDll.set(layout.projectDirectory.file("native/melodia_smtc.dll"))
 }

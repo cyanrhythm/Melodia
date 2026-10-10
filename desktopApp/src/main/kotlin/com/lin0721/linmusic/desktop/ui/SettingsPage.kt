@@ -69,17 +69,17 @@ import com.lin0721.linmusic.core.preferences.FullPlayerCardLayout
 import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
-import com.lin0721.linmusic.desktop.platform.AutoStart
+import com.lin0721.linmusic.desktop.platform.native.AutoStartManager
 import com.lin0721.linmusic.desktop.platform.CloseAction
 import com.lin0721.linmusic.desktop.platform.DesktopImageLoader
 import com.lin0721.linmusic.desktop.platform.DesktopPaths
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
-import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
+import com.lin0721.linmusic.desktop.platform.native.GlobalHotkeyService
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
 import com.lin0721.linmusic.desktop.platform.HotkeyCombo
-import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
+import com.lin0721.linmusic.desktop.platform.HotkeyModifiers
+import com.lin0721.linmusic.desktop.platform.native.SystemMediaSession
 import com.lin0721.linmusic.desktop.player.cache.AudioCache
-import com.lin0721.linmusic.desktop.platform.win.User32
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -113,10 +113,10 @@ fun SettingsPage(modifier: Modifier = Modifier) {
     val settingsPreferences = remember { koin.get<SettingsPreferences>() }
     val sourcePreferences = remember { koin.get<SourcePreferences>() }
     val desktopPreferences = remember { koin.get<DesktopPreferences>() }
-    val hotkeys = remember { koin.get<GlobalHotkeys>() }
+    val hotkeys = remember { koin.get<GlobalHotkeyService>() }
     val audioCache = remember { koin.get<AudioCache>() }
     val navigator = LocalDesktopNavigator.current
-    val smtc = remember { koin.get<SmtcSession>() }
+    val smtc = remember { koin.get<SystemMediaSession>() }
     val scope = rememberCoroutineScope()
 
     val quality by settingsPreferences.wifiQuality.collectAsState(initial = "lossless")
@@ -583,21 +583,22 @@ private fun CloseOption(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun AutoStartRow() {
     val navigator = LocalDesktopNavigator.current
     val scope = rememberCoroutineScope()
-    // null 表示尚未读到注册表状态
+    val autoStart = remember { GlobalContext.get().get<AutoStartManager>() }
+    // null 表示尚未读到自启状态
     var enabled by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
-        enabled = withContext(Dispatchers.IO) { AutoStart.isEnabled() }
+        enabled = withContext(Dispatchers.IO) { autoStart.isEnabled() }
     }
     SettingRow(
         title = "开机自动启动",
-        subtitle = if (AutoStart.isSupported) null else "仅安装版可用"
+        subtitle = if (autoStart.isSupported) null else "仅安装版可用"
     ) {
         SettingSwitch(
             checked = enabled == true,
-            enabled = AutoStart.isSupported && enabled != null
+            enabled = autoStart.isSupported && enabled != null
         ) { target ->
             scope.launch {
-                val ok = withContext(Dispatchers.IO) { AutoStart.setEnabled(target) }
+                val ok = withContext(Dispatchers.IO) { autoStart.setEnabled(target) }
                 if (ok) enabled = target else navigator.showMessage("修改开机启动失败")
             }
         }
@@ -608,7 +609,7 @@ private fun AutoStartRow() {
 private fun HotkeyEditor(
     hotkeyMap: Map<HotkeyAction, HotkeyCombo?>,
     failed: Set<HotkeyAction>,
-    hotkeys: GlobalHotkeys,
+    hotkeys: GlobalHotkeyService,
     onSave: (Map<HotkeyAction, HotkeyCombo?>) -> Unit
 ) {
     val navigator = LocalDesktopNavigator.current
@@ -713,9 +714,9 @@ private fun HotkeyRecorder(
                             else -> awtCode
                         }
                         var modifiers = 0
-                        if (event.isCtrlPressed) modifiers = modifiers or User32.MOD_CONTROL
-                        if (event.isAltPressed) modifiers = modifiers or User32.MOD_ALT
-                        if (event.isShiftPressed) modifiers = modifiers or User32.MOD_SHIFT
+                        if (event.isCtrlPressed) modifiers = modifiers or HotkeyModifiers.MOD_CONTROL
+                        if (event.isAltPressed) modifiers = modifiers or HotkeyModifiers.MOD_ALT
+                        if (event.isShiftPressed) modifiers = modifiers or HotkeyModifiers.MOD_SHIFT
                         when {
                             !HotkeyCombo.isSupportedKey(vk) -> onInvalid("不支持该按键")
                             !HotkeyCombo.isValid(modifiers, vk) -> onInvalid("快捷键需要包含 Ctrl 或 Alt")

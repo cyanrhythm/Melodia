@@ -30,11 +30,14 @@ import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.desktop.di.desktopPlatformModule
 import com.lin0721.linmusic.desktop.di.desktopViewModelModule
+import com.lin0721.linmusic.desktop.di.platformModule
 import com.lin0721.linmusic.desktop.platform.CloseAction
+import com.lin0721.linmusic.desktop.platform.native.DesktopLyricBehavior
 import com.lin0721.linmusic.desktop.platform.DesktopPreferences
-import com.lin0721.linmusic.desktop.platform.GlobalHotkeys
+import com.lin0721.linmusic.desktop.platform.native.GlobalHotkeyService
 import com.lin0721.linmusic.desktop.platform.HotkeyAction
-import com.lin0721.linmusic.desktop.platform.smtc.SmtcSession
+import com.lin0721.linmusic.desktop.platform.native.SystemMediaSession
+import com.lin0721.linmusic.desktop.platform.native.WindowDecoration
 import com.lin0721.linmusic.desktop.player.MpvPlaybackController
 import com.lin0721.linmusic.desktop.ui.MelodiaDesktopApp
 import com.lin0721.linmusic.desktop.ui.WindowChromeEffect
@@ -79,7 +82,7 @@ fun main() {
     // 须先于缓存对象创建
     DesktopCacheMigration.migrateAll()
     val koin = startKoin {
-        modules(desktopPlatformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
+        modules(desktopPlatformModule, platformModule, networkModule, repositoryModule, sourceModule, desktopViewModelModule)
     }.koin
     val controller = koin.get<PlaybackController>()
     // 进程内常驻记录播客收听进度
@@ -88,8 +91,10 @@ fun main() {
     val settingsPreferences = koin.get<SettingsPreferences>()
     val playerViewModel = koin.get<PlayerViewModel>()
     val desktopPreferences = koin.get<DesktopPreferences>()
-    val hotkeys = koin.get<GlobalHotkeys>()
-    val smtc = koin.get<SmtcSession>()
+    val windowDecoration = koin.get<WindowDecoration>()
+    val lyricBehavior = koin.get<DesktopLyricBehavior>()
+    val hotkeys = koin.get<GlobalHotkeyService>()
+    val smtc = koin.get<SystemMediaSession>()
     // 系统媒体卡片可用时由它接管媒体键，否则回退全局热键
     val smtcActive = smtc.start()
 
@@ -222,7 +227,10 @@ fun main() {
                 }
             }
             // 全屏与最大化一样不要圆角和边框线
-            WindowChromeEffect(maximized = windowState.placement != WindowPlacement.Floating)
+            WindowChromeEffect(
+                maximized = windowState.placement != WindowPlacement.Floating,
+                decoration = windowDecoration
+            )
             MelodiaDesktopTheme {
                 MelodiaDesktopApp(
                     windowState = windowState,
@@ -239,6 +247,7 @@ fun main() {
             playerViewModel = playerViewModel,
             controller = controller,
             settingsPreferences = settingsPreferences,
+            lyricBehavior = lyricBehavior,
             onHide = { setDesktopLyric(false) }
         )
     }

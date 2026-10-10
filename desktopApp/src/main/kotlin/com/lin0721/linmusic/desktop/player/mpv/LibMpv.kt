@@ -26,18 +26,46 @@ internal interface LibMpv : Library {
     fun mpv_error_string(error: Int): String?
 
     companion object {
-        private const val LIBRARY_NAME = "libmpv-2"
+        // Windows 下 libmpv 的文件名；其他平台的 soname 随发行版而异，见 candidatesFor
+        private const val WINDOWS_LIBRARY_NAME = "libmpv-2"
+        private val OPTIONS = mapOf(Library.OPTION_STRING_ENCODING to "UTF-8")
+
+        private val osName = System.getProperty("os.name").orEmpty()
+        private val isWindows = osName.startsWith("Windows", ignoreCase = true)
+        private val isMac = osName.startsWith("Mac", ignoreCase = true)
 
         fun load(): LibMpv {
-            // Compose 在开发运行与安装包里都会通过该属性给出平台资源目录，DLL 放在那里
-            System.getProperty("compose.application.resources.dir")?.let {
-                NativeLibrary.addSearchPath(LIBRARY_NAME, it)
+            // Compose 在开发运行与安装包里都会通过该属性给出平台资源目录，原生库放在那里
+            val resourcesDir = System.getProperty("compose.application.resources.dir")
+            if (isWindows) {
+                resourcesDir?.let { NativeLibrary.addSearchPath(WINDOWS_LIBRARY_NAME, it) }
+                return Native.load(WINDOWS_LIBRARY_NAME, LibMpv::class.java, OPTIONS)
             }
-            return Native.load(
-                LIBRARY_NAME,
-                LibMpv::class.java,
-                mapOf(Library.OPTION_STRING_ENCODING to "UTF-8")
-            )
+            // 非 Windows：优先加载随包分发的 .so/.dylib，再回退系统库；逐个候选尝试，取第一个成功的
+            var lastError: UnsatisfiedLinkError? = null
+            for (name in candidatesFor(resourcesDir)) {
+                try {
+                    return Native.load(name, LibMpv::class.java, OPTIONS)
+                } catch (e: UnsatisfiedLinkError) {
+                    lastError = e
+                }
+            }
+            throw lastError ?: UnsatisfiedLinkError("未找到 libmpv")
+        }
+
+        private fun candidatesFor(resourcesDir: String?): List<String> = buildList {
+            if (resourcesDir != null) {
+                if (isMac) {
+                    add("$resourcesDir/libmpv.2.dylib")
+                    add("$resourcesDir/libmpv.dylib")
+                } else {
+                    add("$resourcesDir/libmpv.so.2")
+                    add("$resourcesDir/libmpv.so")
+                }
+            }
+            // 系统库：JNA 会把 “mpv” 映射为 libmpv.so / libmpv.dylib
+            add("mpv")
+            if (isMac) add("libmpv.2.dylib") else add("libmpv.so.2")
         }
     }
 }

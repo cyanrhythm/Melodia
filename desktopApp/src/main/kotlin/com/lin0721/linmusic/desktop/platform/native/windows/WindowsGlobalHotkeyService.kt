@@ -1,9 +1,12 @@
-package com.lin0721.linmusic.desktop.platform
+package com.lin0721.linmusic.desktop.platform.native.windows
 
 import com.lin0721.linmusic.core.log.AppLogger
-import com.lin0721.linmusic.desktop.platform.win.Kernel32
-import com.lin0721.linmusic.desktop.platform.win.Msg
-import com.lin0721.linmusic.desktop.platform.win.User32
+import com.lin0721.linmusic.desktop.platform.native.GlobalHotkeyService
+import com.lin0721.linmusic.desktop.platform.HotkeyAction
+import com.lin0721.linmusic.desktop.platform.HotkeyCombo
+import com.lin0721.linmusic.desktop.platform.native.windows.winapi.Kernel32
+import com.lin0721.linmusic.desktop.platform.native.windows.winapi.Msg
+import com.lin0721.linmusic.desktop.platform.native.windows.winapi.User32
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,21 +36,21 @@ private val mediaBindings = listOf(
 )
 
 // 热键注册与 WM_HOTKEY 必须在同一线程，因此独占一条线程跑消息循环；配置变更通过线程消息通知重新注册
-class GlobalHotkeys {
+class WindowsGlobalHotkeyService : GlobalHotkeyService {
 
-    @Volatile var onAction: ((HotkeyAction) -> Unit)? = null
+    override var onAction: ((HotkeyAction) -> Unit)? = null
 
     @Volatile private var customConfig: Map<HotkeyAction, HotkeyCombo?> = HotkeyCombo.defaults
     @Volatile private var mediaKeysEnabled = true
 
     // 注册失败（多为被其他程序占用）的自定义快捷键
     private val _failed = MutableStateFlow<Set<HotkeyAction>>(emptySet())
-    val failed: StateFlow<Set<HotkeyAction>> = _failed.asStateFlow()
+    override val failed: StateFlow<Set<HotkeyAction>> = _failed.asStateFlow()
 
     @Volatile private var threadId = 0
     private var thread: Thread? = null
 
-    fun start() {
+    override fun start() {
         if (thread != null) return
         val ready = CountDownLatch(1)
         thread = Thread({ runLoop(ready) }, "global-hotkeys").apply {
@@ -57,22 +60,22 @@ class GlobalHotkeys {
         ready.await()
     }
 
-    fun stop() {
+    override fun stop() {
         post(User32.WM_QUIT)
         thread?.join(1000)
         thread = null
     }
 
-    fun apply(custom: Map<HotkeyAction, HotkeyCombo?>, mediaKeys: Boolean) {
+    override fun apply(custom: Map<HotkeyAction, HotkeyCombo?>, mediaKeys: Boolean) {
         customConfig = custom
         mediaKeysEnabled = mediaKeys
         post(MSG_RELOAD)
     }
 
     // 录制新组合期间暂停，避免按键被已注册的热键拦截
-    fun pause() = post(MSG_PAUSE)
+    override fun pause() = post(MSG_PAUSE)
 
-    fun resume() = post(MSG_RESUME)
+    override fun resume() = post(MSG_RESUME)
 
     private fun post(message: Int) {
         val id = threadId
