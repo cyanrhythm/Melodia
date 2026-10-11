@@ -65,9 +65,7 @@ enum class LibraryPlaylistOwnerFilter {
 }
 
 enum class LibrarySortOrder {
-    // 保持服务端返回顺序（用户在官方端云同步保存的歌单顺序）
-    SERVER,
-    RECENTLY_PLAYED, NAME, CUSTOM
+    DEFAULT, RECENTLY_PLAYED, NAME, CUSTOM
 }
 
 class LibraryViewModel(
@@ -200,7 +198,7 @@ class LibraryViewModel(
 
     private fun getSortOrderFromPrefs(): LibrarySortOrder {
         val raw = libraryPreferences.sortOrderName()
-        return raw?.let { runCatching { LibrarySortOrder.valueOf(it) }.getOrNull() } ?: LibrarySortOrder.SERVER
+        return raw?.let { runCatching { LibrarySortOrder.valueOf(it) }.getOrNull() } ?: LibrarySortOrder.DEFAULT
     }
 
     private fun saveSortOrderToPrefs(order: LibrarySortOrder) {
@@ -432,7 +430,7 @@ class LibraryViewModel(
         }
     }
 
-    // 分区内展示排序：置顶项恒在最前，其余按当前排序模式（云同步模式保留服务端顺序）
+    // 分区内展示排序：置顶项恒在最前，其余按当前排序模式（默认模式保留服务端顺序）
     private fun sortForDisplay(
         items: List<LibraryItem>,
         sort: LibrarySortOrder,
@@ -443,7 +441,7 @@ class LibraryViewModel(
 
         val sortedUnpinned = when (sort) {
             // 服务端顺序：不参与任何重排，原样保留接口返回的排列（网页端同款）
-            LibrarySortOrder.SERVER -> unpinnedItems
+            LibrarySortOrder.DEFAULT -> unpinnedItems
             LibrarySortOrder.RECENTLY_PLAYED -> {
                 unpinnedItems.sortedWith(
                     compareByDescending<LibraryItem> { it.lastPlayTime }
