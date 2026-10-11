@@ -54,10 +54,9 @@ class PlaybackRepositoryImpl(
         code = { it.code },
         transform = { response ->
             val item = response.data.first()
-            val isTrial = item.freeTrialInfo != null || (item.freeTrialPrivilege?.cannotListenReason ?: 0) != 0
             SongPlaybackInfo(
                 url = item.url.orEmpty(),
-                isFreeTrial = isTrial
+                isFreeTrial = item.isTrialAudio
             )
         }
     )

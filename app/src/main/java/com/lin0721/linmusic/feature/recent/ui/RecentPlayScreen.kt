@@ -51,7 +51,7 @@ fun RecentPlayScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
-    val currentTrack by viewModel.playerManager.currentTrack.collectAsStateWithLifecycle()
+    val nowPlaying by viewModel.playerManager.nowPlaying.collectAsStateWithLifecycle()
     val isPlaying by viewModel.playerManager.playWhenReady.collectAsStateWithLifecycle()
 
     SecondaryScreenScaffold(title = "最近播放", onBack = onBack) {
@@ -78,7 +78,7 @@ fun RecentPlayScreen(
                 RecentPlayList(
                     state = state,
                     tab = selectedTab,
-                    currentTrackId = currentTrack?.mediaId,
+                    currentTrackId = nowPlaying?.songId?.toString(),
                     isPlaying = isPlaying,
                     onSongClick = { viewModel.playSong(it) },
                     onPlaylistClick = onPlaylistClick,

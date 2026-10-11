@@ -45,6 +45,20 @@ class AuthRepositoryImpl(
     )
 
     // 800/801/802/803 都是正常的轮询状态，不当业务错误处理；只有网络/解析异常才走 failure
+    override fun refreshLogin(): Flow<Result<List<String>>> = flow {
+        val response = apiService.refreshLogin()
+        val body = response.body()
+        when {
+            body == null -> emit(Result.failure(AppError.NetworkError))
+            body.code == 301 -> emit(Result.failure(AppError.Unauthorized))
+            body.code != 200 -> emit(Result.failure(AppError.BizError(body.code, body.message)))
+            else -> emit(Result.success(response.headers().values("Set-Cookie")))
+        }
+    }.catch { e ->
+        AppLogger.e(TAG, "登录刷新异常: ${e::class.simpleName}", e)
+        emit(Result.failure(mapToAppError(e)))
+    }
+
     override fun checkQrStatus(key: String): Flow<Result<QrCheckResponse>> = flow {
         val response = apiService.checkQrStatus(QrCheckRequest(key = key))
         val body = response.body()

@@ -5,12 +5,22 @@ import com.lin0721.linmusic.core.player.PlayMode
 import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.QueueItem
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-// 播放引擎接入前的占位实现：只维护队列与曲目状态、不出声，用于验证界面联动
+// libmpv 加载失败时的占位实现：只维护队列与曲目状态、不出声，每次尝试播放都给出提示
 class SilentPlaybackController : PlaybackController {
+
+    companion object {
+        const val UNAVAILABLE_MESSAGE = "播放组件加载失败，当前无法播放，详见日志"
+    }
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
 
     private val _isPlaying = MutableStateFlow(false)
     override val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -58,6 +68,7 @@ class SilentPlaybackController : PlaybackController {
         startPositionMs: Long
     ) {
         if (items.isEmpty()) return
+        _messages.tryEmit(UNAVAILABLE_MESSAGE)
         _queue.value = items
         _playContext.value = playContext
         _playSource.value = source
@@ -154,7 +165,9 @@ class SilentPlaybackController : PlaybackController {
     }
 
     override fun resume() {
-        if (_nowPlaying.value != null) _isPlaying.value = true
+        if (_nowPlaying.value == null) return
+        _messages.tryEmit(UNAVAILABLE_MESSAGE)
+        _isPlaying.value = true
     }
 
     override fun togglePlayPause() {

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.derivedStateOf
+import com.lin0721.linmusic.feature.profile.ui.FollowListMode
 
 sealed interface DesktopRoute {
     data object Home : DesktopRoute
@@ -17,6 +18,9 @@ sealed interface DesktopRoute {
     data object PodcastSubscribed : DesktopRoute
     data object PodcastToplist : DesktopRoute
     data class PodcastCategory(val id: Long, val name: String) : DesktopRoute
+    data object RecentPlay : DesktopRoute
+    data class Profile(val uid: Long) : DesktopRoute
+    data class FollowList(val uid: Long, val mode: FollowListMode) : DesktopRoute
     data object Settings : DesktopRoute
 }
 

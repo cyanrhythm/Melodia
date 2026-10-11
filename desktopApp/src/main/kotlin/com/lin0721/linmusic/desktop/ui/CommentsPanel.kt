@@ -48,7 +48,6 @@ import com.lin0721.linmusic.desktop.ui.nowplaying.CommentInputBar
 import com.lin0721.linmusic.desktop.ui.nowplaying.CommentRow
 import com.lin0721.linmusic.desktop.ui.nowplaying.allComments
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
-import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 
 private const val FLOOR_FADE_MS = 150
 
@@ -66,23 +65,23 @@ private fun sortLabel(type: CommentSortType): String = when (type) {
 // 右侧栏的完整评论：排序、评论流与加载更多
 @Composable
 fun CommentsPanel(
-    playerViewModel: PlayerViewModel,
+    host: CommentsHost,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val navigator = LocalDesktopNavigator.current
-    val state by playerViewModel.commentsState.collectAsState()
-    val composerState by playerViewModel.composerState.collectAsState()
-    val floorState by playerViewModel.floorState.collectAsState()
+    val state by host.commentsState.collectAsState()
+    val composerState by host.composerState.collectAsState()
+    val floorState by host.floorState.collectAsState()
     var floorOwner by remember { mutableStateOf<CommentItem?>(null) }
-    val currentUserId = playerViewModel.userProfile.collectAsState().value?.uid
+    val currentUserId = host.userProfile.collectAsState().value?.uid
     val total = state.totalCount ?: 0
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     var deleteTarget by remember { mutableStateOf<CommentItem?>(null) }
     val focusRequester = remember { FocusRequester() }
     val requireLogin = { navigator.showMessage("请先登录账号") }
     // 面板撤掉时一并收起楼层，下次打开回到评论列表
-    DisposableEffect(Unit) { onDispose { playerViewModel.closeCommentFloor() } }
+    DisposableEffect(Unit) { onDispose { host.closeFloor() } }
     val startReply: (CommentItem) -> Unit = { comment ->
         if (currentUserId == null) {
             requireLogin()
@@ -105,7 +104,7 @@ fun CommentsPanel(
                 tabs = SortTypes,
                 selected = state.sortType,
                 label = ::sortLabel,
-                onSelect = playerViewModel::changeCommentSort,
+                onSelect = host::changeSort,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 small = true
             )
@@ -119,19 +118,19 @@ fun CommentsPanel(
                     ) {
                         Text("加载失败: ${current.message}", color = DesktopColors.TextGray, fontSize = 14.sp, textAlign = TextAlign.Center)
                         Button(
-                            onClick = playerViewModel::retryComments,
+                            onClick = host::retry,
                             colors = ButtonDefaults.buttonColors(containerColor = DesktopColors.Accent),
                             modifier = Modifier.padding(top = 12.dp)
                         ) { Text("重试", color = DesktopColors.TextPrimary) }
                     }
                     is CommentsState.Success -> CommentList(
                         state = current,
-                        playerViewModel = playerViewModel,
+                        host = host,
                         currentUserId = currentUserId,
                         onReply = startReply,
                         onExpandFloor = { comment ->
                             floorOwner = comment
-                            playerViewModel.openCommentFloor(comment)
+                            host.openFloor(comment)
                         },
                         onDelete = { comment -> deleteTarget = comment }
                     )
@@ -149,9 +148,9 @@ fun CommentsPanel(
                     } else {
                         val target = replyTarget
                         if (target != null) {
-                            playerViewModel.submitCommentReply(target.commentId, content)
+                            host.reply(target.commentId, content)
                         } else {
-                            playerViewModel.submitComment(content)
+                            host.submit(content)
                         }
                         replyTarget = null
                     }
@@ -169,7 +168,7 @@ fun CommentsPanel(
                 owner = floorOwner,
                 composerState = composerState,
                 currentUserId = currentUserId,
-                playerViewModel = playerViewModel,
+                host = host,
                 onRequestDelete = { comment -> deleteTarget = comment },
                 modifier = Modifier.background(DesktopColors.Pane).clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -182,7 +181,7 @@ fun CommentsPanel(
     deleteTarget?.let { comment ->
         DeleteCommentDialog(
             onConfirm = {
-                playerViewModel.deleteCommentItem(comment)
+                host.delete(comment)
                 deleteTarget = null
             },
             onDismiss = { deleteTarget = null }
@@ -192,21 +191,23 @@ fun CommentsPanel(
 
 @Composable
 private fun DeleteCommentDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = AlertDialogDefaults.shape,
-        containerColor = DesktopColors.PopupSurface,
-        title = { Text("删除评论", color = DesktopColors.TextPrimary) },
-        text = { Text("确定要删除这条评论吗？删除后无法恢复。", color = DesktopColors.TextGray, fontSize = 13.sp) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("删除", color = DesktopColors.Accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = DesktopColors.TextGray) } }
-    )
+    DesktopDialog(
+        title = "删除评论",
+        onDismiss = onDismiss,
+        width = 340.dp,
+        actions = {
+            DialogButton("取消", onDismiss)
+            DialogButton("删除", onConfirm, danger = true)
+        }
+    ) {
+        Text("确定要删除这条评论吗？删除后无法恢复。", color = DesktopColors.TextGray, fontSize = 13.sp)
+    }
 }
 
 @Composable
 private fun CommentList(
     state: CommentsState.Success,
-    playerViewModel: PlayerViewModel,
+    host: CommentsHost,
     currentUserId: Long?,
     onReply: (CommentItem) -> Unit,
     onExpandFloor: (CommentItem) -> Unit,
@@ -228,7 +229,7 @@ private fun CommentList(
         }
     }
     LaunchedEffect(nearEnd, state.hasMore, state.isLoadingMore) {
-        if (nearEnd && state.hasMore && !state.isLoadingMore) playerViewModel.loadMoreComments()
+        if (nearEnd && state.hasMore && !state.isLoadingMore) host.loadMore()
     }
 
     HoverScrollbarBox(listState) {
@@ -240,7 +241,7 @@ private fun CommentList(
             items(comments, key = { it.commentId }) { comment ->
                 CommentRow(
                     comment = comment,
-                    onLike = { playerViewModel.likeComment(comment) },
+                    onLike = { host.like(comment) },
                     onReply = { onReply(comment) },
                     onExpandFloor = { onExpandFloor(comment) },
                     onDelete = if (comment.user.userId == currentUserId) ({ onDelete(comment) }) else null

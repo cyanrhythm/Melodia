@@ -1,6 +1,7 @@
 package com.lin0721.linmusic.core.auth
 
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.core.DataStore
@@ -28,6 +29,7 @@ class UserPreferences(private val dataStore: DataStore<Preferences>) {
     companion object {
         private val KEY_USER_PROFILE = stringPreferencesKey("user_profile_json")
         private val KEY_COOKIES = stringPreferencesKey("user_cookies")
+        private val KEY_LAST_LOGIN_REFRESH = longPreferencesKey("last_login_refresh_at")
         private val KEY_BLOCKED_ARTIST_IDS = stringSetPreferencesKey("blocked_artist_ids")
     }
 
@@ -45,6 +47,17 @@ class UserPreferences(private val dataStore: DataStore<Preferences>) {
     // 读取 Cookie
     val cookies: Flow<String?> = dataStore.data.map { prefs ->
         prefs[KEY_COOKIES]
+    }
+
+    // 上次成功刷新登录态的时间戳（毫秒），从未刷新过为 0
+    val lastLoginRefreshAt: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[KEY_LAST_LOGIN_REFRESH] ?: 0L
+    }
+
+    suspend fun saveLastLoginRefreshAt(timeMs: Long) {
+        dataStore.edit { prefs ->
+            prefs[KEY_LAST_LOGIN_REFRESH] = timeMs
+        }
     }
 
     // 读取屏蔽艺人 ID 列表
@@ -84,6 +97,7 @@ class UserPreferences(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { prefs ->
             prefs.remove(KEY_USER_PROFILE)
             prefs.remove(KEY_COOKIES)
+            prefs.remove(KEY_LAST_LOGIN_REFRESH)
         }
     }
 }

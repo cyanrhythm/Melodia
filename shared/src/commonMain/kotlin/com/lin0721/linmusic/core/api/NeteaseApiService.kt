@@ -34,6 +34,12 @@ interface NeteaseApiService {
     suspend fun checkQrStatus(
         @Body body: QrCheckRequest
     ): Response<QrCheckResponse>
+
+    // 刷新登录态，参考 api-enhanced login_refresh；新 Cookie 在 Set-Cookie 里
+    @POST("/weapi/login/token/refresh")
+    suspend fun refreshLogin(
+        @Body body: EmptyBody = EmptyBody()
+    ): Response<LoginRefreshResponse>
 }
 
 // ======================= 用户账户信息 =======================
@@ -96,4 +102,12 @@ data class QrCheckResponse(
     val message: String? = null,
     @Transient
     val cookies: String? = null
+)
+
+// ======================= 登录续期 =======================
+
+@Serializable
+data class LoginRefreshResponse(
+    val code: Int = 0,
+    val message: String? = null
 )

@@ -36,7 +36,6 @@ import com.lin0721.linmusic.core.model.CommentItem
 import com.lin0721.linmusic.desktop.ui.nowplaying.CommentInputBar
 import com.lin0721.linmusic.desktop.ui.nowplaying.CommentRow
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
-import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 
 // 距回复末尾还剩这么多条时开始加载下一页
 private const val LOAD_MORE_THRESHOLD = 2
@@ -48,7 +47,7 @@ fun CommentFloorPanel(
     owner: CommentItem?,
     composerState: CommentComposerState,
     currentUserId: Long?,
-    playerViewModel: PlayerViewModel,
+    host: CommentsHost,
     onRequestDelete: (CommentItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -61,7 +60,7 @@ fun CommentFloorPanel(
         OverlayPanelHeader(
             title = "评论详情",
             closeDescription = "返回评论",
-            onClose = playerViewModel::closeCommentFloor,
+            onClose = host::closeFloor,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
@@ -78,7 +77,7 @@ fun CommentFloorPanel(
                     Text(floorState.message, color = DesktopColors.TextGray, fontSize = 14.sp, textAlign = TextAlign.Center)
                     if (ownerComment != null) {
                         Button(
-                            onClick = { playerViewModel.openCommentFloor(ownerComment) },
+                            onClick = { host.openFloor(ownerComment) },
                             colors = ButtonDefaults.buttonColors(containerColor = DesktopColors.Accent),
                             modifier = Modifier.padding(top = 12.dp)
                         ) { Text("重试", color = DesktopColors.TextPrimary) }
@@ -87,7 +86,7 @@ fun CommentFloorPanel(
                 is CommentFloorState.Success -> FloorList(
                     state = floorState,
                     currentUserId = currentUserId,
-                    playerViewModel = playerViewModel,
+                    host = host,
                     onReply = { comment ->
                         if (currentUserId == null) {
                             navigator.showMessage("请先登录账号")
@@ -113,7 +112,7 @@ fun CommentFloorPanel(
                     } else {
                         // 未指定回复对象时回复楼主
                         val parentId = replyTarget?.commentId ?: floorState.ownerComment.commentId
-                        playerViewModel.submitCommentReply(parentId, content)
+                        host.reply(parentId, content)
                         replyTarget = null
                     }
                 }
@@ -126,7 +125,7 @@ fun CommentFloorPanel(
 private fun FloorList(
     state: CommentFloorState.Success,
     currentUserId: Long?,
-    playerViewModel: PlayerViewModel,
+    host: CommentsHost,
     onReply: (CommentItem) -> Unit,
     onRequestDelete: (CommentItem) -> Unit
 ) {
@@ -139,7 +138,7 @@ private fun FloorList(
         }
     }
     LaunchedEffect(nearEnd, state.hasMore, state.isLoadingMore) {
-        if (nearEnd && state.hasMore && !state.isLoadingMore) playerViewModel.loadMoreCommentFloor()
+        if (nearEnd && state.hasMore && !state.isLoadingMore) host.loadMoreFloor()
     }
 
     fun deleteAction(comment: CommentItem): (() -> Unit)? =
@@ -154,7 +153,7 @@ private fun FloorList(
             item(key = "owner") {
                 CommentRow(
                     comment = state.ownerComment,
-                    onLike = { playerViewModel.likeComment(state.ownerComment) },
+                    onLike = { host.like(state.ownerComment) },
                     onReply = { onReply(state.ownerComment) },
                     onDelete = deleteAction(state.ownerComment)
                 )
@@ -169,7 +168,7 @@ private fun FloorList(
             items(state.replies, key = { it.commentId }) { reply ->
                 CommentRow(
                     comment = reply,
-                    onLike = { playerViewModel.likeComment(reply) },
+                    onLike = { host.like(reply) },
                     onReply = { onReply(reply) },
                     onDelete = deleteAction(reply)
                 )

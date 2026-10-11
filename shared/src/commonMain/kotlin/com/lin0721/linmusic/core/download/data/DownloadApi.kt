@@ -41,4 +41,16 @@ data class SongDownloadUrlItem(
     val type: String? = null,
     // 试听限制信息
     val freeTrialInfo: FreeTrialInfo? = null,
+    val time: Long = 0,
 )
+
+// 判断下载音频是否属于试听片段或口播提示音
+val SongDownloadUrlItem.isTrialAudio: Boolean
+    get() {
+        val downloadUrl = url
+        if (downloadUrl.isNullOrBlank()) return true
+        if (downloadUrl.contains("musicrep-ts", ignoreCase = true)) return true
+        if (freeTrialInfo != null) return true
+        if (time in 1..60_000L) return true
+        return false
+    }

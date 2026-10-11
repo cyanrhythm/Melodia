@@ -17,6 +17,7 @@ import com.lin0721.linmusic.feature.newworks.data.NewWorksRepository
 import com.lin0721.linmusic.feature.newworks.domain.NewWorksRelease
 import com.lin0721.linmusic.feature.newworks.domain.NewWorksTrack
 import com.lin0721.linmusic.feature.playlist.data.PlaylistRepository
+import com.lin0721.linmusic.feature.create.data.playlistPrivacyOf
 import com.lin0721.linmusic.feature.playlist.domain.CreatePlaylistAndAddSongUseCase
 import com.lin0721.linmusic.feature.playlist.domain.SongCollectDelegate
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistImportState
@@ -252,11 +253,11 @@ class NewWorksViewModel(
         }
     }
 
-    fun createPlaylistAndAdd(release: NewWorksRelease, name: String) {
+    fun createPlaylistAndAdd(release: NewWorksRelease, name: String, isPrivate: Boolean = false) {
         viewModelScope.launch {
             val ids = resolveTracks(release).map { it.id }
             if (ids.isEmpty()) return@launch
-            createPlaylistAndAddSongUseCase(name, ids).firstOrNull()
+            createPlaylistAndAddSongUseCase(name, ids, playlistPrivacyOf(isPrivate)).firstOrNull()
                 ?.onSuccess { _toastEvent.emit("已创建歌单并添加 ${ids.size} 首歌曲") }
                 ?.onFailure { e -> _toastEvent.emit(e.toUserMessage(resourceProvider)) }
         }

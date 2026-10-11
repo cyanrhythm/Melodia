@@ -8,11 +8,15 @@ class SyncProfileAfterLoginUseCase(
     private val authRepository: AuthRepository
 ) {
 
-    // 保存 Cookie 并拉取账号信息落库，返回同步到的资料；未取到资料时返回 null，调用方据此跳过后续刷新
+    // 保存 Cookie 并拉取账号信息落库，返回同步到的资料；未取到资料（Cookie 无效或网络失败）时清掉刚存的 Cookie 并返回 null，
+    // 调用方据此跳过后续刷新
     suspend operator fun invoke(cookies: String): UserProfile? {
         userPreferences.saveCookies(cookies)
-        val response = authRepository.getAccountInfo().firstOrNull()?.getOrNull() ?: return null
-        val remoteProfile = response.profile ?: return null
+        val remoteProfile = authRepository.getAccountInfo().firstOrNull()?.getOrNull()?.profile
+        if (remoteProfile == null) {
+            userPreferences.clearUserProfile()
+            return null
+        }
         val profile = UserProfile(
             uid = remoteProfile.userId,
             nickname = remoteProfile.nickname,

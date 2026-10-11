@@ -1,5 +1,6 @@
 package com.lin0721.linmusic.core.network
 
+import com.lin0721.linmusic.core.auth.AuthEvents
 import com.lin0721.linmusic.core.log.AppLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -22,6 +23,7 @@ inline fun <T, R> apiFlow(
     if (isSuccess(response)) {
         emit(Result.success(transform(response)))
     } else if (code(response) == 301) {
+        AuthEvents.notifyUnauthorized()
         emit(Result.failure(AppError.Unauthorized))
     } else {
         AppLogger.e("ApiFlow", "业务错误码 code=${code(response)} msg=${msg(response)}")

@@ -50,6 +50,7 @@ import com.lin0721.linmusic.core.player.PlaySource
 import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.PlaybackController.Companion.CONTEXT_INTELLIGENCE
 import com.lin0721.linmusic.core.player.SimilarRoamingController
+import com.lin0721.linmusic.core.player.formatSleepTimerRemaining
 import com.lin0721.linmusic.core.preferences.FullPlayerCard
 import com.lin0721.linmusic.desktop.ui.nowplaying.AboutArtistCard
 import com.lin0721.linmusic.desktop.ui.nowplaying.ArtistAlbumsCard
@@ -213,7 +214,7 @@ private fun PanelHeader(
         if (sleepActive) {
             Icon(Icons.Rounded.Bedtime, "睡眠定时", tint = DesktopColors.Accent, modifier = Modifier.size(16.dp))
             Text(
-                formatCountdown(sleepRemaining),
+                formatSleepTimerRemaining(sleepRemaining),
                 color = DesktopColors.TextGray,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = 4.dp)
@@ -224,11 +225,7 @@ private fun PanelHeader(
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(HeaderButtonSize)) {
                     Icon(Icons.Rounded.MoreHoriz, "更多有关《${track.title}》的选项", tint = DesktopColors.TextGray)
                 }
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
-                    containerColor = DesktopColors.PopupSurface
-                ) {
+                DesktopMenu(expanded = menuOpen, onDismiss = { menuOpen = false }) {
                     val songId = track.songId
                     // 播客没有心动模式与相似漫游
                     if (!podcast.isPodcast) MenuItem(
@@ -257,7 +254,7 @@ private fun PanelHeader(
                     }
                     if (!podcast.isPodcast) HorizontalDivider(color = DesktopColors.SurfaceLight)
                     Text(
-                        if (sleepActive) "睡眠定时（剩余 ${formatCountdown(sleepRemaining)}）" else "睡眠定时",
+                        if (sleepActive) "睡眠定时（剩余 ${formatSleepTimerRemaining(sleepRemaining)}）" else "睡眠定时",
                         color = DesktopColors.TextGray,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -335,15 +332,5 @@ private fun MenuItem(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    DropdownMenuItem(
-        text = { Text(text, fontSize = 14.sp) },
-        leadingIcon = { Icon(icon, null, modifier = Modifier.size(18.dp)) },
-        enabled = enabled,
-        onClick = onClick
-    )
-}
-
-private fun formatCountdown(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+    SimpleMenuItem(text, onClick, icon = icon, enabled = enabled)
 }
