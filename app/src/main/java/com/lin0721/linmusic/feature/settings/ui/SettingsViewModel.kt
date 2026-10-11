@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lin0721.linmusic.BuildConfig
 import com.lin0721.linmusic.core.player.CrossfadePolicy
+import com.lin0721.linmusic.core.preferences.BottomBarItemSetting
+import com.lin0721.linmusic.core.preferences.BottomBarLayout
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.feature.settings.data.UserBindingItem
@@ -54,15 +56,11 @@ class SettingsViewModel(
     }
 
     // ─── 本地偏好设置对外状态流 ───
-    val searchAggregationEnabled = sourcePreferences.searchAggregationEnabled.asState(false)
     val fallbackEnabled = sourcePreferences.fallbackEnabled.asState(false)
     val communityPriority = sourcePreferences.communityPriority.asState(false)
     val unmServerUrl = sourcePreferences.unmServerUrl.asState("")
     val unmRemoteFallbackEnabled = sourcePreferences.unmRemoteFallbackEnabled.asState(false)
     val unmAutoMatch = sourcePreferences.unmAutoMatch.asState(true)
-    val unmEnabledModules = sourcePreferences.unmEnabledModules.asState(com.lin0721.linmusic.core.source.UnmModule.ALL_KEYS.toSet())
-    val unmModuleOrder = sourcePreferences.unmModuleOrder.asState(com.lin0721.linmusic.core.source.UnmModule.ALL_KEYS)
-    val fallbackOrder = sourcePreferences.fallbackOrder.asState(com.lin0721.linmusic.core.source.UnmModule.ALL_KEYS)
 
     val lxPluginEnabled = sourcePreferences.lxPluginEnabled.asState(false)
     val lxPlugins = sourcePreferences.lxPlugins.asState(emptyList())
@@ -114,9 +112,15 @@ class SettingsViewModel(
 
     val showCreateEntry = settingsPreferences.showCreateEntry.asState(true)
 
+    val bottomBarLayout = settingsPreferences.bottomBarLayout.asState(BottomBarLayout.DEFAULT)
+
+    val bottomBarIconOnly = settingsPreferences.bottomBarIconOnly.asState(false)
+
     val playerPageMode = settingsPreferences.playerPageMode.asState(SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
 
     val sidePlayerPinned = settingsPreferences.sidePlayerPinned.asState(true)
+
+    val tabletImmersiveMode = settingsPreferences.tabletImmersiveMode.asState(false)
 
     val lyricTextSize = settingsPreferences.lyricTextSize.asState(14)
 
@@ -229,8 +233,6 @@ class SettingsViewModel(
     }
 
     // ─── 核心设置修改方法 ───
-    fun updateSearchAggregationEnabled(enabled: Boolean) = launchSave { sourcePreferences.saveSearchAggregationEnabled(enabled) }
-
     fun updateFallbackEnabled(enabled: Boolean) = launchSave { sourcePreferences.saveFallbackEnabled(enabled) }
 
     fun updateUnmServerUrl(url: String) = launchSave { sourcePreferences.saveUnmServerUrl(url) }
@@ -240,16 +242,6 @@ class SettingsViewModel(
     fun updateUnmRemoteFallbackEnabled(enabled: Boolean) = launchSave { sourcePreferences.saveUnmRemoteFallbackEnabled(enabled) }
 
     fun updateUnmAutoMatch(enabled: Boolean) = launchSave { sourcePreferences.saveUnmAutoMatch(enabled) }
-
-    fun toggleUnmModule(moduleKey: String) = launchSave { sourcePreferences.toggleUnmModule(moduleKey) }
-
-    fun moveUnmModuleUp(moduleKey: String) = launchSave { sourcePreferences.moveUnmModuleUp(moduleKey) }
-
-    fun moveUnmModuleDown(moduleKey: String) = launchSave { sourcePreferences.moveUnmModuleDown(moduleKey) }
-
-    fun moveSourceUp(platformKey: String) = launchSave { sourcePreferences.moveUnmModuleUp(platformKey) }
-
-    fun moveSourceDown(platformKey: String) = launchSave { sourcePreferences.moveUnmModuleDown(platformKey) }
 
     fun updateCommunityPriority(enabled: Boolean) = launchSave { sourcePreferences.saveCommunityPriority(enabled) }
 
@@ -428,9 +420,19 @@ class SettingsViewModel(
 
     fun updateShowCreateEntry(enabled: Boolean) = launchSave { settingsPreferences.saveShowCreateEntry(enabled) }
 
+    fun updateBottomBarLayout(layout: List<BottomBarItemSetting>) = launchSave {
+        settingsPreferences.saveBottomBarLayout(layout)
+    }
+
+    fun updateBottomBarIconOnly(iconOnly: Boolean) = launchSave {
+        settingsPreferences.saveBottomBarIconOnly(iconOnly)
+    }
+
     fun updatePlayerPageMode(mode: String) = launchSave { settingsPreferences.savePlayerPageMode(mode) }
 
     fun updateSidePlayerPinned(pinned: Boolean) = launchSave { settingsPreferences.saveSidePlayerPinned(pinned) }
+ 
+    fun updateTabletImmersiveMode(enabled: Boolean) = launchSave { settingsPreferences.saveTabletImmersiveMode(enabled) }
 
     fun updateLyricTextSize(size: Int) = launchSave { settingsPreferences.saveLyricTextSize(size) }
 

@@ -79,6 +79,9 @@ import com.lin0721.linmusic.core.ui.theme.InfoCardRadius
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.update.UpdateManager
 import com.lin0721.linmusic.core.update.UpdateUiState
+import com.lin0721.linmusic.core.preferences.BottomBarItem
+import com.lin0721.linmusic.feature.library.ui.LibraryViewModel
+import com.lin0721.linmusic.core.preferences.BottomBarLayout
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
 import com.lin0721.linmusic.feature.home.ui.HomeViewModel
 import com.lin0721.linmusic.feature.settings.ui.UpdateDialog
@@ -123,11 +126,15 @@ private class PanelRevealShape(
 @Composable
 fun MelodiaApp() {
     val viewModel: HomeViewModel = koinViewModel()
+    val libraryViewModel: LibraryViewModel = koinViewModel()
     val settingsPreferences: SettingsPreferences = koinInject()
     val showCreateEntry by settingsPreferences.showCreateEntry.collectAsStateWithLifecycle(initialValue = true)
+    val bottomBarLayout by settingsPreferences.bottomBarLayout.collectAsStateWithLifecycle(initialValue = BottomBarLayout.DEFAULT)
+    val bottomBarIconOnly by settingsPreferences.bottomBarIconOnly.collectAsStateWithLifecycle(initialValue = false)
     val playerPageMode by settingsPreferences.playerPageMode
         .collectAsStateWithLifecycle(initialValue = SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
     val sidePlayerPinned by settingsPreferences.sidePlayerPinned.collectAsStateWithLifecycle(initialValue = true)
+    val tabletImmersiveMode by settingsPreferences.tabletImmersiveMode.collectAsStateWithLifecycle(initialValue = false)
     // 迷你条、面板等 Android 组件直接消费 Media3 MediaItem，取具体实现
     val playerManager: PlayerManager = koinInject()
     val currentTrack by playerManager.currentTrack.collectAsStateWithLifecycle()
@@ -169,6 +176,21 @@ fun MelodiaApp() {
     val playerSheet = rememberMelodiaPlayerSheetState()
     val navigation = rememberMelodiaNavigationState()
     val sidebar = rememberMelodiaSidebarState(SidebarWidth)
+
+    // 动态同步底栏首个可用路由为首选根 Tab
+    LaunchedEffect(bottomBarLayout) {
+        val firstRoute = bottomBarLayout.firstOrNull { it.visible && it.item.isRoute }
+        val rootScreen = when (firstRoute?.item) {
+            BottomBarItem.SEARCH -> Screen.Search
+            BottomBarItem.LIBRARY -> Screen.Library
+            BottomBarItem.LOCAL_MUSIC -> Screen.LocalMusic
+            BottomBarItem.DOWNLOADS -> Screen.Downloads
+            BottomBarItem.CLOUD -> Screen.Cloud
+            BottomBarItem.PROFILE -> Screen.MyProfile
+            else -> Screen.Home
+        }
+        navigation.updateDefaultRootTab(rootScreen)
+    }
 
     var showCreateSheet by remember { mutableStateOf(false) }
     // 听歌识曲全屏覆盖层，盖住底栏与迷你播放条
@@ -251,7 +273,8 @@ fun MelodiaApp() {
         window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     }
 
-    val shouldHideSystemBars = if (usePanel) {
+    val isTabletImmersive = windowSizeClass == MelodiaWindowSizeClass.Expanded && tabletImmersiveMode
+    val shouldHideSystemBars = isTabletImmersive || if (usePanel) {
         isLyricsFullScreen
     } else {
         isLyricsFullScreen && !isLyricsControlsVisible
@@ -381,7 +404,6 @@ fun MelodiaApp() {
                     onNavigateToCloud = { navigation.openCloud() },
                     onNavigateToDownloads = { navigation.openDownloads() },
                     onNavigateToMessage = { navigation.openMessage() },
-                    onNavigateToAccount = { navigation.openAccount() },
                     onNavigateToSettings = { navigation.navigateTo(Screen.Settings) }
                 )
             }
@@ -506,9 +528,17 @@ fun MelodiaApp() {
                             onMiniPlayerLikeClick = onMiniPlayerLikeClick,
                             miniPlayerLikeMode = miniPlayerLikeMode,
                             onCreateDismiss = { showCreateSheet = false },
-                            onNavigate = { navigation.openTab(it) },
+                            onNavigate = { screen ->
+                                navigation.openTab(screen)
+                                if (screen == Screen.Library) {
+                                    libraryViewModel.loadLibraryData()
+                                }
+                            },
                             onCreateClick = { showCreateSheet = !showCreateSheet },
                             showCreateEntry = showCreateEntry,
+                            bottomBarLayout = bottomBarLayout,
+                            bottomBarIconOnly = bottomBarIconOnly,
+                            activeTab = navigation.activeTab,
                             onOverlayHeightChanged = { bottomOverlayHeight = it }
                         )
 
@@ -604,6 +634,10 @@ fun MelodiaApp() {
                             isPanelFullscreen = false
                             navigation.openPlaylist(albumId, isAlbum = true)
                         },
+                        onPlaylistClick = { playlistId ->
+                            isPanelFullscreen = false
+                            navigation.openPlaylist(playlistId, isAlbum = false)
+                        },
                         onNavigateToProfile = { uid ->
                             isPanelFullscreen = false
                             navigation.openProfile(uid)
@@ -646,6 +680,12 @@ fun MelodiaApp() {
             onAlbumClick = { albumId ->
                 navigation.navigateFromPlayer(currentTrack?.mediaId) {
                     navigation.openPlaylist(albumId, isAlbum = true)
+                }
+                playerSheet.animateTo(false, 0f)
+            },
+            onPlaylistClick = { playlistId ->
+                navigation.navigateFromPlayer(currentTrack?.mediaId) {
+                    navigation.openPlaylist(playlistId, isAlbum = false)
                 }
                 playerSheet.animateTo(false, 0f)
             },
