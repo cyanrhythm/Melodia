@@ -22,10 +22,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.LocalBottomOverlayInset
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
-import com.lin0721.linmusic.core.ui.components.BottomTabCatalog
 import com.lin0721.linmusic.core.ui.components.MelodiaDragHandle
 import com.lin0721.linmusic.core.ui.theme.BottomSheetShape
+import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
+import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
 
 private val PlayerPageModes = listOf(
     SettingsPreferences.PLAYER_PAGE_MODE_AUTO to "自动",
@@ -38,13 +39,15 @@ private val PlayerPageModes = listOf(
 fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
     val showLockscreen by viewModel.showLockscreen.collectAsStateWithLifecycle()
     val carMode by viewModel.carMode.collectAsStateWithLifecycle()
-    val showCreateEntry by viewModel.showCreateEntry.collectAsStateWithLifecycle()
-    val bottomTabOrder by viewModel.bottomTabOrder.collectAsStateWithLifecycle()
+    val bottomBarLayout by viewModel.bottomBarLayout.collectAsStateWithLifecycle()
+    val bottomBarIconOnly by viewModel.bottomBarIconOnly.collectAsStateWithLifecycle()
     val playerPageMode by viewModel.playerPageMode.collectAsStateWithLifecycle()
     val sidePlayerPinned by viewModel.sidePlayerPinned.collectAsStateWithLifecycle()
+    val tabletImmersiveMode by viewModel.tabletImmersiveMode.collectAsStateWithLifecycle()
+    val isExpanded = LocalMelodiaWindowSizeClass.current == MelodiaWindowSizeClass.Expanded
 
+    var showBottomBarSheet by remember { mutableStateOf(false) }
     var showPlayerModeSheet by remember { mutableStateOf(false) }
-    var showTabOrderSheet by remember { mutableStateOf(false) }
     val playerModeLabel = PlayerPageModes.firstOrNull { it.first == playerPageMode }?.second ?: "自动"
     val playerModeSubtitle = when (playerPageMode) {
         SettingsPreferences.PLAYER_PAGE_MODE_FULLSCREEN -> "全屏式：点击展开，返回直接收起"
@@ -81,19 +84,13 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
 
             item {
                 SettingsGroupCard(SettingsSubMenu.EXTENSIONS.sectionTitles[2]) {
+                    val enabledItemsSummary = remember(bottomBarLayout) {
+                        bottomBarLayout.filter { it.visible }.joinToString("、") { it.item.title }
+                    }
                     SettingsRow(
-                        title = "底栏排序",
-                        subtitle = bottomTabOrder.joinToString(" / ") { id ->
-                            BottomTabCatalog.firstOrNull { it.id == id }?.label ?: id
-                        },
-                        onClick = { showTabOrderSheet = true }
-                    )
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                    SettingsSwitchRow(
-                        title = "显示底栏创建入口",
-                        subtitle = "关闭后可在「我的」页面通过右上角按钮创建歌单",
-                        checked = showCreateEntry,
-                        onCheckedChange = { viewModel.updateShowCreateEntry(it) }
+                        title = "底栏自定义",
+                        subtitle = "当前启用：$enabledItemsSummary",
+                        onClick = { showBottomBarSheet = true }
                     )
                 }
             }
@@ -112,6 +109,15 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
                             subtitle = "关闭后按返回键直接收起侧边播放页",
                             checked = sidePlayerPinned,
                             onCheckedChange = { viewModel.updateSidePlayerPinned(it) }
+                        )
+                    }
+                    if (isExpanded) {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                        SettingsSwitchRow(
+                            title = "全局沉浸",
+                            subtitle = "隐藏系统状态栏与导航栏，边缘滑动呼出",
+                            checked = tabletImmersiveMode,
+                            onCheckedChange = { viewModel.updateTabletImmersiveMode(it) }
                         )
                     }
                 }
@@ -166,14 +172,13 @@ fun ExtensionsSettingsView(viewModel: SettingsViewModel) {
             }
         }
 
-        if (showTabOrderSheet) {
-            BottomTabOrderSheet(
-                currentOrder = bottomTabOrder,
-                onSave = { order ->
-                    viewModel.updateBottomTabOrder(order)
-                    showTabOrderSheet = false
-                },
-                onDismiss = { showTabOrderSheet = false }
+        if (showBottomBarSheet) {
+            BottomBarCustomizationSheet(
+                layout = bottomBarLayout,
+                iconOnly = bottomBarIconOnly,
+                onLayoutChange = { viewModel.updateBottomBarLayout(it) },
+                onIconOnlyChange = { viewModel.updateBottomBarIconOnly(it) },
+                onDismiss = { showBottomBarSheet = false }
             )
         }
     }

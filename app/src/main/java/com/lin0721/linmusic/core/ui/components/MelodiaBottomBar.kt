@@ -10,15 +10,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddBox
-import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.CloudQueue
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.SkipNext
+import com.lin0721.linmusic.core.preferences.BottomBarItem
+import com.lin0721.linmusic.core.preferences.BottomBarItemSetting
+import com.lin0721.linmusic.core.preferences.BottomBarLayout
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +39,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.PlatformTextStyle
@@ -49,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.MediaItem
 import com.lin0721.linmusic.Screen
-import com.lin0721.linmusic.core.preferences.BottomTabOrder
 import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.player.rememberQueueItemCoverUrl
 import com.lin0721.linmusic.core.ui.interaction.pressable
@@ -481,15 +486,6 @@ fun MiniPlayerProgress(
 
 //底部导航栏。expanded=true 时用于平板宽屏下的独立悬浮卡片（圆角、不贴屏幕边缘），
 //expanded=false 时是手机上贴底通栏的现状实现
-// 底栏三个可排序 tab 的展示定义；顺序由设置页「底栏排序」控制，创建入口不参与排序
-data class BottomTabSpec(val id: String, val label: String, val icon: ImageVector, val screen: Screen)
-
-val BottomTabCatalog: List<BottomTabSpec> = listOf(
-    BottomTabSpec(BottomTabOrder.HOME, "推荐", Icons.Default.Explore, Screen.Home),
-    BottomTabSpec(BottomTabOrder.SEARCH, "搜索", Icons.Default.Search, Screen.Search),
-    BottomTabSpec(BottomTabOrder.LIBRARY, "我的", Icons.Default.LibraryMusic, Screen.Library)
-)
-
 @Composable
 fun MelodiaNavigationBar(
     currentScreen: Screen,
@@ -497,7 +493,9 @@ fun MelodiaNavigationBar(
     onCreateClick: () -> Unit,
     isCreateMenuOpen: Boolean,
     showCreateEntry: Boolean = true,
-    tabOrder: List<String> = BottomTabOrder.DEFAULT,
+    bottomBarLayout: List<BottomBarItemSetting> = BottomBarLayout.DEFAULT,
+    iconOnly: Boolean = false,
+    activeTab: Screen? = null,
     expanded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -528,23 +526,35 @@ fun MelodiaNavigationBar(
                         Modifier.navigationBarsPadding().height(60.dp)
                     }
                 )
-                .padding(top = 12.dp, bottom = 2.dp),
+                .padding(
+                    top = if (iconOnly) 4.dp else 12.dp,
+                    bottom = if (iconOnly) 4.dp else 2.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val navItems = buildList {
-                val tabById = BottomTabCatalog.associateBy { it.id }
-                BottomTabOrder.normalize(tabOrder).forEach { id ->
-                    tabById[id]?.let { spec ->
-                        add(Triple(spec.label, spec.icon, spec.screen))
-                    }
+            val effectiveLayout = if (!showCreateEntry && bottomBarLayout == BottomBarLayout.DEFAULT) {
+                bottomBarLayout.map {
+                    if (it.item == BottomBarItem.CREATE) it.copy(visible = false) else it
                 }
-                if (showCreateEntry) {
-                    add(Triple("创建", if (isCreateMenuOpen) Icons.Rounded.Close else Icons.Default.AddBox, null))
+            } else {
+                bottomBarLayout
+            }
+
+            val navItems = effectiveLayout.filter { it.visible }.map { setting ->
+                when (setting.item) {
+                    BottomBarItem.HOME -> Triple("主页", Icons.Default.Home, Screen.Home)
+                    BottomBarItem.SEARCH -> Triple("搜索", Icons.Default.Search, Screen.Search)
+                    BottomBarItem.LIBRARY -> Triple("音乐库", Icons.Default.LibraryMusic, Screen.Library)
+                    BottomBarItem.CREATE -> Triple("创建", if (isCreateMenuOpen) Icons.Rounded.Close else Icons.Default.AddBox, null)
+                    BottomBarItem.LOCAL_MUSIC -> Triple("本地音乐", Icons.Default.Folder, Screen.LocalMusic)
+                    BottomBarItem.DOWNLOADS -> Triple("下载管理", Icons.Outlined.FileDownload, Screen.Downloads)
+                    BottomBarItem.CLOUD -> Triple("我的云盘", Icons.Outlined.CloudQueue, Screen.Cloud)
+                    BottomBarItem.PROFILE -> Triple("个人主页", Icons.Default.Person, Screen.MyProfile)
                 }
             }
 
             navItems.forEach { (label, icon, targetScreen) ->
-                val isSelected = targetScreen != null && currentScreen == targetScreen
+                val isSelected = targetScreen != null && (activeTab?.let { it == targetScreen } ?: (currentScreen == targetScreen))
                 
                 Column(
                     modifier = Modifier
@@ -564,22 +574,27 @@ fun MelodiaNavigationBar(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .background(if (isSelected) NavPillSelected else Color.Transparent)
-                            .padding(horizontal = MelodiaSpacing.md, vertical = 1.dp),
+                            .padding(
+                                horizontal = MelodiaSpacing.md,
+                                vertical = if (iconOnly) 6.dp else 1.dp
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
                             tint = if (isSelected) Color.White else TextGray,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(if (iconOnly) 24.dp else 22.dp)
                         )
                     }
-                    Text(
-                        text = label,
-                        color = if (isSelected) Color.White else TextGray,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
+                    if (!iconOnly) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) Color.White else TextGray,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 }
             }
         }

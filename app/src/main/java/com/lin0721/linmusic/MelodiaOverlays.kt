@@ -28,7 +28,6 @@ import androidx.media3.common.MediaItem
 import com.lin0721.linmusic.core.download.ui.DownloadProgressBanner
 import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.ui.components.CustomToast
-import com.lin0721.linmusic.core.preferences.BottomTabOrder
 import com.lin0721.linmusic.core.ui.components.MelodiaNavigationBar
 import com.lin0721.linmusic.core.ui.components.MiniPlayerCard
 import com.lin0721.linmusic.core.ui.components.MiniPlayerLikeMode
@@ -36,6 +35,8 @@ import com.lin0721.linmusic.feature.create.ui.CreatePopupMenu
 import com.lin0721.linmusic.feature.player.ui.FullPlayerScreen
 import com.lin0721.linmusic.feature.settings.ui.UpdateBanner
 import dev.chrisbanes.haze.HazeState
+import com.lin0721.linmusic.core.preferences.BottomBarItemSetting
+import com.lin0721.linmusic.core.preferences.BottomBarLayout
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.LocalMelodiaWindowSizeClass
 import com.lin0721.linmusic.core.ui.theme.MelodiaWindowSizeClass
@@ -88,7 +89,9 @@ fun MelodiaBottomOverlay(
     onNavigate: (Screen) -> Unit,
     onCreateClick: () -> Unit,
     showCreateEntry: Boolean = true,
-    tabOrder: List<String> = BottomTabOrder.DEFAULT,
+    bottomBarLayout: List<BottomBarItemSetting> = BottomBarLayout.DEFAULT,
+    bottomBarIconOnly: Boolean = false,
+    activeTab: Screen? = null,
     onOverlayHeightChanged: (Dp) -> Unit = {}
 ) {
     val density = LocalDensity.current
@@ -174,7 +177,9 @@ fun MelodiaBottomOverlay(
                                     onCreateClick = onCreateClick,
                                     isCreateMenuOpen = showCreateSheet,
                                     showCreateEntry = showCreateEntry,
-                                    tabOrder = tabOrder,
+                                    bottomBarLayout = bottomBarLayout,
+                                    iconOnly = bottomBarIconOnly,
+                                    activeTab = activeTab,
                                     expanded = true,
                                     modifier = Modifier
                                         .then(
@@ -266,7 +271,9 @@ fun MelodiaBottomOverlay(
                             onCreateClick = onCreateClick,
                             isCreateMenuOpen = showCreateSheet,
                             showCreateEntry = showCreateEntry,
-                            tabOrder = tabOrder
+                            bottomBarLayout = bottomBarLayout,
+                            iconOnly = bottomBarIconOnly,
+                            activeTab = activeTab
                         )
                     }
                 }
@@ -293,6 +300,7 @@ fun MelodiaFullPlayerOverlay(
     onDragClose: (Float, Float) -> Unit,
     onArtistClick: (Long) -> Unit,
     onAlbumClick: (Long) -> Unit,
+    onPlaylistClick: (Long) -> Unit = {},
     onNavigateToProfile: (Long) -> Unit = {},
     onLyricsFullScreenChange: (Boolean) -> Unit = {},
     onLyricsControlsVisibilityChange: (Boolean) -> Unit = {},
@@ -323,6 +331,7 @@ fun MelodiaFullPlayerOverlay(
                 isPlayerOpen = isPlayerOpen,
                 onArtistClick = onArtistClick,
                 onAlbumClick = onAlbumClick,
+                onPlaylistClick = onPlaylistClick,
                 onNavigateToProfile = onNavigateToProfile,
                 fitCoverAboveNavigationBar = true,
                 onLyricsFullScreenChange = onLyricsFullScreenChange,
