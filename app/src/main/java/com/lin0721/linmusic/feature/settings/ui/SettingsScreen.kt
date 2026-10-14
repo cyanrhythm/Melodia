@@ -44,12 +44,12 @@ import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 // 定义多级菜单类型。sectionTitles 与子页面 SettingsGroupCard 的标题及顺序一致，子页面按下标引用；主菜单预览取前两项
 enum class SettingsSubMenu(val title: String, val sectionTitles: List<String>, val icon: ImageVector) {
     PLAYBACK_DOWNLOAD("播放与下载", listOf("播放参数", "下载与缓存"), Icons.Outlined.PlayCircleOutline),
-    AUDIO_QUALITY("音质", listOf("默认音质"), Icons.Outlined.HighQuality),
+    AUDIO_QUALITY("音质", listOf("默认音质", "播放页显示"), Icons.Outlined.HighQuality),
     AUDIO_SOURCES("音源设置", listOf("换源基础设置", "社区扩展源", "远程 UNM 服务"), Icons.AutoMirrored.Outlined.QueueMusic),
     PRIVACY("隐私设置", emptyList(), Icons.Outlined.PrivacyTip),
     STORAGE("储存空间", listOf("存储管理"), Icons.Outlined.Storage),
     NETWORK("网络设置", listOf("网络连接", "网络代理"), Icons.Outlined.Wifi),
-    EXTENSIONS("扩展", listOf("悬浮与桌面", "设备与集成", "底部导航栏", "平板布局"), Icons.Outlined.Extension),
+    EXTENSIONS("扩展", listOf("悬浮与桌面", "设备与集成", "底部导航栏", "平板布局", "显示"), Icons.Outlined.Extension),
     LYRICS("歌词设置", listOf("全屏歌词", "悬浮歌词", "外部与系统歌词"), Icons.Outlined.Subtitles),
     ABOUT("关于", listOf("版本更新", "应用说明与协议", "诊断与日志", "特别感谢"), Icons.Outlined.Info);
 

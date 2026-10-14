@@ -96,10 +96,11 @@ internal fun SearchResultsContent(
     val types = SearchType.entries
     Column(modifier = Modifier.fillMaxSize()) {
         if (searchPlatforms.size > 1) {
-            FilterChipsRow(
-                items = remember(searchPlatforms) { searchPlatforms.map { it.displayName } },
-                selectedIndex = searchPlatforms.indexOf(selectedPlatform).coerceAtLeast(0),
-                onSelected = { index -> searchPlatforms.getOrNull(index)?.let(onSelectPlatform) },
+            PlatformTabRow(
+                platforms = searchPlatforms,
+                selected = selectedPlatform,
+                externalResults = externalResults,
+                onSelect = onSelectPlatform,
                 modifier = Modifier.padding(bottom = MelodiaSpacing.xs)
             )
         }
@@ -222,17 +223,19 @@ private fun ExternalSearchResultsList(
                 }
 
                 items(state.tracks, key = { "${it.platform.name}_${it.id}" }) { track ->
-                    val isActive = currentTrackId == track.id.hashCode().toString()
+                    val isActive = currentTrackId == track.queueSongId.toString()
                     SongRow(
                         data = SongRowData(
-                            id = track.id.hashCode().toLong(),
+                            id = track.queueSongId,
                             title = track.name,
                             artist = if (track.albumName.isNotBlank()) "${track.artists} · ${track.albumName}" else track.artists,
                             coverUrl = track.coverUrl,
-                            durationText = if (track.durationMs > 0) formatTrackDuration(track.durationMs) else null
+                            durationText = if (track.durationMs > 0) formatTrackDuration(track.durationMs) else null,
+                            copyArtist = track.artists
                         ),
                         isActive = isActive,
                         isPlaying = isPlaying,
+                        copyable = true,
                         onClick = { onSongClick(track) }
                     )
                 }
@@ -334,6 +337,7 @@ private fun SearchResultsList(
                                 ),
                                 isActive = isActive,
                                 isPlaying = isPlaying,
+                                copyable = true,
                                 onClick = { onSongClick(track) },
                                 trailingSlot = {
                                     if (isLoggedIn && track.id in likedSongIds) {

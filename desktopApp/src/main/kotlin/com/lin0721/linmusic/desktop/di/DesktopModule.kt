@@ -6,35 +6,39 @@ import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.core.cache.MetadataCache
 import com.lin0721.linmusic.core.contentfilter.ContentFilter
 import com.lin0721.linmusic.core.download.SongDownloader
+import com.lin0721.linmusic.core.log.AppLogger
 import com.lin0721.linmusic.core.network.NetworkStateProvider
 import com.lin0721.linmusic.core.network.OnlineStateProvider
-import com.lin0721.linmusic.core.offline.CachedAudioIndex
 import com.lin0721.linmusic.core.network.ResourceProvider
 import com.lin0721.linmusic.core.network.crypto.XeapiKeyStore
 import com.lin0721.linmusic.core.network.crypto.XeapiKeyStoreImpl
+import com.lin0721.linmusic.core.offline.CachedAudioIndex
 import com.lin0721.linmusic.core.player.LyricsResolver
-import com.lin0721.linmusic.core.player.PlaybackPreferences
 import com.lin0721.linmusic.core.player.PlaybackController
+import com.lin0721.linmusic.core.player.PlaybackPreferences
 import com.lin0721.linmusic.core.player.data.AmllLyricsClient
 import com.lin0721.linmusic.core.player.data.LyricsCache
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
-import com.lin0721.linmusic.core.log.AppLogger
-import com.lin0721.linmusic.desktop.player.MpvPlaybackController
-import com.lin0721.linmusic.desktop.player.cache.AudioCache
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import com.lin0721.linmusic.core.preferences.PreferencesStores
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
-import com.lin0721.linmusic.desktop.platform.DesktopLibraryPreferences
-import com.lin0721.linmusic.desktop.platform.DesktopOnlineStateProvider
-import com.lin0721.linmusic.desktop.platform.DesktopPreferences
-import com.lin0721.linmusic.desktop.platform.native.AppPaths
-import com.lin0721.linmusic.desktop.platform.DesktopResourceProvider
-import com.lin0721.linmusic.desktop.platform.SilentPlaybackController
-import com.lin0721.linmusic.desktop.platform.download.DesktopDownloadPreferences
-import com.lin0721.linmusic.desktop.platform.download.DesktopSongDownloader
+import com.lin0721.linmusic.core.source.AudioSourceProvider
+import com.lin0721.linmusic.core.source.LxAudioSourceProvider
+import com.lin0721.linmusic.core.source.LxPluginRuntime
+import com.lin0721.linmusic.core.source.PlatformSearchProvider
+import com.lin0721.linmusic.core.source.SourcePreferences
+import com.lin0721.linmusic.desktop.app.DesktopPaths
+import com.lin0721.linmusic.desktop.data.DesktopLibraryPreferences
+import com.lin0721.linmusic.desktop.data.DesktopOnlineStateProvider
+import com.lin0721.linmusic.desktop.data.DesktopPreferences
+import com.lin0721.linmusic.desktop.data.DesktopResourceProvider
+import com.lin0721.linmusic.desktop.data.download.DesktopDownloadPreferences
+import com.lin0721.linmusic.desktop.data.download.DesktopSongDownloader
+import com.lin0721.linmusic.desktop.plugin.GraalLxPluginRuntime
+import com.lin0721.linmusic.desktop.player.DesktopPlaybackController
+import com.lin0721.linmusic.desktop.player.MpvPlaybackController
+import com.lin0721.linmusic.desktop.player.SilentPlaybackController
+import com.lin0721.linmusic.desktop.player.cache.AudioCache
+import com.lin0721.linmusic.desktop.ui.settings.DesktopSettingsViewModel
 import com.lin0721.linmusic.feature.artist.ui.ArtistViewModel
 import com.lin0721.linmusic.feature.home.ui.HomeViewModel
 import com.lin0721.linmusic.feature.library.data.LibraryPreferences
@@ -44,23 +48,29 @@ import com.lin0721.linmusic.feature.music.ui.StyleDetailViewModel
 import com.lin0721.linmusic.feature.newworks.ui.NewWorksViewModel
 import com.lin0721.linmusic.feature.player.ui.PlayerViewModel
 import com.lin0721.linmusic.feature.playlist.ui.PlaylistViewModel
+import com.lin0721.linmusic.feature.podcast.data.PodcastProgressPreferences
+import com.lin0721.linmusic.feature.podcast.data.PodcastSeenPreferences
 import com.lin0721.linmusic.feature.podcast.ui.PodcastCategoryViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastHomeViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastSubscribedViewModel
 import com.lin0721.linmusic.feature.podcast.ui.PodcastToplistViewModel
 import com.lin0721.linmusic.feature.podcast.ui.RadioDetailViewModel
 import com.lin0721.linmusic.feature.profile.ui.FollowListViewModel
-import com.lin0721.linmusic.feature.recent.ui.RecentPlayViewModel
 import com.lin0721.linmusic.feature.profile.ui.ProfileViewModel
-import com.lin0721.linmusic.core.source.AudioSourceProvider
-import com.lin0721.linmusic.core.source.SourcePreferences
-import com.lin0721.linmusic.feature.podcast.data.PodcastProgressPreferences
-import com.lin0721.linmusic.feature.podcast.data.PodcastSeenPreferences
+import com.lin0721.linmusic.feature.recent.ui.RecentPlayViewModel
 import com.lin0721.linmusic.feature.search.data.SearchHistoryPreferences
 import com.lin0721.linmusic.feature.search.ui.PlaylistCategoryViewModel
 import com.lin0721.linmusic.feature.search.ui.SearchViewModel
+import com.lin0721.linmusic.feature.settings.ui.CommonSettingsViewModel
+import com.lin0721.linmusic.feature.settings.ui.LxPluginSettingsViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.qualifier.named
+import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.io.File
 
@@ -74,7 +84,7 @@ private fun createPlaybackController(
     desktopPreferences: DesktopPreferences,
     downloadPreferences: DesktopDownloadPreferences,
     audioCache: AudioCache
-): PlaybackController = try {
+): DesktopPlaybackController = try {
     MpvPlaybackController(
         repository, settingsPreferences, playbackPreferences, desktopPreferences,
         localAudioOf = { songId -> downloadPreferences.findVerifiedRecord(songId)?.mediaStoreUri },
@@ -89,12 +99,14 @@ private fun createPlaybackController(
     SilentPlaybackController()
 }
 
-private fun store(name: String) = PreferencesStores.get(AppPaths.current.preferencesFile(name))
+private fun store(name: String) = PreferencesStores.get(DesktopPaths.preferencesFile(name))
 
 val desktopPlatformModule = module {
     single { UserPreferences(store(PreferencesStores.USER)) }
     single { SettingsPreferences(store(PreferencesStores.SETTINGS), streamCacheDefault = true) }
     single { SourcePreferences(store(PreferencesStores.SOURCE)) }
+    single { GraalLxPluginRuntime() } bind LxPluginRuntime::class
+    single<AudioSourceProvider>(named("lx")) { LxAudioSourceProvider(get<LxPluginRuntime>(), get(), getAll<PlatformSearchProvider>()) }
     single { SessionMonitor(get(), get()) }
     single { SearchHistoryPreferences(store(PreferencesStores.SEARCH_HISTORY)) }
     single { PlaybackPreferences(store(PreferencesStores.PLAYBACK)) }
@@ -109,10 +121,10 @@ val desktopPlatformModule = module {
     single<OnlineStateProvider> { DesktopOnlineStateProvider() }
     single {
         val userPreferences = get<UserPreferences>()
-        MetadataCache(AppPaths.current.metadataCacheDir) { userPreferences.userProfile.first()?.uid ?: 0L }
+        MetadataCache(DesktopPaths.metadataCacheDir) { userPreferences.userProfile.first()?.uid ?: 0L }
     }
     single { DesktopDownloadPreferences(store(DesktopDownloadPreferences.STORE_NAME)) }
-    single { AudioCache(AppPaths.current.audioCacheDir) }
+    single { AudioCache(DesktopPaths.audioCacheDir) }
     single<CachedAudioIndex> {
         val downloadPreferences = get<DesktopDownloadPreferences>()
         val audioCache = get<AudioCache>()
@@ -127,13 +139,14 @@ val desktopPlatformModule = module {
             playbackRepository = get(),
             settingsPreferences = get(),
             downloadPreferences = get(),
-            tempDir = AppPaths.current.downloadTempDir,
-            defaultDir = AppPaths.current.defaultDownloadDir
+            tempDir = DesktopPaths.downloadTempDir,
+            defaultDir = DesktopPaths.defaultDownloadDir
         )
     }
     single<SongDownloader> { get<DesktopSongDownloader>() }
-    single<PlaybackController> { createPlaybackController(get(), get(), get(), get(), get(), get()) }
-    single { AmllLyricsClient(LyricsCache(AppPaths.current.cacheDir)) }
+    single<DesktopPlaybackController> { createPlaybackController(get(), get(), get(), get(), get(), get()) }
+    single<PlaybackController> { get<DesktopPlaybackController>() }
+    single { AmllLyricsClient(LyricsCache(DesktopPaths.localCacheDir)) }
     // 桌面第一版没有本地音乐，只取在线歌词
     single {
         val amllLyricsClient = get<AmllLyricsClient>()
@@ -176,12 +189,19 @@ val desktopViewModelModule = module {
             songLikeRepository = get(),
             syncProfileAfterLoginUseCase = get(),
             sourceProviders = getAll<AudioSourceProvider>(),
+            searchProviders = getAll<PlatformSearchProvider>(),
             settingsPreferences = getOrNull(),
-            sourcePreferences = getOrNull()
+            sourcePreferences = getOrNull(),
+            collectionActions = get(),
+            artistRepository = get(),
+            podcastRepository = get()
         )
     }
     factoryOf(::PlaylistCategoryViewModel)
     factoryOf(::PlaylistViewModel)
     singleOf(::PlayerViewModel)
     factoryOf(::ArtistViewModel)
+    singleOf(::CommonSettingsViewModel)
+    singleOf(::LxPluginSettingsViewModel)
+    single { DesktopSettingsViewModel(get(), get(), get(), get(), get()) }
 }

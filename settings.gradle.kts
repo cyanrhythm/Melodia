@@ -25,6 +25,5 @@ dependencyResolutionManagement {
 rootProject.name = "Melodia"
 include(":app")
 include(":shared")
-
+ 
 include(":desktopApp")
-include(":processor")

@@ -8,6 +8,7 @@ import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.preferences.BottomBarItemSetting
 import com.lin0721.linmusic.core.preferences.BottomBarLayout
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.core.preferences.UiScale
 import com.lin0721.linmusic.core.auth.UserPreferences
 import com.lin0721.linmusic.feature.settings.data.UserBindingItem
 import com.lin0721.linmusic.feature.settings.data.UserLevelData
@@ -22,13 +23,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.lin0721.linmusic.core.source.ArchiveScript
+import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.source.LxPluginInfo
 import com.lin0721.linmusic.core.source.LxPluginItem
 import com.lin0721.linmusic.core.source.MusicPlatform
 import com.lin0721.linmusic.core.source.SourcePreferences
-import com.lin0721.linmusic.feature.source.plugin.LxPluginEngine
+import com.lin0721.linmusic.core.source.LxPluginManager
 import java.io.File
-import java.util.UUID
 
 private const val TAG = "SettingsViewModel"
 
@@ -37,7 +39,7 @@ class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val settingsPreferences: SettingsPreferences,
     private val sourcePreferences: SourcePreferences,
-    private val lxPluginEngine: LxPluginEngine,
+    private val lxPluginManager: LxPluginManager,
     private val userPreferences: UserPreferences,
     private val authRepository: AuthRepository,
     private val resourceProvider: ResourceProvider
@@ -56,6 +58,7 @@ class SettingsViewModel(
     }
 
     // ─── 本地偏好设置对外状态流 ───
+    val searchAggregationEnabled = sourcePreferences.searchAggregationEnabled.asState(false)
     val fallbackEnabled = sourcePreferences.fallbackEnabled.asState(false)
     val communityPriority = sourcePreferences.communityPriority.asState(false)
     val unmServerUrl = sourcePreferences.unmServerUrl.asState("")
@@ -71,6 +74,7 @@ class SettingsViewModel(
     val lxPluginSources = sourcePreferences.lxPluginSources.asState(emptyList())
 
     val wifiQuality = settingsPreferences.wifiQuality.asState("lossless")
+    val showPlaybackQuality = settingsPreferences.showPlaybackQuality.asState(false)
 
     val mobileQuality = settingsPreferences.mobileQuality.asState("standard")
 
@@ -116,11 +120,16 @@ class SettingsViewModel(
 
     val bottomBarIconOnly = settingsPreferences.bottomBarIconOnly.asState(false)
 
+    // 启动默认打开音乐库
+    val startInLibrary = settingsPreferences.startInLibrary.asState(false)
+
     val playerPageMode = settingsPreferences.playerPageMode.asState(SettingsPreferences.PLAYER_PAGE_MODE_AUTO)
 
     val sidePlayerPinned = settingsPreferences.sidePlayerPinned.asState(true)
 
     val tabletImmersiveMode = settingsPreferences.tabletImmersiveMode.asState(false)
+
+    val uiScalePercent = settingsPreferences.uiScalePercent.asState(UiScale.DEFAULT_PERCENT)
 
     val lyricTextSize = settingsPreferences.lyricTextSize.asState(14)
 
@@ -220,19 +229,15 @@ class SettingsViewModel(
             .launchIn(viewModelScope)
 
         // 预热激活已启用的社区源插件沙盒
-        viewModelScope.launch {
-            val enabled = sourcePreferences.lxPluginEnabled.first()
-            if (enabled) {
-                val plugins = sourcePreferences.lxPlugins.first().filter { it.isEnabled }
-                lxPluginEngine.syncActivePlugins(plugins)
-            }
-        }
+        viewModelScope.launch { lxPluginManager.warmUp() }
 
         // 初始化拉取远端账号数据
         fetchRemoteSettingsData()
     }
 
     // ─── 核心设置修改方法 ───
+    fun updateSearchAggregationEnabled(enabled: Boolean) = launchSave { sourcePreferences.saveSearchAggregationEnabled(enabled) }
+
     fun updateFallbackEnabled(enabled: Boolean) = launchSave { sourcePreferences.saveFallbackEnabled(enabled) }
 
     fun updateUnmServerUrl(url: String) = launchSave { sourcePreferences.saveUnmServerUrl(url) }
@@ -246,26 +251,11 @@ class SettingsViewModel(
     fun updateCommunityPriority(enabled: Boolean) = launchSave { sourcePreferences.saveCommunityPriority(enabled) }
 
     fun updateLxPluginEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            sourcePreferences.saveLxPluginEnabled(enabled)
-            if (enabled) {
-                val plugins = sourcePreferences.lxPlugins.first().filter { it.isEnabled }
-                lxPluginEngine.syncActivePlugins(plugins)
-            } else {
-                lxPluginEngine.reset()
-            }
-        }
+        viewModelScope.launch { lxPluginManager.setEnabled(enabled) }
     }
 
     fun toggleLxPlugin(id: String) {
-        viewModelScope.launch {
-            sourcePreferences.toggleLxPlugin(id)
-            val enabled = sourcePreferences.lxPluginEnabled.first()
-            if (enabled) {
-                val plugins = sourcePreferences.lxPlugins.first().filter { it.isEnabled }
-                lxPluginEngine.syncActivePlugins(plugins)
-            }
-        }
+        viewModelScope.launch { lxPluginManager.toggle(id) }
     }
 
     fun moveLxPluginUp(id: String) = launchSave { sourcePreferences.moveLxPluginUp(id) }
@@ -273,98 +263,49 @@ class SettingsViewModel(
     fun moveLxPluginDown(id: String) = launchSave { sourcePreferences.moveLxPluginDown(id) }
 
     fun removeLxPlugin(id: String) {
-        viewModelScope.launch {
-            sourcePreferences.removeLxPlugin(id)
-            lxPluginEngine.deactivatePlugin(id)
-        }
-    }
-
-    // 检查脚本导入状态类型定义
-    sealed interface ScriptImportCheckResult {
-        data class Success(val item: LxPluginItem) : ScriptImportCheckResult
-        data class Duplicate(val existing: LxPluginItem, val newInfo: LxPluginInfo, val rawScript: String) : ScriptImportCheckResult
-        data class Failure(val message: String) : ScriptImportCheckResult
+        viewModelScope.launch { lxPluginManager.remove(id) }
     }
 
     // 下载远程脚本或直接返回脚本文本
-    suspend fun resolveScriptContent(input: String): Result<String> {
-        val trimmed = input.trim()
-        return if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
-            lxPluginEngine.downloadScript(trimmed)
-        } else {
-            Result.success(trimmed)
-        }
-    }
+    suspend fun resolveScriptContent(input: String): Result<String> = lxPluginManager.resolveScriptContent(input)
 
     // 前置校验脚本并检查是否存在重名插件
-    suspend fun precheckAndImportScript(scriptText: String): ScriptImportCheckResult {
-        val verifyRes = lxPluginEngine.loadAndVerifyScript(scriptText)
-        if (verifyRes.isFailure) {
-            return ScriptImportCheckResult.Failure(verifyRes.exceptionOrNull()?.message ?: "脚本解析失败，请检查脚本语法")
-        }
-        val info = verifyRes.getOrThrow()
-        val currentPlugins = sourcePreferences.lxPlugins.first()
-        val existing = currentPlugins.firstOrNull { it.name.trim() == info.name.trim() }
-        if (existing != null) {
-            return ScriptImportCheckResult.Duplicate(existing = existing, newInfo = info, rawScript = scriptText)
-        }
-        val newItem = LxPluginItem(
-            id = UUID.randomUUID().toString(),
-            name = info.name,
-            version = info.version,
-            author = info.author,
-            description = info.description,
-            sources = info.sources,
-            rawScript = scriptText,
-            isEnabled = true
-        )
-        sourcePreferences.addOrUpdateLxPlugin(newItem)
-        if (sourcePreferences.lxPluginEnabled.first()) {
-            lxPluginEngine.activatePlugin(newItem)
-        }
-        return ScriptImportCheckResult.Success(newItem)
-    }
+    suspend fun precheckAndImportScript(scriptText: String): LxPluginManager.ImportCheckResult =
+        lxPluginManager.precheckAndImport(scriptText)
 
     // 确认导入插件（支持覆盖更新或保留两者）
-    suspend fun confirmImportPlugin(info: LxPluginInfo, script: String, overwriteExistingId: String? = null): LxPluginItem {
-        val id = overwriteExistingId ?: UUID.randomUUID().toString()
-        val item = LxPluginItem(
-            id = id,
-            name = info.name,
-            version = info.version,
-            author = info.author,
-            description = info.description,
-            sources = info.sources,
-            rawScript = script,
-            isEnabled = true
-        )
-        sourcePreferences.addOrUpdateLxPlugin(item, overwriteId = overwriteExistingId)
-        if (sourcePreferences.lxPluginEnabled.first()) {
-            lxPluginEngine.activatePlugin(item)
+    suspend fun confirmImportPlugin(info: LxPluginInfo, script: String, overwriteExistingId: String? = null): LxPluginItem =
+        lxPluginManager.confirmImport(info, script, overwriteExistingId)
+
+    // 导入压缩包里勾选的脚本，跑在 ViewModel 作用域，页面销毁后仍会完成
+    fun importScriptsInBackground(scripts: List<ArchiveScript>, onDone: (LxPluginManager.BatchImportResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                onDone(lxPluginManager.importScripts(scripts))
+            } catch (e: Exception) {
+                ToastManager.showToast("导入异常: ${e.message}")
+            }
         }
-        return item
     }
 
     // 兼容旧接口
     suspend fun importLxScript(scriptText: String): Result<LxPluginInfo> {
         return when (val check = precheckAndImportScript(scriptText)) {
-            is ScriptImportCheckResult.Success -> Result.success(LxPluginInfo(name = check.item.name, version = check.item.version))
-            is ScriptImportCheckResult.Duplicate -> {
+            is LxPluginManager.ImportCheckResult.Success -> Result.success(LxPluginInfo(name = check.item.name, version = check.item.version))
+            is LxPluginManager.ImportCheckResult.Duplicate -> {
                 confirmImportPlugin(check.newInfo, scriptText, overwriteExistingId = check.existing.id)
                 Result.success(check.newInfo)
             }
-            is ScriptImportCheckResult.Failure -> Result.failure(Exception(check.message))
+            is LxPluginManager.ImportCheckResult.Failure -> Result.failure(Exception(check.message))
         }
     }
 
     fun removeLxPlugin() {
-        viewModelScope.launch {
-            sourcePreferences.clearLxPlugin()
-            lxPluginEngine.reset()
-        }
+        viewModelScope.launch { lxPluginManager.clearAll() }
     }
 
     fun updateWifiQuality(quality: String) = launchSave { settingsPreferences.saveWifiQuality(quality) }
+    fun updateShowPlaybackQuality(show: Boolean) = launchSave { settingsPreferences.saveShowPlaybackQuality(show) }
 
     fun updateMobileQuality(quality: String) = launchSave { settingsPreferences.saveMobileQuality(quality) }
 
@@ -428,11 +369,15 @@ class SettingsViewModel(
         settingsPreferences.saveBottomBarIconOnly(iconOnly)
     }
 
+    fun updateStartInLibrary(enabled: Boolean) = launchSave { settingsPreferences.saveStartInLibrary(enabled) }
+
     fun updatePlayerPageMode(mode: String) = launchSave { settingsPreferences.savePlayerPageMode(mode) }
 
     fun updateSidePlayerPinned(pinned: Boolean) = launchSave { settingsPreferences.saveSidePlayerPinned(pinned) }
  
     fun updateTabletImmersiveMode(enabled: Boolean) = launchSave { settingsPreferences.saveTabletImmersiveMode(enabled) }
+
+    fun updateUiScalePercent(percent: Int) = launchSave { settingsPreferences.saveUiScalePercent(percent) }
 
     fun updateLyricTextSize(size: Int) = launchSave { settingsPreferences.saveLyricTextSize(size) }
 

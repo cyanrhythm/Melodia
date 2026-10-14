@@ -5,12 +5,9 @@ import com.lin0721.linmusic.core.player.CrossfadePolicy
 import com.lin0721.linmusic.core.player.NowPlaying
 import com.lin0721.linmusic.core.player.PlayMode
 import com.lin0721.linmusic.core.player.PlaySource
-import com.lin0721.linmusic.core.player.PlaybackController
 import com.lin0721.linmusic.core.player.PlaybackController.Companion.CONTEXT_INTELLIGENCE
 import com.lin0721.linmusic.core.player.PlaybackPreferences
 import com.lin0721.linmusic.core.player.PlaybackQueue
-import com.lin0721.linmusic.desktop.platform.DesktopPreferences
-import com.lin0721.linmusic.desktop.player.cache.AudioCache
 import com.lin0721.linmusic.core.player.PlaybackState
 import com.lin0721.linmusic.core.player.PlaybackStateStore
 import com.lin0721.linmusic.core.player.QueueItem
@@ -18,6 +15,8 @@ import com.lin0721.linmusic.core.player.SimilarRoamingController
 import com.lin0721.linmusic.core.player.SleepTimer
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
+import com.lin0721.linmusic.desktop.data.DesktopPreferences
+import com.lin0721.linmusic.desktop.player.cache.AudioCache
 import com.lin0721.linmusic.desktop.player.mpv.MpvEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,10 +32,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 private const val TAG = "MpvPlayback"
 
@@ -75,7 +74,7 @@ class MpvPlaybackController(
     // 仅测试用
     engineOptions: Map<String, String> = emptyMap(),
     private val audioCache: AudioCache? = null
-) : PlaybackController, AudioOutputControl, MpvEngine.Listener {
+) : DesktopPlaybackController, MpvEngine.Listener {
 
     private val playbackQueue = PlaybackQueue()
     private val stateStore = PlaybackStateStore(scope, preferences)
@@ -117,7 +116,7 @@ class MpvPlaybackController(
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _volume = MutableStateFlow(100)
-    val volume: StateFlow<Int> = _volume.asStateFlow()
+    override val volume: StateFlow<Int> = _volume.asStateFlow()
 
     private val _audioDevices = MutableStateFlow<List<AudioDevice>>(emptyList())
     override val audioDevices: StateFlow<List<AudioDevice>> = _audioDevices.asStateFlow()
@@ -127,7 +126,9 @@ class MpvPlaybackController(
 
     // 桌面端专用提示（取地址失败等），由界面层弹出
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val messages: SharedFlow<String> = _messages.asSharedFlow()
+    override val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    override val unavailableReason: String? = null
 
     private var playJob: Job? = null
     private var consecutiveFailures = 0
@@ -176,9 +177,8 @@ class MpvPlaybackController(
     // 保存的设备已不在系统列表里时保持跟随系统默认，偏好不清除，设备插回后下次启动仍可用
     private suspend fun restoreAudioDevice() {
         val saved = desktopPreferences.audioDevice.first()
-        val devices = engine.audioDevices()
-        _audioDevices.value = selectAudioDevices(devices, saved)
-        if (saved == AUTO_AUDIO_DEVICE || devices.none { it.name == saved }) return
+        _audioDevices.value = engine.audioDevices()
+        if (saved == AUTO_AUDIO_DEVICE || _audioDevices.value.none { it.name == saved }) return
         if (engine.setAudioDevice(saved)) _audioDevice.value = saved
     }
 
@@ -186,10 +186,8 @@ class MpvPlaybackController(
         val devices = engine.audioDevices()
         // 读取失败时返回空列表，不据此判断设备已断开
         if (devices.isEmpty()) return
+        _audioDevices.value = devices
         val current = _audioDevice.value
-        // 展示用筛选后的列表；断开判断用完整列表，避免把被筛掉的设备误认为仍在
-        _audioDevices.value = selectAudioDevices(devices, current)
-        AppLogger.i(TAG, "输出设备 ${_audioDevices.value.size}/${devices.size} 个（当前：$current）")
         if (current != AUTO_AUDIO_DEVICE && devices.none { it.name == current } && engine.setAudioDevice(AUTO_AUDIO_DEVICE)) {
             _audioDevice.value = AUTO_AUDIO_DEVICE
             _messages.tryEmit("输出设备已断开，已切回系统默认")
@@ -267,7 +265,7 @@ class MpvPlaybackController(
         val isSeedPlaying = target != null && target.songId == playingSongId
         if ((playContext == CONTEXT_INTELLIGENCE || playContext == SimilarRoamingController.CONTEXT_ROAMING) && isSeedPlaying) {
             // 以当前曲目为种子时平滑衔接，不重载音频
-            roaming.prefetchOnPlay(target.songId, index)
+            prefetchRoaming(target.songId, index)
             return
         }
         playIndex(index, startPositionMs.coerceAtLeast(0L))
@@ -430,14 +428,14 @@ class MpvPlaybackController(
         saveQueueState()
     }
 
-    fun setVolume(percent: Int) {
+    override fun setVolume(percent: Int) {
         val clamped = percent.coerceIn(0, 100)
         _volume.value = clamped
         engine.setVolume(clamped)
     }
 
     // 退出时同步落盘，异步写入来不及在进程结束前完成
-    fun release() {
+    override fun release() {
         playJob?.cancel()
         sleepTimer.cancel()
         roaming.cancel()
@@ -502,7 +500,7 @@ class MpvPlaybackController(
         if (!_isPlaying.value) return
         val songId = loadedSongId ?: return
         val dur = _duration.value
-        if (dur > 0L) roaming.onProgressTick(songId, dur - _currentPosition.value)
+        if (dur > 0L && isOnlineSong(songId)) roaming.onProgressTick(songId, dur - _currentPosition.value)
         maybePrepareCrossfade(songId)
         val now = System.currentTimeMillis()
         if (now - lastPeriodicSaveMs >= PERIODIC_STATE_SAVE_INTERVAL_MS) {
@@ -533,7 +531,7 @@ class MpvPlaybackController(
         )
         saveQueueState()
         playJob = scope.launch {
-            val playback = knownUrl?.let { Playback(it, null) } ?: resolvePlayback(item.songId).getOrElse { error ->
+            val playback = knownUrl?.let { Playback(it, null) } ?: resolvePlayback(item).getOrElse { error ->
                 AppLogger.w(TAG, "取播放地址失败 songId=${item.songId}", error)
                 handleFailure("《${item.title}》暂无版权或需要会员")
                 return@launch
@@ -542,9 +540,22 @@ class MpvPlaybackController(
             engine.load(playback.url, startMs, record = playback.record.takeIf { startMs == 0L })
             loadedSongId = item.songId
             beginReporting(item.songId)
-            roaming.prefetchOnPlay(item.songId, index)
+            prefetchRoaming(item.songId, index)
             saveState()
         }
+    }
+
+    // 外部平台搜索结果用负数 id 且自带直链，不属于网易云曲库，不参与打卡上报、相似漫游与缓存
+    private fun isOnlineSong(songId: Long): Boolean = songId > 0L
+
+    private fun prefetchRoaming(songId: Long, index: Int) {
+        if (isOnlineSong(songId)) roaming.prefetchOnPlay(songId, index)
+    }
+
+    // 队列项自带直链时直接使用，否则按网易云歌曲 id 解析
+    private suspend fun resolvePlayback(item: QueueItem): Result<Playback> {
+        item.localUri?.takeIf { it.isNotBlank() }?.let { return Result.success(Playback(it, null)) }
+        return resolvePlayback(item.songId)
     }
 
     // 已下载 > 缓存命中 > 联网；联网失败退回任意音质缓存
@@ -591,7 +602,7 @@ class MpvPlaybackController(
 
         crossfadeAttemptedSongId = songId
         crossfadePrepareJob = scope.launch {
-            val playback = resolvePlayback(next.songId).getOrNull() ?: return@launch
+            val playback = resolvePlayback(next).getOrNull() ?: return@launch
             if (!engine.prepareSpare(playback.url, playback.record)) return@launch
             val ready = withTimeoutOrNull(CROSSFADE_PREPARE_TIMEOUT_MS) {
                 while (!engine.spareReady) delay(CROSSFADE_PREPARE_POLL_MS)
@@ -637,7 +648,7 @@ class MpvPlaybackController(
         saveQueueState()
         beginReporting(item.songId)
         startClock()
-        roaming.prefetchOnPlay(item.songId, plan.index)
+        prefetchRoaming(item.songId, plan.index)
         saveState()
     }
 
@@ -696,6 +707,7 @@ class MpvPlaybackController(
     }
 
     private fun beginReporting(songId: Long) {
+        if (!isOnlineSong(songId)) return
         reportingSongId = songId
         val source = playbackQueue.playSource.value
         reportingSource = source

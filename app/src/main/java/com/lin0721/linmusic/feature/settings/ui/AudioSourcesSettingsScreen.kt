@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lin0721.linmusic.LocalBottomOverlayInset
+import com.lin0721.linmusic.core.source.ArchiveScript
+import com.lin0721.linmusic.core.source.LxArchiveReader
+import com.lin0721.linmusic.core.source.LxPluginManager
 import com.lin0721.linmusic.core.source.SourcePreferences
 import com.lin0721.linmusic.core.source.UnmApiClient
 import com.lin0721.linmusic.core.ui.components.MelodiaIconButton
@@ -32,13 +39,16 @@ import com.lin0721.linmusic.core.ui.components.MelodiaSwitch
 import com.lin0721.linmusic.core.ui.components.ToastManager
 import com.lin0721.linmusic.core.ui.theme.MelodiaSpacing
 import com.lin0721.linmusic.core.ui.theme.PillRadius
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    val searchAggregationEnabled by viewModel.searchAggregationEnabled.collectAsStateWithLifecycle()
     val fallbackEnabled by viewModel.fallbackEnabled.collectAsStateWithLifecycle()
     val unmServerUrl by viewModel.unmServerUrl.collectAsStateWithLifecycle()
     val unmRemoteFallbackEnabled by viewModel.unmRemoteFallbackEnabled.collectAsStateWithLifecycle()
@@ -49,7 +59,9 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
 
     var showServerUrlDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    var duplicateCheckResult by remember { mutableStateOf<SettingsViewModel.ScriptImportCheckResult.Duplicate?>(null) }
+    var duplicateQueue by remember { mutableStateOf<List<LxPluginManager.ImportCheckResult.Duplicate>>(emptyList()) }
+    val duplicateCheckResult = duplicateQueue.firstOrNull()
+    var pendingScripts by remember { mutableStateOf<List<ArchiveScript>>(emptyList()) }
 
     // 系统文件选取器 (选取 .js 文件)
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -58,18 +70,23 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
         if (uri != null) {
             coroutineScope.launch {
                 try {
-                    val content = context.contentResolver.openInputStream(uri)?.use { stream ->
-                        stream.bufferedReader().readText()
+                    val name = uri.lastPathSegment?.substringAfterLast('/').orEmpty().ifBlank { "script.js" }
+                    val read = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { LxArchiveReader.readScripts(name, it) }
                     }
-                    if (!content.isNullOrBlank()) {
-                        when (val result = viewModel.precheckAndImportScript(content)) {
-                            is SettingsViewModel.ScriptImportCheckResult.Success -> {
+                    val scripts = read?.getOrNull()
+                    when {
+                        read == null -> ToastManager.showToast("读取文件失败")
+                        scripts == null -> ToastManager.showToast("读取失败: ${read.exceptionOrNull()?.message}")
+                        scripts.size > 1 -> pendingScripts = scripts
+                        else -> when (val result = viewModel.precheckAndImportScript(scripts[0].content)) {
+                            is LxPluginManager.ImportCheckResult.Success -> {
                                 ToastManager.showToast("插件导入成功: ${result.item.name}")
                             }
-                            is SettingsViewModel.ScriptImportCheckResult.Duplicate -> {
-                                duplicateCheckResult = result
+                            is LxPluginManager.ImportCheckResult.Duplicate -> {
+                                duplicateQueue = duplicateQueue + result
                             }
-                            is SettingsViewModel.ScriptImportCheckResult.Failure -> {
+                            is LxPluginManager.ImportCheckResult.Failure -> {
                                 ToastManager.showToast("插件解析失败: ${result.message}")
                             }
                         }
@@ -88,6 +105,13 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
         // 分组 1：换源基础设置
         item {
             SettingsGroupCard(SettingsSubMenu.AUDIO_SOURCES.sectionTitles[0]) {
+                SettingsSwitchRow(
+                    title = "多平台聚合搜索",
+                    subtitle = "在搜索结果页提供酷狗、酷我、QQ 音乐的平台标签，切换后才会发起搜索；播放通过换源插件解析",
+                    checked = searchAggregationEnabled,
+                    onCheckedChange = { viewModel.updateSearchAggregationEnabled(it) }
+                )
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                 SettingsSwitchRow(
                     title = "无版权/VIP 自动换源",
                     subtitle = "官方网易云音源不可用或仅为试听时，自动从可用音源解析完整播放直链",
@@ -270,7 +294,7 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
                     ) {
                         Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("选取文件 (.js)", fontSize = 13.sp)
+                        Text("选取文件 (.js/.zip/.7z)", fontSize = 13.sp)
                     }
 
                     OutlinedButton(
@@ -341,7 +365,24 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
             viewModel = viewModel,
             onDismiss = { showImportDialog = false },
             onDuplicate = { duplicate ->
-                duplicateCheckResult = duplicate
+                duplicateQueue = duplicateQueue + duplicate
+            }
+        )
+    }
+
+    // 压缩包内多脚本勾选弹窗
+    if (pendingScripts.isNotEmpty()) {
+        ScriptPickerDialog(
+            scripts = pendingScripts,
+            onDismiss = { pendingScripts = emptyList() },
+            onConfirm = { selected ->
+                pendingScripts = emptyList()
+                // 在 ViewModel 作用域里导入，离开设置页不会中断
+                viewModel.importScriptsInBackground(selected) { batch ->
+                    duplicateQueue = duplicateQueue + batch.duplicates
+                    ToastManager.showToast(batch.summary())
+                    batch.failures.firstOrNull()?.let { ToastManager.showToast("插件解析失败: $it") }
+                }
             }
         )
     }
@@ -350,7 +391,7 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
     duplicateCheckResult?.let { duplicate ->
         DuplicatePluginDialog(
             duplicate = duplicate,
-            onDismiss = { duplicateCheckResult = null },
+            onDismiss = { duplicateQueue = duplicateQueue.drop(1) },
             onOverwrite = {
                 coroutineScope.launch {
                     viewModel.confirmImportPlugin(
@@ -359,7 +400,7 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
                         overwriteExistingId = duplicate.existing.id
                     )
                     ToastManager.showToast("已覆盖更新插件: ${duplicate.newInfo.name}")
-                    duplicateCheckResult = null
+                    duplicateQueue = duplicateQueue.drop(1)
                 }
             },
             onKeepBoth = {
@@ -370,7 +411,7 @@ fun AudioSourcesSettingsView(viewModel: SettingsViewModel) {
                         overwriteExistingId = null
                     )
                     ToastManager.showToast("已作为新插件添加: ${duplicate.newInfo.name}")
-                    duplicateCheckResult = null
+                    duplicateQueue = duplicateQueue.drop(1)
                 }
             }
         )
@@ -491,7 +532,7 @@ private fun ServerUrlEditDialog(
 private fun LxScriptImportDialog(
     viewModel: SettingsViewModel,
     onDismiss: () -> Unit,
-    onDuplicate: (SettingsViewModel.ScriptImportCheckResult.Duplicate) -> Unit
+    onDuplicate: (LxPluginManager.ImportCheckResult.Duplicate) -> Unit
 ) {
     var textValue by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }
@@ -566,17 +607,17 @@ private fun LxScriptImportDialog(
                             statusText = "正在加载并校验脚本..."
                             val script = contentRes.getOrThrow()
                             when (val result = viewModel.precheckAndImportScript(script)) {
-                                is SettingsViewModel.ScriptImportCheckResult.Success -> {
+                                is LxPluginManager.ImportCheckResult.Success -> {
                                     isProcessing = false
                                     ToastManager.showToast("插件导入成功: ${result.item.name}")
                                     onDismiss()
                                 }
-                                is SettingsViewModel.ScriptImportCheckResult.Duplicate -> {
+                                is LxPluginManager.ImportCheckResult.Duplicate -> {
                                     isProcessing = false
                                     onDuplicate(result)
                                     onDismiss()
                                 }
-                                is SettingsViewModel.ScriptImportCheckResult.Failure -> {
+                                is LxPluginManager.ImportCheckResult.Failure -> {
                                     isProcessing = false
                                     ToastManager.showToast("解析失败: ${result.message}")
                                 }
@@ -606,7 +647,7 @@ private fun LxScriptImportDialog(
 // 重名插件冲突处理弹窗
 @Composable
 private fun DuplicatePluginDialog(
-    duplicate: SettingsViewModel.ScriptImportCheckResult.Duplicate,
+    duplicate: LxPluginManager.ImportCheckResult.Duplicate,
     onDismiss: () -> Unit,
     onOverwrite: () -> Unit,
     onKeepBoth: () -> Unit
@@ -659,6 +700,73 @@ private fun DuplicatePluginDialog(
                 ) {
                     Text("保留为副本", fontSize = 12.sp)
                 }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+// 压缩包里有多个脚本时让用户勾选要导入的，默认全选
+@Composable
+private fun ScriptPickerDialog(
+    scripts: List<ArchiveScript>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<ArchiveScript>) -> Unit
+) {
+    var selected by remember(scripts) { mutableStateOf(scripts.map { it.path }.toSet()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "选择要导入的脚本", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "压缩包内找到 ${scripts.size} 个 .js 脚本：",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = MelodiaSpacing.sm)
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    scripts.forEach { script ->
+                        val checked = script.path in selected
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = if (checked) selected - script.path else selected + script.path },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { selected = if (it) selected + script.path else selected - script.path }
+                            )
+                            Text(
+                                text = script.path,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(scripts.filter { it.path in selected }) },
+                enabled = selected.isNotEmpty()
+            ) {
+                Text("导入所选（${selected.size}）", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

@@ -74,6 +74,8 @@ class SettingsPreferences(
         private val KEY_SIDE_PLAYER_PINNED = booleanPreferencesKey("side_player_pinned")
         // 平板全局沉浸，默认 false
         private val KEY_TABLET_IMMERSIVE_MODE = booleanPreferencesKey("tablet_immersive_mode")
+        // 界面缩放百分比，默认 100
+        private val KEY_UI_SCALE_PERCENT = intPreferencesKey("ui_scale_percent")
         const val PLAYER_PAGE_MODE_AUTO = "auto"
         const val PLAYER_PAGE_MODE_FULLSCREEN = "fullscreen"
         const val PLAYER_PAGE_MODE_SIDE = "side"
@@ -114,6 +116,8 @@ class SettingsPreferences(
         private val KEY_BOTTOM_BAR_LAYOUT = stringPreferencesKey("bottom_bar_layout")
         // 底栏仅显示图标模式，默认 false
         private val KEY_BOTTOM_BAR_ICON_ONLY = booleanPreferencesKey("bottom_bar_icon_only")
+        // 启动默认打开音乐库，默认 false
+        private val KEY_START_IN_LIBRARY = booleanPreferencesKey("start_in_library")
         // 启用 SuperLyric 实时歌词，默认 false
         private val KEY_SUPER_LYRIC_ENABLED = booleanPreferencesKey("super_lyric_enabled")
         // 启用 LyricInfo 系统歌词注入，默认 true
@@ -126,6 +130,8 @@ class SettingsPreferences(
         private val KEY_FLUID_CLOUD_LYRIC_ENABLED = booleanPreferencesKey("fluid_cloud_lyric_enabled")
         // 播放页小歌词显隐，默认 true
         private val KEY_SHOW_MINI_LYRIC = booleanPreferencesKey("show_mini_lyric")
+        // 播放页显示实际音质，默认 false
+        private val KEY_SHOW_PLAYBACK_QUALITY = booleanPreferencesKey("show_playback_quality")
     }
 
     // Wi-Fi 音质设置 Flow
@@ -385,6 +391,17 @@ class SettingsPreferences(
         }
     }
 
+    // 启动默认打开音乐库 Flow
+    val startInLibrary: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_START_IN_LIBRARY] ?: false
+    }
+
+    suspend fun saveStartInLibrary(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_START_IN_LIBRARY] = enabled
+        }
+    }
+
     // 底栏创建歌单快捷入口 Flow
     val showCreateEntry: Flow<Boolean> = dataStore.data.map { prefs ->
         val layout = BottomBarLayout.decode(prefs[KEY_BOTTOM_BAR_LAYOUT], prefs[KEY_SHOW_CREATE_ENTRY])
@@ -433,6 +450,17 @@ class SettingsPreferences(
     suspend fun saveTabletImmersiveMode(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_TABLET_IMMERSIVE_MODE] = enabled
+        }
+    }
+
+    // 界面缩放百分比 Flow
+    val uiScalePercent: Flow<Int> = dataStore.data.map { prefs ->
+        UiScale.normalizePercent(prefs[KEY_UI_SCALE_PERCENT] ?: UiScale.DEFAULT_PERCENT)
+    }
+
+    suspend fun saveUiScalePercent(percent: Int) {
+        dataStore.edit { prefs ->
+            prefs[KEY_UI_SCALE_PERCENT] = UiScale.normalizePercent(percent)
         }
     }
 
@@ -685,6 +713,17 @@ class SettingsPreferences(
     suspend fun saveShowMiniLyric(show: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_SHOW_MINI_LYRIC] = show
+        }
+    }
+
+    // 播放页实际音质显隐 Flow
+    val showPlaybackQuality: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_SHOW_PLAYBACK_QUALITY] ?: false
+    }
+
+    suspend fun saveShowPlaybackQuality(show: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_SHOW_PLAYBACK_QUALITY] = show
         }
     }
 }

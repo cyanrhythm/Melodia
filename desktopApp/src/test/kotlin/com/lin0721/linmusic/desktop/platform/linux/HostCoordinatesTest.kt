@@ -1,7 +1,7 @@
 package com.lin0721.linmusic.desktop.platform.linux
 
-import com.lin0721.linmusic.desktop.platform.native.linux.WaylandOutputInfo
-import com.lin0721.linmusic.desktop.platform.native.linux.sni.hostPointToAwt
+import com.lin0721.linmusic.desktop.platform.linux.WaylandOutputInfo
+import com.lin0721.linmusic.desktop.platform.linux.sni.hostPointToAwt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

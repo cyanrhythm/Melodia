@@ -39,10 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
-import com.lin0721.linmusic.desktop.platform.native.TrayIntegration
-import com.lin0721.linmusic.desktop.platform.native.TrayMenuModel
-import com.lin0721.linmusic.desktop.platform.native.TrayMenuNode
-import com.lin0721.linmusic.desktop.ui.ProvideUiScale
+import com.lin0721.linmusic.desktop.platform.tray.TrayMenuModel
+import com.lin0721.linmusic.desktop.platform.tray.TrayMenuNode
+import com.lin0721.linmusic.desktop.platform.tray.TrayService
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
 import java.awt.GraphicsEnvironment
 import java.awt.Point
@@ -68,26 +67,24 @@ sealed interface TrayMenuEntry {
     data object Divider : TrayMenuEntry
 }
 
-val isTraySupported: Boolean
-    get() = TrayIntegration.current.supported
-
-// 图标与点击由平台能力负责（Windows=AWT；Linux=SNI），菜单仍由 Compose 绘制
+// 图标与点击由平台能力负责（Windows=AWT；Linux=SNI），菜单在平台上默认由 Compose 绘制；
+// Linux 的 SNI 会把菜单发布成 DBusMenu，交给托盘宿主用原生样式渲染
 @Composable
 fun TrayHost(
+    trayService: TrayService,
     tooltip: String,
     header: String?,
     entries: List<TrayMenuEntry>,
     onOpenMain: () -> Unit
 ) {
-    val tray = remember { TrayIntegration.current }
-    if (!tray.supported) return
+    if (!trayService.supported) return
     var menuAnchor by remember { mutableStateOf<Point?>(null) }
     val openMain by rememberUpdatedState(onOpenMain)
     val iconPng = TrayIconPng
 
     DisposableEffect(Unit) {
         if (iconPng != null) {
-            tray.install(
+            trayService.install(
                 tooltip = tooltip.take(TOOLTIP_MAX_LENGTH),
                 iconPng = iconPng,
                 onActivate = { _, _ -> openMain() },
@@ -95,10 +92,10 @@ fun TrayHost(
                 onContextMenu = { x, y -> menuAnchor = Point(x, y) }
             )
         }
-        onDispose { tray.uninstall() }
+        onDispose { trayService.uninstall() }
     }
     LaunchedEffect(tooltip) {
-        tray.updateTooltip(tooltip.take(TOOLTIP_MAX_LENGTH))
+        trayService.updateTooltip(tooltip.take(TOOLTIP_MAX_LENGTH))
     }
 
     // 菜单内容变化时同步给平台层：Linux 由托盘宿主用原生样式渲染 DBusMenu，
@@ -106,7 +103,7 @@ fun TrayHost(
     val menuFingerprint = menuFingerprint(header, entries)
     val currentEntries by rememberUpdatedState(entries)
     LaunchedEffect(menuFingerprint) {
-        tray.updateMenu(
+        trayService.updateMenu(
             TrayMenuModel(
                 header = header,
                 nodes = currentEntries.map { entry ->
@@ -127,18 +124,16 @@ fun TrayHost(
     }
 }
 
-// 菜单可见内容的指纹：标签、勾选状态与顺序（回调与实例身份不参与比较）
-private fun menuFingerprint(header: String?, entries: List<TrayMenuEntry>): String = buildString {
-    append(header)
-    entries.forEach { entry ->
-        append('\n')
-        when (entry) {
-            is TrayMenuEntry.Action -> append("A:").append(entry.label)
-            is TrayMenuEntry.Toggle -> append("T:").append(entry.label).append(':').append(entry.checked)
-            TrayMenuEntry.Divider -> append("D")
+// 菜单可见内容的指纹：标签、勾选状态与顺序（回调与实例身份不参与比较），
+// 用于避免每次重组都重发 DBusMenu 布局
+private fun menuFingerprint(header: String?, entries: List<TrayMenuEntry>): Int =
+    (header ?: "").hashCode() * 31 + entries.fold(0) { acc, entry ->
+        acc * 31 + when (entry) {
+            is TrayMenuEntry.Action -> entry.label.hashCode()
+            is TrayMenuEntry.Toggle -> entry.label.hashCode() * 2 + if (entry.checked) 1 else 0
+            TrayMenuEntry.Divider -> -1
         }
     }
-}
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -181,40 +176,37 @@ private fun TrayMenuWindow(
             window.requestFocus()
         }
 
-        // 独立窗口的 Composition 不继承主窗口注入的缩放密度，这里显式保持一致
-        ProvideUiScale {
-            // 外层留白给阴影
-            Box(Modifier.padding(8.dp)) {
-                Column(
-                    Modifier.width(MenuWidth)
-                        .shadow(8.dp, MenuShape)
-                        .clip(MenuShape)
-                        .background(DesktopColors.PopupSurface)
-                        .padding(vertical = 4.dp)
-                ) {
-                    if (header != null) {
-                        Text(
-                            header,
-                            color = DesktopColors.TextGray,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                        MenuDivider()
-                    }
-                    entries.forEach { entry ->
-                        when (entry) {
-                            is TrayMenuEntry.Action -> MenuRow(entry.label, checked = null) {
-                                dismiss()
-                                entry.onClick()
-                            }
-                            is TrayMenuEntry.Toggle -> MenuRow(entry.label, checked = entry.checked) {
-                                dismiss()
-                                entry.onChange(!entry.checked)
-                            }
-                            TrayMenuEntry.Divider -> MenuDivider()
+        // 外层留白给阴影
+        Box(Modifier.padding(8.dp)) {
+            Column(
+                Modifier.width(MenuWidth)
+                    .shadow(8.dp, MenuShape)
+                    .clip(MenuShape)
+                    .background(DesktopColors.PopupSurface)
+                    .padding(vertical = 4.dp)
+            ) {
+                if (header != null) {
+                    Text(
+                        header,
+                        color = DesktopColors.TextGray,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                    MenuDivider()
+                }
+                entries.forEach { entry ->
+                    when (entry) {
+                        is TrayMenuEntry.Action -> MenuRow(entry.label, checked = null) {
+                            dismiss()
+                            entry.onClick()
                         }
+                        is TrayMenuEntry.Toggle -> MenuRow(entry.label, checked = entry.checked) {
+                            dismiss()
+                            entry.onChange(!entry.checked)
+                        }
+                        TrayMenuEntry.Divider -> MenuDivider()
                     }
                 }
             }

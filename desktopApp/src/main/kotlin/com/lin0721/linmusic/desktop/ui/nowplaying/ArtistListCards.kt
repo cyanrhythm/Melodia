@@ -14,10 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,9 +34,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lin0721.linmusic.core.model.ArtistAlbum
 import com.lin0721.linmusic.core.model.ArtistInfo
-import com.lin0721.linmusic.desktop.ui.Cover
-import com.lin0721.linmusic.desktop.ui.LocalDesktopNavigator
+import com.lin0721.linmusic.desktop.ui.components.Cover
+import com.lin0721.linmusic.desktop.ui.shell.LocalDesktopNavigator
 import com.lin0721.linmusic.desktop.ui.theme.DesktopColors
+import com.lin0721.linmusic.feature.player.presentation.artistAlbumsTitle
 import kotlinx.coroutines.launch
 
 private val AlbumWidth = 120.dp
@@ -44,9 +45,6 @@ private val ArtistWidth = 80.dp
 private val ArtistAvatarSize = 64.dp
 private const val SCROLL_FRACTION = 0.8f
 private const val SCROLL_MS = 300
-
-fun artistAlbumsTitle(artistName: String?): String =
-    if (artistName.isNullOrBlank()) "更多专辑" else "${artistName}的更多专辑"
 
 // 艺人的更多专辑：横向列表，点击进入专辑
 @Composable

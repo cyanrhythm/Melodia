@@ -5,19 +5,9 @@ import com.lin0721.linmusic.core.player.QueueItem
 import com.lin0721.linmusic.core.player.data.PlaybackRepository
 import com.lin0721.linmusic.core.preferences.PreferencesStores
 import com.lin0721.linmusic.core.preferences.SettingsPreferences
-import com.lin0721.linmusic.desktop.platform.DesktopPreferences
+import com.lin0721.linmusic.desktop.data.DesktopPreferences
 import com.lin0721.linmusic.desktop.player.cache.AudioCache
 import com.sun.net.httpserver.HttpServer
-import java.io.File
-import java.lang.reflect.Proxy
-import java.net.InetSocketAddress
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.file.Files
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.PI
-import kotlin.math.sin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -32,6 +22,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
+import java.lang.reflect.Proxy
+import java.net.InetSocketAddress
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.file.Files
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.PI
+import kotlin.math.sin
 
 // 无声输出的真实 libmpv 端到端验证边播边存：落缓存、命中缓存、联网失败时兜底
 class MpvPlaybackControllerCacheTest {
@@ -176,5 +176,19 @@ class MpvPlaybackControllerCacheTest {
         assertTrue(await(10_000) { controller.currentPosition.value > 2_500L })
         Thread.sleep(1_500)
         assertTrue(cache.playableIds(listOf(1)).isEmpty())
+    }
+
+    @Test
+    fun externalTrackPlaysItsOwnUrlWithoutQueryingNeteaseOrCaching() {
+        runBlocking { settings.saveStreamCacheEnabled(true) }
+        val controller = newController()
+        Thread.sleep(300)
+        val url = "http://127.0.0.1:${server.address.port}/song.wav"
+        controller.playQueue(listOf(QueueItem(-7, "外部歌", "歌手", "", localUri = url)), 0, null, null, 0L)
+
+        assertTrue("应直接播放自带直链", await(10_000) { controller.currentPosition.value > 500L })
+        assertEquals("外部歌曲不应向网易云取播放地址", 0, urlRequests.get())
+        Thread.sleep(1_500)
+        assertTrue("外部歌曲不应写入边听边存缓存", cache.playableIds(listOf(-7)).isEmpty())
     }
 }

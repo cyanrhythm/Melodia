@@ -52,17 +52,17 @@
 
 | 模块 | 类型 | 职责 |
 |---|---|---|
-| `shared` | Kotlin Multiplatform（Android + 桌面 JVM） | 数据模型、网络与原生加密、各业务域 `data` / `domain`、跨平台 ViewModel、播放器抽象 `PlaybackController` |
+| `shared` | Kotlin Multiplatform（Android + 桌面 JVM） | 数据模型、网络与原生加密、各业务域 `data` / `domain`、跨平台 ViewModel 与展示逻辑、播放器抽象 `PlaybackController` |
 | `app` | Android 应用 | Jetpack Compose 界面、Media3 播放、下载、本地音乐、识曲、悬浮与系统歌词等 Android 专属能力 |
-| `desktopApp` | Compose Desktop 应用（Windows） | 桌面窗口与界面、libmpv 播放、托盘、系统媒体控制（SMTC）与全局快捷键、桌面歌词 |
+| `desktopApp` | Compose Desktop 应用（Windows / Linux） | 桌面窗口与界面、libmpv 播放、托盘、系统媒体控制（Windows SMTC / Linux MPRIS）与全局快捷键、桌面歌词；系统能力经平台接口接入 |
 
 代码按**业务域 (Feature-Driven)** 组织：`core` 承载全局共享基础设施与通用能力，`feature` 下每个业务域自持 `data` / `domain` / `ui` 结构。依赖方向单向收敛——`feature` 依赖 `core`，`core` 不反向依赖 `feature`，各业务域之间解耦无循环依赖；`app` 与 `desktopApp` 都依赖 `shared`，两者互不依赖。
 
 ```text
 shared/src/
 ├── commonMain/kotlin/com/lin0721/linmusic/
-│   ├── core/                    # api、auth、network、model、preferences、player 抽象等共享基础能力
-│   ├── feature/                 # 各业务域的 data / domain，以及已迁入的跨平台 ViewModel
+│   ├── core/                    # api、auth、network、model、preferences、player 抽象、format 格式化等共享基础能力
+│   ├── feature/                 # 各业务域的 data / domain、跨平台 ViewModel（ui）与展示逻辑（presentation）
 │   └── di/                      # 网络与仓储的 Koin 模块，两端共用
 ├── androidMain/                 # Context 相关实现（DataStore 落盘、网络状态、音乐库偏好等）
 └── desktopMain/                 # 桌面 JVM 平台实现（日志、设备信息等）
@@ -82,28 +82,26 @@ app/src/main/java/com/lin0721/linmusic/
 
 desktopApp/src/main/kotlin/com/lin0721/linmusic/desktop/
 ├── Main.kt                      # 应用入口：Koin 初始化、主窗口、托盘、全局快捷键与桌面歌词窗口
-├── di/                          # Koin 模块注册；PlatformModule.kt 是全应用唯一的平台分支点
-├── platform/                    # 跨平台通用能力（数据目录、偏好存储、日志、图片加载等），不含平台判断
-│   └── native/                  # 平台原生能力：抽象与实现分离
-│       ├── *.kt                 # 平台抽象接口：SystemMediaSession、GlobalHotkeyService、AutoStartManager、
-│       │                        #   WindowDecoration、SystemAccentProvider、DesktopLyricBehavior
-│       ├── windows/             # Windows 实现：Windows* 类 + winapi/（User32/Dwmapi）+ SmtcLibrary + RegistryCli
-│       └── linux/               # Linux 实现：当前为 no-op 占位，后续填充 MPRIS/XDG/X11 等
-├── player/                      # libmpv 的 JNA 绑定与 PlaybackController 实现（跨平台后端，不归入 platform/native）
-└── ui/                          # 三栏布局、标题栏、首页、歌单、歌手、搜索、浏览、设置、播放条与歌词
+├── di/                          # Koin 模块、按系统选择平台实现、构造界面所需的依赖集合
+├── app/                         # 启动基础设施：日志、崩溃处理、单实例、数据目录、缓存迁移、窗口位置
+├── data/                        # 桌面偏好、音乐库偏好、下载、图片加载等数据层实现
+├── platform/                    # 系统能力接口（媒体会话、全局热键、开机自启、窗口效果、托盘、浏览器查找）
+│   ├── windows/                 # Windows 实现：Win32 热键、SMTC 桥接、DWM 窗口样式、注册表
+│   ├── linux/                   # Linux 实现：MPRIS 媒体控制、SNI 托盘、X11 输入穿透（含 mpris/ · sni/ · x11/ 子包）
+│   ├── tray/                    # 托盘抽象与 AWT 兜底实现（Linux 走 SNI，Windows 走 AWT）
+│   └── fallback/                # 尚未适配系统的空实现，界面据此隐藏对应入口
+├── player/                      # libmpv 的 JNA 绑定与 PlaybackController 实现
+└── ui/
+    ├── shell/                   # 应用壳：界面状态、两侧栏布局、路由到页面的注册表、标题栏与播放栏接线
+    ├── navigation/              # 浏览器式返回栈与按栈帧保存页面现场
+    ├── components/ · track/     # 通用组件与歌曲行、歌曲操作
+    ├── home/ · playlist/ · …    # 按功能分包的页面（歌手、搜索、播客、个人主页、音乐库、设置等）
+    └── player/ · nowplaying/ · lyricsview/  # 播放条与队列、正在播放侧栏、全屏歌词
 
-desktopApp/native-src/           # 原生源码，按平台分目录（windows/、linux/）
-desktopApp/native-src/windows/smtc/  # Windows SMTC 桥接 DLL 源码（C++/WinRT，CMake 构建）
+desktopApp/native-src/smtc/      # SMTC 桥接 DLL 源码（C++/WinRT，CMake 构建）
 ```
 
-**`platform/native` 组织规则**
-
-- 根目录只放**平台抽象接口**，不放任何具体平台实现。
-- 具体实现放平台子目录：`windows/`、`linux/`；类名带平台前缀（`Windows*` / `Linux*`），Windows 的 Win32/JNA 绑定统一放 `windows/winapi/`。
-- 上层只依赖接口：`Main.kt`、`SettingsPage.kt`、`WindowChromeEffect.kt`、`DesktopLyricWindow.kt` 等只 `import platform.native.<接口>`，**禁止**直接引用 `windows/`、`linux/` 下的类。
-- **唯一分支点**：平台判断集中在 `di/PlatformModule.kt`（按 `os.name` 选择并注册接口实现）。新增平台只需新增 `platform/native/<platform>/` 并在此登记，无需改动上层。
-- 跨平台后端不归此目录：`player/mpv/` 保持原位，仅在内部按平台适配（如库名/搜索路径）。
-- 通用文件留在 `platform/` 根：`DesktopPaths`、`DesktopPreferences`、`DesktopLogging`、`HotkeyBinding` 等不属于平台原生能力，不放进 `native/`。
+桌面端界面只依赖平台接口与 `shared` 中的 ViewModel：依赖在 `Main.kt` 构造一次后显式向下传递，界面层不直接访问 Koin；接入新的桌面系统时，只需在 `platform/` 下补一套接口实现并在 `di/PlatformModule.kt` 中按系统选择。
 
 ---
 
@@ -125,8 +123,8 @@ Repository 边界统一产出 Kotlin `Result<T>`，异常类型抽象为领域�
 - **IDE**：Android Studio Ladybug (2024.2.1) 或更高版本
 - **桌面端（仅在需要运行或打包时）**：
   - 64 位 Windows 10 及以上
-  - `libmpv-2.dll`：使用 [media-kit](https://github.com/media-kit/media-kit) 提供的 Windows 纯音频 libmpv 构建，放到 `desktopApp/native/`（已在 `.gitignore` 中排除，不入库）
-  - SMTC 桥接 DLL 由 Gradle 在运行与打包前自动调用 CMake 编译，需安装 CMake 与 Visual Studio（含“使用 C++ 的桌面开发”工作负载及 Windows 10/11 SDK）；缺少时跳过编译，运行时退回全局媒体键
+  - `libmpv-2.dll`：使用定制的精简音频版（[mpv-winbuild-cmake](https://github.com/rinchao0721/mpv-winbuild-cmake) 的 `AUDIO_ONLY` 构建），运行或打包前由 Gradle 按 `gradle.properties` 中固定的 Release 自动下载到 `desktopApp/native/` 并校验 SHA256（不入库）；也可单独执行 `./gradlew :desktopApp:downloadLibmpv`
+  - SMTC 桥接 DLL 由 Gradle 在运行与打包前自动调用 CMake 编译，需安装 CMake 与 Visual Studio（含“使用 C++ 的桌面开发”工作负载及 Windows 10/11 SDK）；本地缺少时跳过编译，运行时退回全局媒体键（发版构建传 `-PrequireSmtc=true`，编不出来直接失败）
   - 打包 MSI 需安装 [WiX Toolset 3.14](https://github.com/wixtoolset/wix3/releases) 并将其 `bin` 目录加入 `PATH`；打包所用 JDK 21 由 Gradle 工具链自动下载
 
 ### 常用命令
@@ -137,7 +135,7 @@ Repository 边界统一产出 Kotlin `Result<T>`，异常类型抽象为领域�
   ```
 - **运行单元测试**（`shared` 的测试跑在桌面 JVM 目标上）：
   ```bash
-  ./gradlew :app:testDebugUnitTest :shared:desktopTest
+  ./gradlew :app:testDebugUnitTest :shared:desktopTest :desktopApp:test
   ```
 - **构建 Android Release 安装包**：
   ```bash
@@ -156,7 +154,7 @@ Repository 边界统一产出 Kotlin `Result<T>`，异常类型抽象为领域�
 
 - **代码裁剪与混淆**：`release` 构建已开启 R8 压缩与混淆保护。项目对 Retrofit 接口与 `@Serializable` 数据传输类配置了显式 Keep 规则，确保混淆后的运行安全。
 - **签名机制**：签名材料从版本控制外部注入（读取 `local.properties` 或 CI 环境变量）。若未配置正式签名，将自动回退为 Debug 签名，确保本地可编译出可运行的 APK。完整签名与自动化发版配置请参阅 [RELEASE_SIGNING.md](RELEASE_SIGNING.md)。
-- **CI 流水线**：向 `main` 分支推送或提交 PR 时自动运行 `app` 与 `shared` 的单元测试、桌面端编译检查与 Android Release 构建验证；推送版本 Tag 时触发 Android 正式签名打包并发布 GitHub Release。
+- **CI 流水线**：向 `main` 分支推送或提交 PR 时自动运行 `app`、`shared` 与 `desktopApp` 的单元测试、桌面端编译检查与 Android Release 构建验证；推送版本 Tag 时并行打 Android 正式签名 APK 与桌面端安装包（Windows runner），两端都成功后一并发布到 GitHub Release，详见 [RELEASE_SIGNING.md](RELEASE_SIGNING.md)。
 
 ---
 

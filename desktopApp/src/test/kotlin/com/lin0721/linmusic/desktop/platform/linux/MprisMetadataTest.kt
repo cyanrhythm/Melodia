@@ -1,9 +1,9 @@
 package com.lin0721.linmusic.desktop.platform.linux
 
-import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisLoopStatus
-import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisMetadata
-import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisPlaybackStatus
-import com.lin0721.linmusic.desktop.platform.native.linux.mpris.MprisPlayer
+import com.lin0721.linmusic.desktop.platform.linux.mpris.MprisLoopStatus
+import com.lin0721.linmusic.desktop.platform.linux.mpris.MprisMetadata
+import com.lin0721.linmusic.desktop.platform.linux.mpris.MprisPlaybackStatus
+import com.lin0721.linmusic.desktop.platform.linux.mpris.MprisPlayer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
