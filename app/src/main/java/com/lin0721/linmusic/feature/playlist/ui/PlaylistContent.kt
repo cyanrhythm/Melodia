@@ -29,6 +29,11 @@ import com.lin0721.linmusic.core.model.Track
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectItem
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectSheet
 import com.lin0721.linmusic.core.ui.components.PlaylistCollectState
+import com.lin0721.linmusic.core.ui.components.TrackSelectionOverlay
+import com.lin0721.linmusic.core.ui.components.rememberSelectionBottomPadding
+import com.lin0721.linmusic.core.ui.components.SelectionAction
+import com.lin0721.linmusic.core.ui.components.TrackSelectionUi
+import com.lin0721.linmusic.core.ui.theme.darken
 import com.lin0721.linmusic.core.model.PlaylistDetail
 import com.lin0721.linmusic.core.ui.theme.FallbackBase
 import com.lin0721.linmusic.core.ui.theme.melodiaStatusBarTopPadding
@@ -98,7 +103,11 @@ fun PlaylistContent(
     onLoadMoreTracks: () -> Unit = {},
     onLocateTrack: (Long) -> Unit = {},
     onCreatorClick: (Long) -> Unit = {},
-    trackPlayCounts: Map<Long, Int> = emptyMap()
+    trackPlayCounts: Map<Long, Int> = emptyMap(),
+    selectionUi: TrackSelectionUi = TrackSelectionUi(),
+    selectionActions: List<SelectionAction> = emptyList(),
+    onToggleSelectAll: (List<Long>) -> Unit = {},
+    onExitSelection: () -> Unit = {}
 ) {
     val density = LocalDensity.current
 
@@ -220,53 +229,58 @@ fun PlaylistContent(
     BackHandler(enabled = searchBarRevealState.isOpen) {
         searchBarRevealState.close()
     }
+    BackHandler(enabled = selectionUi.active) {
+        onExitSelection()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── 1. 滚动内容：整体随 revealPx 下移，让出顶部空间给搜索栏 ───────────
         LazyColumn(
             state          = listState,
-            contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current + 16.dp),
+            contentPadding = PaddingValues(bottom = LocalBottomOverlayInset.current + 16.dp + rememberSelectionBottomPadding(selectionUi.active)),
             modifier       = Modifier
                 .graphicsLayer { translationY = searchBarRevealState.revealPx }
                 .nestedScroll(searchBarRevealState.connection)
         ) {
             // Item 0：全出血 Hero；搜索展开意图确定后淡出收起，让出空间给搜索结果
             item(key = "header") {
-                AnimatedVisibility(
-                    visible = !searchFullyRevealed,
-                    enter   = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                    exit    = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
-                ) {
-                    PlaylistHeaderItem(
-                        playlist            = playlist,
-                        coverSize           = coverSize,
-                        coverAlpha          = coverAlpha,
-                        progress            = progress,
-                        statusBarHeight     = statusBarHeight,
-                        dominantColor       = dominantColor,
-                        onColorCalculated   = { dominantColor = it },
-                        onPlayAll              = onPlayAll,
-                        onShuffleToggle        = onShuffleToggle,
-                        isShuffleActive        = isShuffleActive,
-                        isCurrentlyPlayingThis = isCurrentlyPlayingThis,
-                        isSubscribed        = isSubscribed,
-                        onSubscribeClick    = onSubscribeClick,
-                        onCommentsClick     = onCommentsClick,
-                        onMoreClick         = onMoreClick,
-                        isLikedSongsPlaylistView = isLikedSongsPlaylistView,
-                        isOwnedPlaylist     = canRemoveFromPlaylist,
-                        onShareClick        = onShareClick,
-                        onDownloadClick     = onDownloadClick,
-                        onHistoryClick      = onHistoryClick,
-                        selectedHistoryDate = selectedHistoryDate,
-                        onCreatorClick      = onCreatorClick,
-                        onPlayButtonPositioned = { y ->
-                            if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
-                                playButtonBaselineYPx = y
+                Box(modifier = Modifier.heightIn(min = 1.dp)) {
+                    AnimatedVisibility(
+                        visible = !searchFullyRevealed,
+                        enter   = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                        exit    = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+                    ) {
+                        PlaylistHeaderItem(
+                            playlist            = playlist,
+                            coverSize           = coverSize,
+                            coverAlpha          = coverAlpha,
+                            progress            = progress,
+                            statusBarHeight     = statusBarHeight,
+                            dominantColor       = dominantColor,
+                            onColorCalculated   = { dominantColor = it },
+                            onPlayAll              = onPlayAll,
+                            onShuffleToggle        = onShuffleToggle,
+                            isShuffleActive        = isShuffleActive,
+                            isCurrentlyPlayingThis = isCurrentlyPlayingThis,
+                            isSubscribed        = isSubscribed,
+                            onSubscribeClick    = onSubscribeClick,
+                            onCommentsClick     = onCommentsClick,
+                            onMoreClick         = onMoreClick,
+                            isLikedSongsPlaylistView = isLikedSongsPlaylistView,
+                            isOwnedPlaylist     = canRemoveFromPlaylist,
+                            onShareClick        = onShareClick,
+                            onDownloadClick     = onDownloadClick,
+                            onHistoryClick      = onHistoryClick,
+                            selectedHistoryDate = selectedHistoryDate,
+                            onCreatorClick      = onCreatorClick,
+                            onPlayButtonPositioned = { y ->
+                                if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+                                    playButtonBaselineYPx = y
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
 
@@ -342,7 +356,8 @@ fun PlaylistContent(
                     onToggleLike       = onToggleLike,
                     onMoreClick        = { activeSongMoreOptions = it },
                     trackPlayCounts    = trackPlayCounts,
-                    unplayableIds      = unplayableIds
+                    unplayableIds      = unplayableIds,
+                    selectionUi        = selectionUi
                 )
 
                 if (isLoadingMoreTracks) {
@@ -403,8 +418,17 @@ fun PlaylistContent(
             }
         )
 
+        TrackSelectionOverlay(
+            selectionUi = selectionUi,
+            actions = selectionActions,
+            visibleIds = filteredTracks.map { it.id },
+            headerColor = dominantColor.darken(0.35f),
+            onToggleSelectAll = onToggleSelectAll,
+            onExit = onExitSelection
+        )
+
         // 播放按钮跟手滑动、到位后锁停；搜索展开到位后一并隐藏
-        if (!isDailyRecommend && !searchFullyRevealed) {
+        if (!isDailyRecommend && !searchFullyRevealed && !selectionUi.active) {
             PlaylistDockedPlayButton(
                 dockedOffsetYProvider = {
                     val naturalY = if (listState.firstVisibleItemIndex == 0) {
@@ -420,7 +444,7 @@ fun PlaylistContent(
         }
 
         // 定位到正在播放的歌曲，只有目标属于本歌单且不在可见范围内才出现
-        if (showLocateButton) {
+        if (showLocateButton && !selectionUi.active) {
             FloatingActionButton(
                 onClick = {
                     val id = targetTrackId ?: return@FloatingActionButton
